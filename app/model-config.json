@@ -1,0 +1,14 @@
+{
+  "activeModel": "ascore_personal_loan",
+  "models": {
+    "ascore_personal_loan": {
+      "name": "Ascore Application Model",
+      "psi_threshold": 0.15,
+      "weights": {
+        "income": -0.000002,
+        "emp_duration": -0.02,
+        "age": -0.005
+      }
+    }
+  }
+}

@@ -1,54 +1,25 @@
 /**
- * Barrel export — single import point for all model configuration modules.
+ * Barrel export — single import point for the model configuration module.
  *
- * Usage in any other file:
- *   import { modelInfo, features, thresholds, baseline, validationRules } from '@/app/config/model';
- *   import type { ModelConfiguration, FeatureConfig } from '@/app/config/model';
- *
- * This keeps consumer imports clean and allows internal module reorganisation
- * without touching every import site.
+ * Usage:
+ *   import { modelConfiguration, features, scorecardParams } from '@/config/model';
  */
 
-// ---- Types -----------------------------------------------------------------
-export type {
-  ModelStatus,
-  ModelInfo,
-  DataType,
-  FeatureConfig,
-  ThresholdConfig,
-  BaselineStats,
-  MissingValueStrategy,
-  ValidationRule,
-  ConfigStatus,
-  ConfigMeta,
-  ModelConfiguration,
-} from './types';
-
-// ---- Model identity & config metadata --------------------------------------
+export * from './types';
 export { modelInfo, configMeta } from './model.config';
-
-// ---- Feature definitions ---------------------------------------------------
-export {
-  features,
-  getFeatureByColumn,
-  getMonitoredFeatures,
-} from './features.config';
-
-// ---- Alert thresholds ------------------------------------------------------
+export { features, getFeatureByColumn, getMonitoredFeatures, findBin } from './features.config';
+export { scorecardParams, modelPerformance } from './scorecard.config';
 export { thresholds } from './thresholds.config';
-
-// ---- Baseline statistics ---------------------------------------------------
 export { baseline, getBaselineByFeatureId } from './baseline.config';
+export { validationRules, getValidationByFeatureId } from './validation.config';
 
-// ---- Validation rules (prepared, not yet enforced) -------------------------
-export {
-  validationRules,
-  getValidationByFeatureId,
-} from './validation.config';
+// ---------------------------------------------------------------------------
+// Assembled root configuration object
+// ---------------------------------------------------------------------------
 
-// ---- Assembled root config (convenience, for the /api/model-config route) ---
 import { modelInfo, configMeta } from './model.config';
 import { features } from './features.config';
+import { scorecardParams, modelPerformance } from './scorecard.config';
 import { thresholds } from './thresholds.config';
 import { baseline } from './baseline.config';
 import { validationRules } from './validation.config';
@@ -58,6 +29,8 @@ export const modelConfiguration: ModelConfiguration = {
   meta: configMeta,
   model: modelInfo,
   features,
+  scorecard: scorecardParams,
+  performance: modelPerformance,
   thresholds,
   baseline,
   validation: validationRules,

@@ -1,9 +1,19 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import type { ModelConfiguration } from '../config/model/types';
 
 export default function Dashboard() {
   const [psi, setPsi] = useState(0.12);
+  const [config, setConfig] = useState<ModelConfiguration | null>(null);
+
+  // Load model configuration once — used for threshold comparisons in AI insight
+  useEffect(() => {
+    fetch('/api/model-config')
+      .then((r) => r.json())
+      .then((data: ModelConfiguration) => setConfig(data))
+      .catch(() => {/* silently fall back to defaults */});
+  }, []);
 
   const data = [
     { name: 'Jan', psi: 0.05, forecast: null },
@@ -18,6 +28,10 @@ export default function Dashboard() {
   const triggerDrift = () => {
     setPsi(prev => Math.min(prev + 0.05, 1.0));
   };
+
+  // Use config threshold if available; fall back to 0.15 so behaviour is unchanged
+  const criticalThreshold = config?.thresholds.psiCriticalThreshold ?? 0.15;
+  const minAuc = config?.thresholds.minAuc ?? 0.70;
 
   return (
     <div className="p-8 bg-gray-50 min-h-screen">
@@ -36,10 +50,12 @@ export default function Dashboard() {
         <div className="bg-white p-6 rounded-lg shadow border-l-4 border-yellow-500">
           <h3 className="text-sm text-gray-500">Current PSI</h3>
           <p className="text-3xl font-bold text-gray-800">{psi.toFixed(2)}</p>
+          <span className="text-xs text-gray-400">Critical ≥ {criticalThreshold}</span>
         </div>
         <div className="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
-          <h3 className="text-sm text-gray-500">Current AUC</h3>
-          <p className="text-3xl font-bold text-gray-800">0.78</p>
+          <h3 className="text-sm text-gray-500">Min AUC Threshold</h3>
+          <p className="text-3xl font-bold text-gray-800">{minAuc.toFixed(2)}</p>
+          <span className="text-xs text-gray-400">Minimum acceptable AUC</span>
         </div>
         <div className="bg-white p-6 rounded-lg shadow border-l-4 border-red-500">
           <h3 className="text-sm text-gray-500">Est. NPL Impact</h3>
@@ -67,7 +83,7 @@ export default function Dashboard() {
       <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
         <h2 className="font-bold text-blue-800">AI Predictive Insight</h2>
         <div className="mt-2 text-blue-700">
-          {psi > 0.15 ? (
+          {psi > criticalThreshold ? (
             <p>⚠️ <strong>ตรวจพบความเสี่ยงสูงเกินเกณฑ์!</strong> แนะนำให้ทำการ Retrain โมเดลทันทีเพื่อป้องกัน NPL</p>
           ) : (
             <p>จากการวิเคราะห์แนวโน้ม พบว่าค่า PSI อยู่ในระดับที่เฝ้าระวัง แนะนำให้ติดตามผลอย่างใกล้ชิด</p>

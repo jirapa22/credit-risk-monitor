@@ -1,0 +1,265 @@
+{
+  "activeModelId": "ascore_v1",
+  "models": {
+    "ascore_v1": {
+      "id": "ascore_v1",
+      "name": "A-Score Personal Loan v1",
+      "description": "Application Scorecard (A-Score) สำหรับสินเชื่อส่วนบุคคล — Logistic Regression บน WOE-transformed variables",
+      "type": "scorecard",
+      "createdAt": "2026-01-15T00:00:00Z",
+      "status": "active",
+
+      "configVersion": "1.1.0",
+      "configStatus": "published",
+      "configCreatedAt": "2026-01-15T00:00:00Z",
+      "configUpdatedAt": "2026-07-15T00:00:00Z",
+      "configHistory": [
+        { "version": "1.1.0", "updatedAt": "2026-07-15T00:00:00Z", "status": "published", "note": "Updated with actual Excel model report data (ascore_model_report.xlsx)" },
+        { "version": "1.0.0", "updatedAt": "2026-01-15T00:00:00Z", "status": "archived", "note": "Initial production configuration" }
+      ],
+
+      "scoring": {
+        "base_points": 554.2,
+        "pdo": 20,
+        "base_score": 600,
+        "base_odds": 50,
+        "factor": 28.854,
+        "offset": 487.123,
+        "features": ["monthly_income", "loan_amount", "dti_ratio"],
+        "scorecard": {
+          "monthly_income": {
+            "bins": [17800, 22300, 27520, 36360],
+            "bin_labels": ["≤17,800", "17,801–22,300", "22,301–27,520", "27,521–36,360", ">36,360"],
+            "count": [124, 117, 118, 119, 120],
+            "woe": [-0.4805, -0.0979, -0.2558, 0.6292, 0.6379],
+            "points": [-10.2, -2.1, -5.5, 13.4, 13.6],
+            "bad_rate": [0.1452, 0.1026, 0.1186, 0.0504, 0.0500]
+          },
+          "loan_amount": {
+            "bins": [46000, 63000, 81000, 112000],
+            "bin_labels": ["≤46,000", "46,001–63,000", "63,001–81,000", "81,001–112,000", ">112,000"],
+            "count": [121, 119, 122, 118, 118],
+            "woe": [0.6466, 0.2229, -0.2182, 0.4683, -0.6612],
+            "points": [13.3, 4.6, -4.5, 9.6, -13.6],
+            "bad_rate": [0.0496, 0.0756, 0.1148, 0.0593, 0.1695]
+          },
+          "dti_ratio": {
+            "bins": [0.264, 0.360, 0.470, 0.606],
+            "bin_labels": ["≤0.264", "0.265–0.360", "0.361–0.470", "0.471–0.606", ">0.606"],
+            "count": [120, 122, 121, 115, 120],
+            "woe": [0.8137, 0.6552, 0.6466, -0.5030, -0.7543],
+            "points": [22.4, 18.0, 17.8, -13.8, -20.7],
+            "bad_rate": [0.0417, 0.0492, 0.0496, 0.1478, 0.1833]
+          }
+        }
+      },
+
+      "ivSummary": {
+        "dti_ratio":      { "iv": 0.4419, "numBins": 5, "strength": "Strong (แข็งแรง)",   "usedInModel": true },
+        "loan_amount":    { "iv": 0.2329, "numBins": 5, "strength": "Medium (ปานกลาง)",   "usedInModel": true },
+        "monthly_income": { "iv": 0.1987, "numBins": 5, "strength": "Medium (ปานกลาง)",   "usedInModel": true },
+        "loan_purpose":    { "iv": 0.1772, "numBins": 7, "strength": "Medium (ปานกลาง)",   "usedInModel": false },
+        "marital_status":  { "iv": 0.1443, "numBins": 3, "strength": "Medium (ปานกลาง)",   "usedInModel": false },
+        "employment_years":{ "iv": 0.0986, "numBins": 5, "strength": "Weak (อ่อน)",        "usedInModel": false },
+        "age":             { "iv": 0.0674, "numBins": 5, "strength": "Weak (อ่อน)",        "usedInModel": false }
+      },
+
+      "featureRegistry": {
+        "monthly_income": {
+          "featureId": "feat_001",
+          "columnName": "monthly_income",
+          "displayName": "Monthly Income",
+          "description": "รายได้ต่อเดือนของผู้สมัคร จากใบสมัครสินเชื่อ (salary/wage)",
+          "source": "WOE-transformed — Application form field: monthly_income",
+          "dataType": "numeric",
+          "required": true,
+          "monitoringEnabled": true,
+          "displayOrder": 1,
+          "validation": {
+            "minValue": 1000,
+            "maxValue": 500000,
+            "allowNull": false,
+            "defaultValue": null,
+            "missingStrategy": "reject"
+          },
+          "binning": {
+            "method": "manual",
+            "numBins": 5,
+            "boundaries": [17800, 22300, 27520, 36360],
+            "binLabels": ["≤17,800", "17,801–22,300", "22,301–27,520", "27,521–36,360", ">36,360"]
+          },
+          "baselineDistribution": {
+            "mean": 28381,
+            "std": 13501,
+            "median": 25100,
+            "p25": 18700,
+            "p75": 33700,
+            "min": 15000,
+            "max": 103900,
+            "missingPct": 0.0,
+            "uniqueCount": null
+          },
+          "csiThreshold": 0.10
+        },
+        "loan_amount": {
+          "featureId": "feat_002",
+          "columnName": "loan_amount",
+          "displayName": "Loan Amount",
+          "description": "วงเงินกู้ที่ผู้สมัครต้องการ",
+          "source": "WOE-transformed — Application form field: loan_amount",
+          "dataType": "numeric",
+          "required": true,
+          "monitoringEnabled": true,
+          "displayOrder": 2,
+          "validation": {
+            "minValue": 5000,
+            "maxValue": 5000000,
+            "allowNull": false,
+            "defaultValue": null,
+            "missingStrategy": "reject"
+          },
+          "binning": {
+            "method": "manual",
+            "numBins": 5,
+            "boundaries": [46000, 63000, 81000, 112000],
+            "binLabels": ["≤46,000", "46,001–63,000", "63,001–81,000", "81,001–112,000", ">112,000"]
+          },
+          "baselineDistribution": {
+            "mean": 82595,
+            "std": 46759,
+            "median": 72000,
+            "p25": 49000,
+            "p75": 103000,
+            "min": 20000,
+            "max": 403000,
+            "missingPct": 0.0,
+            "uniqueCount": null
+          },
+          "csiThreshold": 0.10
+        },
+        "dti_ratio": {
+          "featureId": "feat_003",
+          "columnName": "dti_ratio",
+          "displayName": "DTI Ratio",
+          "description": "อัตราส่วนหนี้สินต่อรายได้ (existing_monthly_debt / monthly_income)",
+          "source": "WOE-transformed — Derived field: existing_monthly_debt / monthly_income",
+          "dataType": "numeric",
+          "required": true,
+          "monitoringEnabled": true,
+          "displayOrder": 3,
+          "validation": {
+            "minValue": 0.0,
+            "maxValue": 10.0,
+            "allowNull": false,
+            "defaultValue": null,
+            "missingStrategy": "reject"
+          },
+          "binning": {
+            "method": "manual",
+            "numBins": 5,
+            "boundaries": [0.264, 0.360, 0.470, 0.606],
+            "binLabels": ["≤0.264", "0.265–0.360", "0.361–0.470", "0.471–0.606", ">0.606"]
+          },
+          "baselineDistribution": {
+            "mean": 0.44,
+            "std": 0.21,
+            "median": 0.42,
+            "p25": 0.29,
+            "p75": 0.57,
+            "min": 0.05,
+            "max": 1.49,
+            "missingPct": 0.0,
+            "uniqueCount": null
+          },
+          "csiThreshold": 0.10
+        },
+        "default_flag": {
+          "featureId": "feat_004",
+          "columnName": "default_flag",
+          "displayName": "Default Flag",
+          "description": "ตัวแปร target — 1 = Default/Bad, 0 = Non-default/Good",
+          "source": "Outcome field — derived from payment status 90+ DPD within 12 months",
+          "dataType": "binary",
+          "required": false,
+          "monitoringEnabled": false,
+          "displayOrder": 99,
+          "validation": {
+            "minValue": 0,
+            "maxValue": 1,
+            "allowNull": true,
+            "defaultValue": null,
+            "missingStrategy": "fillDefault"
+          },
+          "binning": {
+            "method": "manual",
+            "numBins": 2,
+            "boundaries": [0.5],
+            "binLabels": ["Good (0)", "Bad (1)"]
+          },
+          "baselineDistribution": {
+            "mean": 0.0936,
+            "std": 0.2912,
+            "median": 0,
+            "p25": 0,
+            "p75": 0,
+            "min": 0,
+            "max": 1,
+            "missingPct": 0.0,
+            "uniqueCount": 2
+          },
+          "csiThreshold": 0.10
+        }
+      },
+
+      "baseline": {
+        "lockedAt": "2026-01-15T00:00:00Z",
+        "trainPeriod": "2024-01 to 2024-09",
+        "testPeriod": "2024-10 to 2024-12",
+        "sample_size": 855,
+        "train_size": 598,
+        "test_size": 257,
+        "bad_rate": 0.0936,
+        "performance": {
+          "train": { "auc": 0.718, "gini": 0.436, "ks": 0.349, "period": "2024-01 to 2024-09", "n": 598 },
+          "test":  { "auc": 0.597, "gini": 0.195, "ks": 0.238, "period": "2024-10 to 2024-12", "n": 257 }
+        },
+        "feature_stats": {
+          "monthly_income": { "mean": 28381, "std": 13501, "min": 15000, "p25": 18700, "p50": 25100, "p75": 33700, "max": 103900 },
+          "loan_amount":    { "mean": 82595, "std": 46759, "min": 20000, "p25": 49000, "p50": 72000, "p75": 103000, "max": 403000 },
+          "dti_ratio":      { "mean": 0.44,  "std": 0.21,  "min": 0.05,  "p25": 0.29,  "p50": 0.42,  "p75": 0.57,  "max": 1.49 }
+        },
+        "score_distribution": {
+          "mean": 554.2,
+          "min": 514.4,
+          "max": 595.6,
+          "decile_bounds": [533.24, 539.481, 545.873, 551.655, 558.683, 565.726, 572.378, 577.984, 586.52, 595.423]
+        },
+        "ksDecileTable": [
+          { "decile": "D1", "n": 26, "bad": 5, "good": 21, "minScore": 586.52,  "maxScore": 595.423, "badRate": 0.192, "cumBad": 0.208, "cumGood": 0.090, "ks": 0.118 },
+          { "decile": "D2", "n": 26, "bad": 1, "good": 25, "minScore": 577.984, "maxScore": 586.52,  "badRate": 0.038, "cumBad": 0.250, "cumGood": 0.197, "ks": 0.053 },
+          { "decile": "D3", "n": 25, "bad": 0, "good": 25, "minScore": 572.378, "maxScore": 577.984, "badRate": 0.000, "cumBad": 0.250, "cumGood": 0.305, "ks": 0.055 },
+          { "decile": "D4", "n": 26, "bad": 1, "good": 25, "minScore": 565.726, "maxScore": 572.378, "badRate": 0.038, "cumBad": 0.292, "cumGood": 0.412, "ks": 0.120 },
+          { "decile": "D5", "n": 26, "bad": 0, "good": 26, "minScore": 561.981, "maxScore": 565.587, "badRate": 0.000, "cumBad": 0.292, "cumGood": 0.524, "ks": 0.232 },
+          { "decile": "D6", "n": 25, "bad": 3, "good": 22, "minScore": 551.656, "maxScore": 558.683, "badRate": 0.120, "cumBad": 0.417, "cumGood": 0.618, "ks": 0.201 },
+          { "decile": "D7", "n": 26, "bad": 3, "good": 23, "minScore": 547.905, "maxScore": 551.451, "badRate": 0.115, "cumBad": 0.542, "cumGood": 0.717, "ks": 0.175 },
+          { "decile": "D8", "n": 25, "bad": 2, "good": 23, "minScore": 539.481, "maxScore": 545.873, "badRate": 0.080, "cumBad": 0.625, "cumGood": 0.815, "ks": 0.190 },
+          { "decile": "D9", "n": 26, "bad": 2, "good": 24, "minScore": 533.240, "maxScore": 539.481, "badRate": 0.077, "cumBad": 0.708, "cumGood": 0.918, "ks": 0.210 },
+          { "decile": "D10","n": 26, "bad": 7, "good": 19, "minScore": 514.364, "maxScore": 533.240, "badRate": 0.269, "cumBad": 1.000, "cumGood": 1.000, "ks": 0.000 }
+        ]
+      },
+
+      "thresholds": {
+        "psi_warning": 0.10,
+        "psi_critical": 0.25,
+        "gini_min": 0.10,
+        "auc_min": 0.55,
+        "ks_min": 0.10,
+        "csi_features": {
+          "monthly_income": { "label": "Monthly Income", "source": "WOE-transformed — รายได้ต่อเดือนจากใบสมัคร (salary/wage)", "threshold": 0.10, "bins": [17800, 22300, 27520, 36360], "bin_labels": ["≤17,800", "17,801–22,300", "22,301–27,520", "27,521–36,360", ">36,360"] },
+          "loan_amount":    { "label": "Loan Amount",    "source": "WOE-transformed — วงเงินกู้ที่ขอจากใบสมัคร", "threshold": 0.10, "bins": [46000, 63000, 81000, 112000], "bin_labels": ["≤46,000", "46,001–63,000", "63,001–81,000", "81,001–112,000", ">112,000"] },
+          "dti_ratio":      { "label": "DTI Ratio",      "source": "WOE-transformed — อัตราส่วนหนี้ต่อรายได้ (existing_monthly_debt / monthly_income)", "threshold": 0.10, "bins": [0.264, 0.360, 0.470, 0.606], "bin_labels": ["≤0.264", "0.265–0.360", "0.361–0.470", "0.471–0.606", ">0.606"] }
+        }
+      }
+    }
+  }
+}

@@ -18,7 +18,7 @@ interface ModelEntry {
   scoring: {
     base_points: number;
     features: string[];
-    scorecard: Record<string, { bins: number[]; bin_labels: string[]; woe: number[]; points: number[]; bad_rate: number[] }>;
+    scorecard: Record<string, { bins: number[]; bin_labels: string[]; count?: number[]; woe: number[]; points: number[]; bad_rate: number[] }>;
   };
   baseline: {
     lockedAt: string;
@@ -629,30 +629,52 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Scorecard Table */}
+                {/* Scorecard Table — with IV per feature */}
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
                   <h2 className="text-sm font-bold text-slate-200 mb-4">📋 Scorecard Reference</h2>
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                     {(['monthly_income', 'loan_amount', 'dti_ratio'] as const).map(feat => {
                       const sc = scorecard[feat];
+                      const ivEntry = (model as any)?.ivSummary?.[feat];
                       if (!sc) return null;
+                      // IV strength colour
+                      const iv = ivEntry?.iv ?? null;
+                      const ivColor = iv === null ? 'text-slate-500'
+                        : iv >= 0.30 ? 'text-emerald-400'
+                        : iv >= 0.10 ? 'text-blue-400'
+                        : iv >= 0.02 ? 'text-amber-400'
+                        : 'text-slate-500';
+                      const ivStrength = iv === null ? '—'
+                        : iv >= 0.30 ? 'Strong'
+                        : iv >= 0.10 ? 'Medium'
+                        : iv >= 0.02 ? 'Weak'
+                        : 'Negligible';
                       return (
                         <div key={feat}>
-                          <p className="text-[11px] font-bold text-slate-300 mb-2">{featLabels[feat]}</p>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[11px] font-bold text-slate-300">{featLabels[feat]}</p>
+                            {iv !== null && (
+                              <span className={`text-[10px] font-mono font-bold ${ivColor} bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800`}>
+                                IV = {iv.toFixed(4)}&nbsp;·&nbsp;{ivStrength}
+                              </span>
+                            )}
+                          </div>
                           <div className="overflow-x-auto">
                             <table className="w-full text-[10px]">
                               <thead>
                                 <tr className="border-b border-slate-800">
                                   <th className="text-left pb-1 text-slate-500 font-medium">Bin</th>
+                                  <th className="text-right pb-1 text-slate-500 font-medium">Count</th>
                                   <th className="text-right pb-1 text-slate-500 font-medium">WOE</th>
                                   <th className="text-right pb-1 text-slate-500 font-medium">Points</th>
                                   <th className="text-right pb-1 text-slate-500 font-medium">Bad Rate</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {sc.bin_labels.map((label, i) => (
+                                {sc.bin_labels.map((label: string, i: number) => (
                                   <tr key={i} className="border-b border-slate-800/40 hover:bg-slate-800/20">
                                     <td className="py-1 text-slate-300">{label}</td>
+                                    <td className="py-1 text-right font-mono text-slate-500">{sc.count?.[i] ?? '—'}</td>
                                     <td className={`py-1 text-right font-mono ${(sc.woe[i] ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{(sc.woe[i] ?? 0).toFixed(4)}</td>
                                     <td className={`py-1 text-right font-mono font-bold ${(sc.points[i] ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{(sc.points[i] ?? 0) >= 0 ? '+' : ''}{sc.points[i]}</td>
                                     <td className="py-1 text-right font-mono text-slate-400">{((sc.bad_rate[i] ?? 0) * 100).toFixed(1)}%</td>
@@ -666,6 +688,129 @@ export default function Dashboard() {
                     })}
                   </div>
                 </div>
+
+                {/* PSI / CSI Summary Panel */}
+                {liveMetrics && (
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-sm font-bold text-slate-200">📉 PSI / CSI — Drift Summary</h2>
+                      <Badge status={liveMetrics.status} />
+                    </div>
+
+                    {/* PSI row */}
+                    <div className="mb-4">
+                      <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-2">Population Stability Index (Score Distribution)</p>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-2xl font-bold font-mono ${
+                          liveMetrics.psi < psiWarningNum ? 'text-emerald-400'
+                          : liveMetrics.psi < psiCriticalNum ? 'text-amber-400'
+                          : 'text-rose-400'
+                        }`}>{liveMetrics.psi?.toFixed(4)}</span>
+                        <div className="flex-1">
+                          <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                liveMetrics.psi < psiWarningNum ? 'bg-emerald-500'
+                                : liveMetrics.psi < psiCriticalNum ? 'bg-amber-500'
+                                : 'bg-rose-500'
+                              }`}
+                              style={{ width: `${Math.min(liveMetrics.psi / psiCriticalNum * 100, 100)}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[9px] text-slate-600 mt-1">
+                            <span>0</span>
+                            <span className="text-amber-600">Warn {psiWarningNum}</span>
+                            <span className="text-rose-600">Critical {psiCriticalNum}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CSI per feature */}
+                    <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-2">Characteristic Stability Index (per Feature)</p>
+                    <div className="space-y-2">
+                      {Object.entries(liveMetrics.csi || {}).map(([feat, val]) => {
+                        const cfg = csiFeatureMap[feat];
+                        const limit = parseFloat(cfg?.threshold || '0.10') || 0.10;
+                        const csiVal = val as number;
+                        const pct = Math.min(csiVal / limit * 100, 100);
+                        const barColor = csiVal > limit ? 'bg-rose-500' : 'bg-indigo-500';
+                        const textColor = csiVal > limit ? 'text-rose-400' : 'text-emerald-400';
+                        return (
+                          <div key={feat}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] text-slate-400">{cfg?.label || feat}</span>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-mono font-bold ${textColor}`}>{csiVal.toFixed(4)}</span>
+                                <span className="text-[9px] text-slate-600">limit {limit.toFixed(2)}</span>
+                              </div>
+                            </div>
+                            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* IV Summary — ทุกตัวแปรที่พิจารณา (จาก ascore_model_report.xlsx) */}
+                {(model as any)?.ivSummary && (
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+                    <h2 className="text-sm font-bold text-slate-200 mb-1">📊 Information Value (IV) Summary</h2>
+                    <p className="text-[9px] text-slate-500 mb-4">จาก ascore_model_report.xlsx · Sheet: IV Summary — ครอบคลุมทุกตัวแปรที่พิจารณา</p>
+                    <table className="w-full text-[10px]">
+                      <thead>
+                        <tr className="border-b border-slate-800">
+                          <th className="text-left pb-2 text-slate-500 font-medium">Variable</th>
+                          <th className="text-right pb-2 text-slate-500 font-medium">IV</th>
+                          <th className="text-right pb-2 text-slate-500 font-medium">Bins</th>
+                          <th className="text-left pb-2 text-slate-500 font-medium pl-3">Strength</th>
+                          <th className="text-center pb-2 text-slate-500 font-medium">In Model</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries((model as any).ivSummary as Record<string, any>).map(([varName, entry]) => {
+                          const iv = entry.iv as number;
+                          const inModel = entry.usedInModel as boolean;
+                          const ivColor = iv >= 0.30 ? 'text-emerald-400'
+                            : iv >= 0.10 ? 'text-blue-400'
+                            : iv >= 0.02 ? 'text-amber-400'
+                            : 'text-slate-500';
+                          const barW = Math.min(iv / 0.5 * 100, 100);
+                          return (
+                            <tr key={varName} className={`border-b border-slate-800/40 ${inModel ? '' : 'opacity-60'}`}>
+                              <td className="py-1.5 font-mono text-slate-300">
+                                {inModel && <span className="mr-1 text-indigo-400">✓</span>}
+                                {varName}
+                              </td>
+                              <td className="py-1.5 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full ${
+                                      iv >= 0.30 ? 'bg-emerald-500' : iv >= 0.10 ? 'bg-blue-500' : 'bg-amber-500'
+                                    }`} style={{ width: `${barW}%` }} />
+                                  </div>
+                                  <span className={`font-mono font-bold ${ivColor} w-12 text-right`}>{iv.toFixed(4)}</span>
+                                </div>
+                              </td>
+                              <td className="py-1.5 text-right text-slate-500">{entry.numBins}</td>
+                              <td className={`py-1.5 pl-3 ${ivColor}`}>{entry.strength}</td>
+                              <td className="py-1.5 text-center">{inModel ? '✓' : '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <div className="mt-3 pt-3 border-t border-slate-800/60 grid grid-cols-4 gap-2 text-[9px] text-slate-600">
+                      <span>IV &lt; 0.02 → Negligible</span>
+                      <span>0.02–0.10 → Weak</span>
+                      <span>0.10–0.30 → Medium</span>
+                      <span>≥ 0.30 → Strong</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Feature Distribution */}
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">

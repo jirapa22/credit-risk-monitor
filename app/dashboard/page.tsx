@@ -123,14 +123,12 @@ export default function Dashboard() {
     psi_warning: '0.10', psi_critical: '0.25',
     gini_min: '0.10', auc_min: '0.55', ks_min: '0.10',
   });
-  // Dynamic CSI feature list — each entry is a feature with key, label, source, threshold, bins
   const defaultCsiFeatures: CsiFeatureItem[] = [
     { key: 'monthly_income', label: 'Monthly Income', source: 'WOE-transformed — รายได้ต่อเดือนจากใบสมัคร (salary/wage)', threshold: '0.10', bins: ['17800', '22300', '27520', '36360'] },
     { key: 'loan_amount',    label: 'Loan Amount',    source: 'WOE-transformed — วงเงินกู้ที่ขอจากใบสมัคร', threshold: '0.10', bins: ['46000', '63000', '81000', '112000'] },
     { key: 'dti_ratio',      label: 'DTI Ratio',      source: 'WOE-transformed — อัตราส่วนหนี้ต่อรายได้ (existing_monthly_debt / monthly_income)', threshold: '0.10', bins: ['0.264', '0.36', '0.47', '0.606'] },
   ];
   const [csiFeatures, setCsiFeatures] = useState<CsiFeatureItem[]>(defaultCsiFeatures);
-  // Helper: lookup by key for comparison table
   const csiFeatureMap = Object.fromEntries(csiFeatures.map(f => [f.key, f]));
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [isAppending, setIsAppending] = useState(false);
@@ -140,25 +138,35 @@ export default function Dashboard() {
   const [rowCount, setRowCount] = useState(0);
   const [uploadedMetrics, setUploadedMetrics] = useState<any>(null);
   const [uploadedCsiDetail, setUploadedCsiDetail] = useState<Record<string, any> | null>(null);
+  const [uploadedRiskGrades, setUploadedRiskGrades] = useState<any[]>([]);
   const [previewCustomers, setPreviewCustomers] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [selectedLog, setSelectedLog] = useState<MonitorLog | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Load data ──
+  // ── localStorage keys ──
+  const LS_HISTORY = 'ascore_psi_history';
+  const LS_LOGS    = 'ascore_monitor_logs';
+
+  // ── Load data (stateless: config from API, history/logs from localStorage) ──
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [psiRes, logRes] = await Promise.all([
-        fetch('/api/get-latest-psi', { cache: 'no-store' }),
-        fetch('/api/monitor-log', { cache: 'no-store' }),
-      ]);
+      const psiRes = await fetch('/api/get-latest-psi', { cache: 'no-store' });
       const psiData = await psiRes.json();
-      const logData = await logRes.json();
 
-      setHistory(psiData.history || []);
-      setMonitorLogs((logData.log || []).reverse());
+      // History from localStorage
+      try {
+        const storedHistory = localStorage.getItem(LS_HISTORY);
+        if (storedHistory) setHistory(JSON.parse(storedHistory));
+      } catch {}
+
+      // Monitor logs from localStorage
+      try {
+        const storedLogs = localStorage.getItem(LS_LOGS);
+        if (storedLogs) setMonitorLogs(JSON.parse(storedLogs).reverse());
+      } catch {}
 
       if (psiData.config) {
         setConfig(psiData.config);
@@ -167,19 +175,17 @@ export default function Dashboard() {
         if (model?.thresholds) {
           const t = model.thresholds;
           setThresholds({
-            psi_warning: String(t.psi_warning ?? 0.10),
+            psi_warning:  String(t.psi_warning  ?? 0.10),
             psi_critical: String(t.psi_critical ?? 0.25),
-            gini_min: String(t.gini_min ?? 0.10),
-            auc_min: String(t.auc_min ?? 0.55),
-            ks_min: String(t.ks_min ?? 0.10),
+            gini_min:     String(t.gini_min     ?? 0.10),
+            auc_min:      String(t.auc_min      ?? 0.55),
+            ks_min:       String(t.ks_min       ?? 0.10),
           });
           if (t.csi_features) {
             const loaded: CsiFeatureItem[] = [];
             for (const [feat, cfg] of Object.entries(t.csi_features as Record<string, any>)) {
               loaded.push({
-                key: feat,
-                label: cfg.label || feat,
-                source: cfg.source || '',
+                key: feat, label: cfg.label || feat, source: cfg.source || '',
                 threshold: String(cfg.threshold ?? 0.10),
                 bins: Array.isArray(cfg.bins) ? cfg.bins.map(String) : [],
               });
@@ -275,7 +281,7 @@ export default function Dashboard() {
     setCsiFeatures(prev => prev.filter((_, i) => i !== idx));
   };
 
-  // ── Append to history ──
+  // ── Append to history (localStorage) ──
   const appendToHistory = async () => {
     setIsAppending(true);
     try {
@@ -285,7 +291,11 @@ export default function Dashboard() {
         body: JSON.stringify({ drift: driftLevel, source: 'simulation' }),
       });
       const newEntry = await res.json();
-      setHistory(prev => [...prev, newEntry]);
+      setHistory(prev => {
+        const updated = [...prev, newEntry];
+        try { localStorage.setItem(LS_HISTORY, JSON.stringify(updated)); } catch {}
+        return updated;
+      });
     } catch (err) { console.error(err); }
     finally { setIsAppending(false); }
   };
@@ -298,6 +308,7 @@ export default function Dashboard() {
     setUploadError('');
     setUploadedMetrics(null);
     setUploadedCsiDetail(null);
+    setUploadedRiskGrades([]);
     setPreviewCustomers([]);
     setIsUploading(true);
 
@@ -316,13 +327,44 @@ export default function Dashboard() {
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'เกิดข้อผิดพลาดในการประมวลผล');
+          throw new Error(err.error || err.detail || 'เกิดข้อผิดพลาดในการประมวลผล');
         }
         const data = await res.json();
         setUploadedMetrics(data);
         setUploadedCsiDetail(data.csiDetail || null);
+        setUploadedRiskGrades(data.riskGradeDist || []);
         setPreviewCustomers(data.scoredCustomers || []);
-        await loadData(); // refresh logs
+
+        // Persist log entry to localStorage
+        if (data.logEntry) {
+          try {
+            const stored = localStorage.getItem(LS_LOGS);
+            const logs: any[] = stored ? JSON.parse(stored) : [];
+            logs.push(data.logEntry);
+            localStorage.setItem(LS_LOGS, JSON.stringify(logs));
+            setMonitorLogs([...logs].reverse());
+          } catch {}
+        }
+        // Persist PSI history entry to localStorage
+        try {
+          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const now = new Date();
+          const histEntry = {
+            month: months[now.getMonth()],
+            timestamp: now.toISOString(),
+            source: 'upload',
+            fileName: file.name,
+            rowCount: parsed.length,
+            psi: data.psi, csi: data.csi,
+            auc: data.auc, gini: data.gini, ks: data.ks, lift: data.lift,
+            status: data.status,
+          };
+          const storedH = localStorage.getItem(LS_HISTORY);
+          const histArr: any[] = storedH ? JSON.parse(storedH) : [];
+          histArr.push(histEntry);
+          localStorage.setItem(LS_HISTORY, JSON.stringify(histArr));
+          setHistory(histArr);
+        } catch {}
       } catch (err: any) {
         setUploadError(err.message || 'เกิดข้อผิดพลาด');
       } finally {
@@ -1080,6 +1122,157 @@ export default function Dashboard() {
                       </div>
                     </div>
                   )}
+
+                  {/* ── คำแนะนำการใช้แบบจำลอง ── */}
+                  {uploadedMetrics && (() => {
+                    const psi      = uploadedMetrics.psi;
+                    const gini     = uploadedMetrics.gini;
+                    const auc      = uploadedMetrics.auc;
+                    const psiWarn  = parseFloat(thresholds.psi_warning)  || 0.10;
+                    const psiCrit  = parseFloat(thresholds.psi_critical) || 0.25;
+                    const giniMin  = parseFloat(thresholds.gini_min)     || 0.10;
+                    const aucMin   = parseFloat(thresholds.auc_min)      || 0.55;
+                    const baseGini = model?.baseline?.performance?.test?.gini ?? null;
+                    const baseAuc  = model?.baseline?.performance?.test?.auc  ?? null;
+
+                    // Determine recommendation level
+                    const psiOk   = psi < psiWarn;
+                    const psiWarn_ = psi >= psiWarn && psi < psiCrit;
+                    const psiCrit_ = psi >= psiCrit;
+                    const perfOk  = (auc === null || auc >= aucMin) && (gini === null || gini >= giniMin);
+                    const perfDrop = baseGini && gini !== null && (baseGini - gini) > 0.05;
+
+                    let recLevel: 'ok' | 'cutoff' | 'monitor' | 'retrain' = 'ok';
+                    let recTitle  = '';
+                    let recDetail = '';
+                    let recColor  = '';
+
+                    if (psiCrit_ || (perfDrop && !perfOk)) {
+                      recLevel  = 'retrain';
+                      recTitle  = '🔴 แนะนำ: ทบทวน/พัฒนาแบบจำลองใหม่';
+                      recColor  = 'border-rose-500/40 bg-rose-500/5';
+                      recDetail = `PSI = ${psi.toFixed(3)} สูงเกินเกณฑ์ Critical (${psiCrit}) หรือ Gini ลดลงอย่างมีนัยสำคัญ `;
+                      recDetail += `บ่งชี้ว่า Distribution ของ Population เปลี่ยนแปลงอย่างรุนแรง หรือความสามารถจำแนกดี/ไม่ดีลดลงเกิน Threshold `;
+                      recDetail += `แนะนำ: (1) ตรวจสอบ Population Shift จาก CSI ต่อตัวแปร (2) Retrain ด้วยข้อมูลที่เป็น Out-of-Time `;
+                      recDetail += `(3) พิจารณา Champion-Challenger Testing`;
+                    } else if (psiWarn_) {
+                      recLevel  = 'cutoff';
+                      recTitle  = '🟡 แนะนำ: ปรับ Cut-off คะแนน หรือ Monitor เพิ่มเติม';
+                      recColor  = 'border-amber-500/40 bg-amber-500/5';
+                      recDetail = `PSI = ${psi.toFixed(3)} อยู่ในระดับ Warning (${psiWarn}–${psiCrit}) บ่งชี้ว่า Distribution เปลี่ยนแปลงบ้าง แต่ยังไม่รุนแรง `;
+                      recDetail += `แนะนำ: (1) ตรวจ CSI ต่อตัวแปร ว่าตัวแปรใดเปลี่ยนมากที่สุด `;
+                      recDetail += `(2) Back-test Cut-off ปัจจุบัน vs Approval Rate/Bad Rate `;
+                      recDetail += `(3) พิจารณาขยาย Cut-off 5–10 points หากต้องการลด Bad Rate `;
+                      recDetail += `(4) วาง monitoring cycle ถี่ขึ้นเป็นรายเดือน`;
+                    } else {
+                      recLevel  = 'ok';
+                      recTitle  = '🟢 แบบจำลองยังใช้งานได้ — ติดตามต่อเนื่อง';
+                      recColor  = 'border-emerald-500/40 bg-emerald-500/5';
+                      recDetail = `PSI = ${psi.toFixed(3)} อยู่ในเกณฑ์ปกติ (< ${psiWarn}) Distribution ของ Population ไม่เปลี่ยนแปลงอย่างมีนัยสำคัญ `;
+                      if (auc !== null) recDetail += `AUC = ${auc.toFixed(3)} ${auc >= aucMin ? 'ผ่านเกณฑ์ขั้นต่ำ' : 'ใกล้เกณฑ์ขั้นต่ำ — ควรติดตาม'}. `;
+                      recDetail += `แนะนำ: ติดตาม PSI/CSI ตาม monitoring cycle ปกติ (รายไตรมาส หรือรายเดือนหาก portfolio เติบโตเร็ว)`;
+                    }
+
+                    return (
+                      <div className={`border rounded-2xl p-5 ${recColor}`}>
+                        <div className="flex items-start justify-between mb-3">
+                          <h3 className="text-sm font-bold text-slate-200">{recTitle}</h3>
+                          <Badge status={uploadedMetrics.status} />
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-relaxed">{recDetail}</p>
+
+                        {/* Summary metrics strip */}
+                        <div className="mt-4 grid grid-cols-3 gap-3">
+                          {[
+                            { label: 'PSI', val: psi.toFixed(4), color: psiCrit_ ? 'text-rose-400' : psiWarn_ ? 'text-amber-400' : 'text-emerald-400', note: psiCrit_ ? 'Critical' : psiWarn_ ? 'Warning' : 'Stable' },
+                            { label: 'AUC', val: auc !== null ? auc.toFixed(4) : '—', color: auc !== null && auc >= aucMin ? 'text-emerald-400' : 'text-rose-400', note: auc !== null ? `Min ${aucMin}` : 'ไม่มี label' },
+                            { label: 'Gini', val: gini !== null ? gini.toFixed(4) : '—', color: gini !== null && gini >= giniMin ? 'text-emerald-400' : 'text-rose-400', note: gini !== null ? `Min ${giniMin}` : 'ไม่มี label' },
+                          ].map(({ label, val, color, note }) => (
+                            <div key={label} className="bg-slate-950/40 rounded-xl p-3 text-center">
+                              <p className="text-[9px] text-slate-500 uppercase mb-1">{label}</p>
+                              <p className={`text-lg font-bold font-mono ${color}`}>{val}</p>
+                              <p className="text-[9px] text-slate-600 mt-0.5">{note}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── ผลของการใช้แบบจำลอง — Risk Grade Distribution ── */}
+                  {uploadedRiskGrades.length > 0 && (() => {
+                    const total   = uploadedRiskGrades.reduce((s, g) => s + g.count, 0);
+                    const igGrades = uploadedRiskGrades.filter(g => ['AAA','AA+','AA','AA-','A+','A','A-'].includes(g.grade));
+                    const bbbGrades = uploadedRiskGrades.filter(g => ['BBB+','BBB','BBB-'].includes(g.grade));
+                    const igPct  = igGrades.reduce((s, g) => s + g.pct, 0);
+                    const bbbPct = bbbGrades.reduce((s, g) => s + g.pct, 0);
+                    const topGrade = uploadedRiskGrades.find(g => g.count > 0)?.grade ?? '—';
+                    const highestBucket = [...uploadedRiskGrades].sort((a, b) => b.count - a.count)[0];
+
+                    const gradeColor = (g: string) =>
+                      g.startsWith('AAA') || g.startsWith('AA') ? '#22d3ee'
+                      : g.startsWith('A')  ? '#6366f1'
+                      : g.startsWith('BBB+') || g === 'BBB' ? '#f59e0b'
+                      : '#f87171';
+
+                    return (
+                      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+                        <h3 className="text-sm font-bold text-slate-200 mb-1">📊 ผลของการใช้แบบจำลอง — การกระจายระดับความเสี่ยง</h3>
+                        <p className="text-[9px] text-slate-500 mb-4">
+                          คะแนน A-Score แปลงเป็น Risk Grade ตาม KS Decile bounds จาก ascore_model_report.xlsx (n = {total.toLocaleString()})
+                        </p>
+
+                        {/* Summary bullets */}
+                        <div className="mb-4 space-y-1.5 text-[11px] text-slate-300">
+                          <p>● แบบจำลองมีการกระจายตัวของระดับความเสี่ยงที่{' '}
+                            <span className={igPct > 50 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                              {igPct > 70 ? 'เหมาะสม' : igPct > 40 ? 'พอใช้ได้' : 'ต้องตรวจสอบ'}
+                            </span>{' '}
+                            — ลูกค้าในระดับ AAA–A รวม{' '}
+                            <span className="text-cyan-400 font-bold">{igPct.toFixed(1)}%</span>
+                          </p>
+                          <p>● กลุ่มที่มีลูกค้ามากที่สุดคือระดับ{' '}
+                            <span className="text-indigo-400 font-bold">{highestBucket?.grade}</span>{' '}
+                            ({highestBucket?.count.toLocaleString()} ราย · {highestBucket?.pct}%)
+                          </p>
+                          <p>● ลูกค้าระดับ BBB+–BBB- รวม{' '}
+                            <span className="text-amber-400 font-bold">{bbbPct.toFixed(1)}%</span>{' '}
+                            — ระดับความเสี่ยงค่อนข้างสูง ควรติดตาม NPL Rate อย่างใกล้ชิด
+                          </p>
+                        </div>
+
+                        {/* Grade bar chart */}
+                        <div className="space-y-1.5">
+                          {uploadedRiskGrades.filter(g => g.count > 0).map(g => {
+                            const barW = Math.max(g.pct * 2, 2);
+                            return (
+                              <div key={g.grade} className="flex items-center gap-3">
+                                <span className="text-[10px] font-mono text-slate-400 w-10 text-right">{g.grade}</span>
+                                <div className="flex-1 h-4 bg-slate-800 rounded overflow-hidden">
+                                  <div
+                                    className="h-full rounded transition-all duration-500"
+                                    style={{ width: `${barW}%`, backgroundColor: gradeColor(g.grade) }}
+                                  />
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-400 w-16 text-right">
+                                  {g.count.toLocaleString()} ({g.pct}%)
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Grade legend */}
+                        <div className="mt-4 pt-3 border-t border-slate-800/60 grid grid-cols-2 gap-1 text-[9px] text-slate-600">
+                          <span style={{ color: '#22d3ee' }}>■ AAA–AA-  : ความเสี่ยงต่ำมาก</span>
+                          <span style={{ color: '#6366f1' }}>■ A+–A-   : ความเสี่ยงต่ำ</span>
+                          <span style={{ color: '#f59e0b' }}>■ BBB+–BBB : ความเสี่ยงปานกลาง</span>
+                          <span style={{ color: '#f87171' }}>■ BBB-    : ความเสี่ยงสูง</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                 </div>
               )}
 

@@ -245,16 +245,24 @@ export interface MonitoringRun {
   notes?: string;
 }
 
-/** Future Sandbox experiment — structure only, no UI yet. */
+/** Sandbox anomaly types (see lib/injection.ts). Legacy 'outlier_injection' is accepted by the API as an alias of 'extreme_outlier'. */
 export type AnomalyType =
-  | 'none'               // control run, used for false-positive rate
-  | 'mean_shift'
-  | 'variance_change'
+  | 'none'                       // C: control run, used for false-alarm rate
+  // A: data errors
+  | 'unit_error'
+  | 'extreme_outlier'
+  | 'negative_value'
+  | 'type_error'
   | 'missing_injection'
-  | 'outlier_injection'
-  | 'category_shift'
+  | 'swapped_columns'
+  | 'duplicate_rows'
+  | 'multivariate_inconsistent'
   | 'schema_break'
-  | 'custom';
+  // B: real drift
+  | 'mean_shift'
+  | 'variance_change';
+
+export type ExpectedLayer = 'validation' | 'anomaly' | 'drift' | 'none';
 
 export type AnomalySeverity = 'none' | 'low' | 'medium' | 'high';
 
@@ -273,7 +281,7 @@ export interface ExperimentRun {
     seed?: number;
   };
   thresholdsSnapshot: MonitoringThresholds;
-  expected: { shouldDetect: boolean; layer: 'validation' | 'drift' | 'none' };
+  expected: { shouldDetect: boolean; layer: ExpectedLayer };
   validation: Pick<ValidationResult, 'ok' | 'validRows' | 'rejectedRows' | 'rejectedPct'> | null;
   drift: Pick<DriftResult, 'overallStatus' | 'triggered'> & { psi: number; csi: Record<string, number> } | null;
   detected: boolean;

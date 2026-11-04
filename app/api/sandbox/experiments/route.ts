@@ -11,10 +11,17 @@
 import { NextResponse } from 'next/server';
 import { getActiveModelId, getEffectiveModel, listRuns, saveRun, storageInfo } from '@/lib/storage/repositories';
 import type { AnomalySeverity, AnomalyType, ExperimentRun } from '@/lib/types';
+import { expectedFor } from '@/lib/injection';
 
 export const dynamic = 'force-dynamic';
 
-const ANOMALY_TYPES: AnomalyType[] = ['none', 'mean_shift', 'variance_change', 'missing_injection', 'outlier_injection', 'category_shift', 'schema_break', 'custom'];
+const ANOMALY_TYPES: AnomalyType[] = [
+  'none', 'unit_error', 'extreme_outlier', 'negative_value', 'type_error', 'missing_injection',
+  'swapped_columns', 'duplicate_rows', 'multivariate_inconsistent', 'schema_break', 'mean_shift', 'variance_change',
+];
+/** Backward compatibility for older clients. */
+const TYPE_ALIASES: Record<string, AnomalyType> = { outlier_injection: 'extreme_outlier' };
+const LAYERS = ['validation', 'anomaly', 'drift', 'none'];
 const SEVERITIES: AnomalySeverity[] = ['none', 'low', 'medium', 'high'];
 
 function outcomeOf(shouldDetect: boolean, detected: boolean): ExperimentRun['outcome'] {
@@ -32,6 +39,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const b = await request.json();
+    if (b.anomaly && typeof b.anomaly.type === 'string' && TYPE_ALIASES[b.anomaly.type]) b.anomaly.type = TYPE_ALIASES[b.anomaly.type];
     const errors: string[] = [];
     if (!b.experimentId) errors.push('experimentId จำเป็น');
     if (!ANOMALY_TYPES.includes(b.anomaly?.type)) errors.push(`anomaly.type ต้องเป็นหนึ่งใน ${ANOMALY_TYPES.join(', ')}`);
@@ -56,7 +64,10 @@ export async function POST(request: Request) {
         seed: b.anomaly.seed,
       },
       thresholdsSnapshot: b.thresholdsSnapshot ?? model.thresholds,
-      expected: { shouldDetect, layer: b.expected?.layer ?? (shouldDetect ? 'drift' : 'none') },
+      expected: {
+        shouldDetect,
+        layer: LAYERS.includes(b.expected?.layer) ? b.expected.layer : expectedFor(b.anomaly.type, b.anomaly.severity).layer,
+      },
       validation: b.validation ?? null,
       drift: b.drift ?? null,
       detected: b.detected,

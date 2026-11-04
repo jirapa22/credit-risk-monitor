@@ -40,6 +40,13 @@ export function getReferenceMeta(referenceId: string): ReferenceDatasetMeta | nu
   return REGISTRY[referenceId]?.meta ?? null;
 }
 
+/** Raw frozen rows (read-only copy) — used by the Sandbox to bootstrap test files. */
+export function getReferenceRows(referenceId: string): { columns: string[]; rows: Record<string, string | number>[] } {
+  const file = REGISTRY[referenceId];
+  if (!file) throw new Error(`Unknown reference dataset "${referenceId}"`);
+  return { columns: [...file.meta.columns], rows: file.rows.map(r => ({ ...r })) };
+}
+
 /**
  * Profile is cached per (referenceId, scoring fingerprint) — if the scorecard
  * changes, scores are recomputed, but the underlying rows never change.

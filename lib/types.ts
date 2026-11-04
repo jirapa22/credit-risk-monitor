@@ -39,7 +39,11 @@ export interface FeatureDefinition {
   binning?: { method?: string; numBins?: number; boundaries: number[]; binLabels?: string[] };
   baselineDistribution?: Record<string, number | null>;
   csiThreshold?: number | null;
+  /** Transform applied before univariate outlier stats (IQR/MAD). Default 'none'. */
+  anomalyTransform?: AnomalyTransform;
 }
+
+export type AnomalyTransform = 'none' | 'log1p';
 
 export interface ScorecardFeature {
   bins: number[];         // upper-inclusive boundaries: value <= bins[i] → bin i
@@ -165,6 +169,19 @@ export interface DriftResult {
   csi: Record<string, StabilityResult & { displayName: string; source?: string }>;
   overallStatus: DriftStatus;
   triggered: string[];                        // e.g. ["psi", "csi:dti_ratio"]
+}
+
+// ─── Anomaly detection (layers 3–4) ─────────────────────────────────────────
+/** A warning-only flag: rows are never removed automatically; the user decides. */
+export type AnomalyMethod = 'iqr' | 'mad' | 'cross_field';
+
+export interface AnomalyFlag {
+  row: number;            // CleanRow.row (1-based data row)
+  method: AnomalyMethod;
+  feature: string;        // feature key, or rule id for cross_field (e.g. "loan_amount/monthly_income")
+  value: number;          // observed value (ratio for cross_field)
+  score: number;          // iqr: distance beyond fence in IQR units; mad: robust z; cross_field: value / threshold
+  reason: string;         // human-readable (Thai)
 }
 
 // ─── Persisted runs ──────────────────────────────────────────────────────────

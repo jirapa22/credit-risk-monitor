@@ -75,6 +75,7 @@
           "dataType": "numeric",
           "required": true,
           "monitoringEnabled": true,
+          "anomalyTransform": "log1p",
           "displayOrder": 1,
           "validation": {
             "minValue": 1000,
@@ -111,6 +112,7 @@
           "dataType": "numeric",
           "required": true,
           "monitoringEnabled": true,
+          "anomalyTransform": "log1p",
           "displayOrder": 2,
           "validation": {
             "minValue": 5000,
@@ -147,6 +149,7 @@
           "dataType": "numeric",
           "required": true,
           "monitoringEnabled": true,
+          "anomalyTransform": "none",
           "displayOrder": 3,
           "validation": {
             "minValue": 0.0,

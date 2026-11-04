@@ -1,7 +1,9 @@
 /**
  * POST /api/monitor-upload
  *
- * Body: { csvText: string, fileName: string }        (preferred — server parses)
+ * Body: { csvText: string, fileName: string,
+ *         excludeRows?: number[],        // 1-based data rows to drop from the official drift (audit-logged)
+ *         anomalyScreening?: boolean }   // default true
  *    or { customers: Record<string,string>[], fileName } (legacy)
  *
  * Pipeline (lib/monitoring.ts):
@@ -26,9 +28,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'ต้องส่ง csvText (ข้อความ CSV) หรือ customers (array)' }, { status: 400 });
     }
 
+    const excludeRows = Array.isArray(body.excludeRows)
+      ? body.excludeRows.map(Number).filter((n: number) => Number.isInteger(n) && n > 0)
+      : undefined;
     const model = await getEffectiveModel();
     const { run, scored, riskGradeDist, skipped } = runMonitoring({
       model, fileName, csvText: body.csvText, rows: body.customers,
+      excludeRows, anomalyScreening: body.anomalyScreening !== false,
     });
 
     let storageError: string | undefined;
@@ -41,6 +47,9 @@ export async function POST(request: Request) {
       storage: { ...storageInfo(), error: storageError },
       uploadSummary: run.uploadSummary,
       logEntry: toLegacyLog(run),
+      anomaly: run.anomaly ?? null,
+      driftExcludingFlagged: run.driftExcludingFlagged ?? null,
+      excludedRows: run.excludedRows ?? [],
     };
 
     if (!run.drift) {

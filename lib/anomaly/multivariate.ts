@@ -74,14 +74,14 @@ export function preprocess(reference: ReferenceProfile, registry: Record<string,
   };
 }
 
-function referenceMatrix(reference: ReferenceProfile, pp: Preprocessor): number[][] {
+function referenceMatrix(reference: ReferenceProfile, pp: Preprocessor): { X: number[][]; refIndex: number[] } {
   const n = reference.features[pp.features[0]]?.length ?? 0;
-  const X: number[][] = [];
+  const X: number[][] = [], refIndex: number[] = [];
   for (let i = 0; i < n; i++) {
     const v = pp.transform(Object.fromEntries(pp.features.map(f => [f, reference.features[f][i]])));
-    if (v) X.push(v);
+    if (v) { X.push(v); refIndex.push(i); }
   }
-  return X;
+  return { X, refIndex };
 }
 
 // ─── Isolation Forest ───────────────────────────────────────────────────────
@@ -203,9 +203,11 @@ export interface MultivariateOptions {
 export interface MultivariateFit {
   pp: Preprocessor;
   X: number[][];
+  /** X[j] came from reference row refIndex[j] (0-based). */
+  refIndex: number[];
   forest: IsolationForestModel;
   lof: LofModel;
-  referenceScores: { isolation_forest: number[]; lof: number[] };   // leave-one-out
+  referenceScores: { isolation_forest: number[]; lof: number[] };   // leave-one-out, aligned with X (NaN if no OOB tree)
   thresholds: { isolation_forest: number; lof: number };
   fitMs: number;
 }
@@ -222,13 +224,13 @@ export function fitMultivariate(reference: ReferenceProfile, registry: Record<st
 
   const t0 = performance.now();
   const pp = preprocess(reference, registry);
-  const X = referenceMatrix(reference, pp);
+  const { X, refIndex } = referenceMatrix(reference, pp);
   const forest = fitIsolationForest(X, nTrees, sampleSize, seed);
   const lof = fitLof(X, k);
-  const ifLoo = X.map((x, i) => isolationScore(forest, x, i)).filter(Number.isFinite);
-  const pct = (a: number[]) => quantile([...a].sort((p, q) => p - q), 1 - contamination);
+  const ifLoo = X.map((x, i) => isolationScore(forest, x, i));
+  const pct = (a: number[]) => quantile(a.filter(Number.isFinite).sort((p, q) => p - q), 1 - contamination);
   const fit: MultivariateFit = {
-    pp, X, forest, lof,
+    pp, X, refIndex, forest, lof,
     referenceScores: { isolation_forest: ifLoo, lof: lof.looScores },
     thresholds: { isolation_forest: pct(ifLoo), lof: pct(lof.looScores) },
     fitMs: performance.now() - t0,

@@ -27,5 +27,10 @@ export function toLegacyLog(run: MonitoringRun) {
       : null,
     uploadSummary: run.uploadSummary,
     verdict: run.drift ? run.drift.overallStatus : 'INVALID_DATA',
+    // ── Anomaly screening (new; absent/null for older runs) ──
+    flaggedRows: run.anomaly?.flaggedRowCount ?? null,
+    flaggedPct: run.anomaly?.flaggedPct ?? null,
+    excludedCount: run.excludedRows?.length ?? 0,
+    verdictExcludingFlagged: run.driftExcludingFlagged?.overallStatus ?? null,
   };
 }

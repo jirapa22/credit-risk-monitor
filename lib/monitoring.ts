@@ -1,9 +1,9 @@
 /**
  * Monitoring pipeline (server side):
  *
- *   CSV text ──► parseCsv ──► [1] Data Validation ──► [2] Scoring ──► [3] Drift Detection ──► MonitoringRun
- *                                   │ blocked                                                  │
- *                                   └──────────────► MonitoringRun (drift = null) ◄────────────┘
+ *   CSV ─► parseCsv ─► [1] Validation ─► [2] Anomaly Screening ─► [3] Scoring ─► [4] Drift ─► MonitoringRun
+ *                          │ blocked        (warning-only flags)                   ├─ drift                 (official; minus user excludeRows)
+ *                          └─► run (drift = null, anomaly = null)                  └─ driftExcludingFlagged (what-if; minus all flagged rows)
  *
  * Each stage is a pure function in lib/; this module only wires them together
  * so the same pipeline can be reused by the future Sandbox (with injected anomalies).
@@ -13,14 +13,21 @@ import { parseCsv } from './csv';
 import { validateDataset, isValidDate, type CleanRow } from './validation';
 import { calculateAScore, scoreToPD } from './scoring';
 import { getReferenceProfile } from './reference';
-import { runDriftDetection } from './drift';
+import { runDriftDetection, resolveCsiFeatures } from './drift';
 import { getBinIndex } from './stats';
+import { runAnomalyScreening, truncateAnomalyResult, resolveAnomalyConfig, referenceFlaggedIndices, referenceWithout } from './anomaly';
 
 export interface MonitoringInput {
   model: any;                       // effective model (bundled + overrides)
   fileName: string;
   csvText?: string;
   rows?: Record<string, unknown>[]; // alternative to csvText (legacy clients)
+  /** Rows (1-based, = CleanRow.row) the user chose to drop from the official drift. */
+  excludeRows?: number[];
+  /** Run layers 3–4 (default true). */
+  anomalyScreening?: boolean;
+  /** Max flaggedRows kept in the stored run (default anomalyConfig.maxStoredRows ?? 500). */
+  maxStoredFlaggedRows?: number;
 }
 
 const UNKNOWN_PERIOD = 'ไม่ระบุวันที่';
@@ -67,7 +74,7 @@ function riskGradeDistribution(scores: number[]) {
 }
 
 export function runMonitoring(input: MonitoringInput) {
-  const { model, fileName } = input;
+  const { model, fileName, anomalyScreening = true } = input;
   const scoring = model.scoring as ScoringConfig;
   const registry = (model.featureRegistry ?? {}) as Record<string, FeatureDefinition>;
   const thresholds = model.thresholds as MonitoringThresholds;
@@ -100,23 +107,81 @@ export function runMonitoring(input: MonitoringInput) {
     thresholdsSnapshot: thresholds,
     validation,
     drift: null,
+    anomaly: null,
+    driftExcludingFlagged: null,
+    excludedRows: [],
     uploadSummary,
   };
   if (!validation.ok) return { run, scored: [] as ReturnType<typeof scoreRows>, riskGradeDist: [], skipped: {} };
 
-  // ── [2] Scoring ──
-  const scored = scoreRows(clean, scoring);
-
-  // ── [3] Drift ──
   const reference = getReferenceProfile(referenceId, scoring);
-  const actualFeatures: Record<string, number[]> = {};
-  for (const r of clean) for (const [k, v] of Object.entries(r.values)) (actualFeatures[k] ??= []).push(v);
-  const { skipped, ...drift } = runDriftDetection(reference, scored.map(s => s.aScore), actualFeatures, registry, thresholds);
-  run.drift = drift;
+
+  // ── [2] Anomaly screening (warning-only, on CleanRow) ──
+  let flagged = new Set<number>();
+  if (anomalyScreening) {
+    const full = runAnomalyScreening(reference, clean, model);
+    flagged = new Set(full.flaggedRows.map(f => f.row));
+    run.anomaly = full;
+  }
+
+  // ── User exclusions (audit trail) ──
+  const cleanRowNos = new Set(clean.map(r => r.row));
+  const excludeSet = new Set((input.excludeRows ?? []).filter(n => cleanRowNos.has(n)));
+  run.excludedRows = [...excludeSet].sort((a, b) => a - b);
+  const official = excludeSet.size ? clean.filter(r => !excludeSet.has(r.row)) : clean;
+
+  // ── [3] Scoring ──
+  const scored = scoreRows(official, scoring);
+
+  // ── [4] Drift (official) ──
+  const minRows = ValidationDefaults.minRowsForDrift;
+  let skipped: Record<string, string> = {};
+  if (official.length > 0) {
+    const r = driftFor(reference, official, scored.map(s => s.aScore), registry, thresholds);
+    skipped = r.skipped; run.drift = r.drift;
+  }
+
+  // ── [4b] What-if drift without flagged rows ──
+  if (run.anomaly && flagged.size > 0) {
+    const kept = official.filter(r => !flagged.has(r.row));
+    if (kept.length === 0) {
+      run.anomaly.warnings.push('ทุกแถวโดนธง — คำนวณ drift แบบตัดแถวที่โดนธงไม่ได้');
+    } else {
+      if (kept.length < minRows) run.anomaly.warnings.push(`หลังตัดแถวที่โดนธงเหลือ ${kept.length} แถว (< ${minRows}) — ค่า PSI/CSI แบบตัดแถวอาจแกว่งสูง`);
+      const keptScores = kept.map(r => calculateAScore(scoring, r.values));
+      // Symmetric: drop reference rows flagged by the same rules, keep the ORIGINAL bins.
+      const refKept = referenceWithout(reference, referenceFlaggedIndices(reference, model));
+      const frozen = freezeCsiBins(registry, thresholds, reference);
+      run.driftExcludingFlagged = driftFor(refKept, kept, keptScores, registry, frozen).drift;
+    }
+  }
+
+  if (run.anomaly) run.anomaly = truncateAnomalyResult(run.anomaly, input.maxStoredFlaggedRows ?? resolveAnomalyConfig(model, reference).maxStoredRows);
 
   return { run, scored, riskGradeDist: riskGradeDistribution(scored.map(s => s.aScore)), skipped };
 }
 
+const ValidationDefaults = { minRowsForDrift: 100 };   // keep in sync with validateDataset default
+
+/** Pin every CSI feature's bins/labels/threshold to what the FULL reference resolves to (no re-binning on a reduced reference). */
+function freezeCsiBins(registry: Record<string, FeatureDefinition>, thresholds: MonitoringThresholds, fullRef: ReturnType<typeof getReferenceProfile>): MonitoringThresholds {
+  const csi_features: MonitoringThresholds['csi_features'] = {};
+  for (const f of resolveCsiFeatures(registry, thresholds, fullRef)) {
+    if (f.skipped) continue;
+    csi_features[f.key] = { label: f.displayName, source: f.source, threshold: f.threshold, bins: f.bins, bin_labels: f.labels };
+  }
+  return { ...thresholds, csi_features };
+}
+
+function driftFor(
+  reference: ReturnType<typeof getReferenceProfile>, rows: CleanRow[], scores: number[],
+  registry: Record<string, FeatureDefinition>, thresholds: MonitoringThresholds,
+) {
+  const actualFeatures: Record<string, number[]> = {};
+  for (const r of rows) for (const [k, v] of Object.entries(r.values)) (actualFeatures[k] ??= []).push(v);
+  const { skipped, ...drift } = runDriftDetection(reference, scores, actualFeatures, registry, thresholds);
+  return { drift, skipped };
+}
 function scoreRows(clean: CleanRow[], scoring: ScoringConfig) {
   return clean.map(r => {
     const aScore = calculateAScore(scoring, r.values);

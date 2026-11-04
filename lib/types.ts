@@ -182,6 +182,45 @@ export interface AnomalyFlag {
   value: number;          // observed value (ratio for cross_field)
   score: number;          // iqr: distance beyond fence in IQR units; mad: robust z; cross_field: value / threshold
   reason: string;         // human-readable (Thai)
+  extreme?: boolean;      // score was ±Infinity/NaN (e.g. negative value on a log feature)
+}
+
+/** JSON-safe flag as stored in runs: non-finite scores become null + extreme: true. */
+export type StoredAnomalyFlag = Omit<AnomalyFlag, 'score'> & { score: number | null };
+
+export interface AnomalyFlaggedRow {
+  row: number;
+  id: string;
+  methods: AnomalyMethod[];
+  reasons: string[];
+  flags: StoredAnomalyFlag[];
+}
+
+export interface AnomalyConfigSnapshot {
+  iqrK: number;
+  madThreshold: number;
+  contamination: number;
+  seed: number;
+  k: number;
+  nTrees: number;
+  sampleSize: number;
+  transforms: Record<string, AnomalyTransform>;
+  crossFieldRules: { id?: string; numerator: string; denominator: string; op: '>' | '<'; threshold: number; label?: string }[];
+}
+
+export interface AnomalyResult {
+  flaggedRows: AnomalyFlaggedRow[];        // one entry per row, sorted by #methods desc; may be truncated
+  truncated: boolean;
+  byMethod: Partial<Record<AnomalyMethod, number>>;   // unique rows per method (always full count)
+  totalRows: number;
+  flaggedRowCount: number;                 // always full count
+  flaggedPct: number;
+  /** Reference rows flagged by the same rules — removed from the reference side of driftExcludingFlagged. */
+  referenceFlaggedCount: number;
+  thresholds: { isolation_forest: number; lof: number } | null;
+  warnings: string[];
+  timing: { univariateMs: number; multivariateFitMs: number; multivariateScoreMs: number; fitCached: boolean; totalMs: number };
+  configSnapshot: AnomalyConfigSnapshot;
 }
 
 // ─── Persisted runs ──────────────────────────────────────────────────────────
@@ -196,6 +235,12 @@ export interface MonitoringRun {
   thresholdsSnapshot: MonitoringThresholds;
   validation: ValidationResult;
   drift: DriftResult | null;                  // null when validation blocked the run
+  /** Layer 3–4 screening (warning-only). null when validation blocked or screening disabled. Absent in older runs. */
+  anomaly?: AnomalyResult | null;
+  /** What-if: drift with every flagged row removed. null when nothing was flagged. */
+  driftExcludingFlagged?: DriftResult | null;
+  /** Audit trail: rows the user chose to exclude from the official drift. */
+  excludedRows?: number[];
   uploadSummary?: unknown;
   notes?: string;
 }

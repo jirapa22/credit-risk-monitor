@@ -6,7 +6,7 @@
  */
 import { NextResponse } from 'next/server';
 import { generateMockDataset } from '../../utils/dataGenerator';
-import { calculatePSI, calculateCSIWithBins, calculateAUC, calculateGini, calculateKS, calculateLift } from '../../utils/stats';
+import { calculatePSI, calculateCSIWithBins, calculateAUC, calculateGini, calculateKS, calculateLift, assessMetricReliability } from '../../utils/stats';
 import modelConfigJson from '../../model-config.json';
 
 export const dynamic = 'force-dynamic';
@@ -44,13 +44,17 @@ function calculateAllMetrics(driftLevel: number) {
   }
 
   const dataPoints = production.map(d => ({ score: d.aScore, label: d.defaultLabel }));
-  const auc  = calculateAUC(dataPoints);
-  const gini = calculateGini(dataPoints);
+  // A-Score: higher score = lower risk
+  const auc  = calculateAUC(dataPoints, 'higher_is_better');
+  const gini = calculateGini(dataPoints, 'higher_is_better');
   const ks   = calculateKS(dataPoints);
-  const lift = calculateLift(dataPoints, 0.1);
+  const lift = calculateLift(dataPoints, 0.1, 'higher_is_better');
+  // NOTE: labels here are drawn from the model's own PD → metrics describe the
+  // simulator, not real model performance.
+  const reliability = assessMetricReliability(dataPoints, auc, ks);
 
   return {
-    psi, csi, auc, gini, ks, lift,
+    psi, csi, auc, gini, ks, lift, reliability,
     status: getStatus(psi, model.thresholds?.psi_warning, model.thresholds?.psi_critical),
     drift: driftLevel,
   };

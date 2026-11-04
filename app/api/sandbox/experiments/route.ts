@@ -1,0 +1,71 @@
+/**
+ * Sandbox experiment API — STRUCTURE ONLY (no UI yet).
+ *
+ * GET  /api/sandbox/experiments?experimentId=...  → stored ExperimentRun records
+ * POST /api/sandbox/experiments                   → store one ExperimentRun
+ *
+ * Kept separate from Monitoring: different storage key (runs:sandbox:<modelId>),
+ * so experiment trials never appear in the production monitoring log.
+ * Next phase: anomaly generator + detection-rate / false-positive-rate summary.
+ */
+import { NextResponse } from 'next/server';
+import { getActiveModelId, getEffectiveModel, listRuns, saveRun, storageInfo } from '@/lib/storage/repositories';
+import type { AnomalySeverity, AnomalyType, ExperimentRun } from '@/lib/types';
+
+export const dynamic = 'force-dynamic';
+
+const ANOMALY_TYPES: AnomalyType[] = ['none', 'mean_shift', 'variance_change', 'missing_injection', 'outlier_injection', 'category_shift', 'schema_break', 'custom'];
+const SEVERITIES: AnomalySeverity[] = ['none', 'low', 'medium', 'high'];
+
+function outcomeOf(shouldDetect: boolean, detected: boolean): ExperimentRun['outcome'] {
+  return shouldDetect ? (detected ? 'TP' : 'FN') : (detected ? 'FP' : 'TN');
+}
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const modelId = searchParams.get('modelId') || getActiveModelId();
+  const experimentId = searchParams.get('experimentId');
+  const runs = await listRuns<ExperimentRun>('sandbox', modelId, { configVersion: searchParams.get('configVersion') || undefined });
+  return NextResponse.json({ storage: storageInfo(), runs: experimentId ? runs.filter(r => r.experimentId === experimentId) : runs });
+}
+
+export async function POST(request: Request) {
+  try {
+    const b = await request.json();
+    const errors: string[] = [];
+    if (!b.experimentId) errors.push('experimentId จำเป็น');
+    if (!ANOMALY_TYPES.includes(b.anomaly?.type)) errors.push(`anomaly.type ต้องเป็นหนึ่งใน ${ANOMALY_TYPES.join(', ')}`);
+    if (!SEVERITIES.includes(b.anomaly?.severity)) errors.push(`anomaly.severity ต้องเป็นหนึ่งใน ${SEVERITIES.join(', ')}`);
+    if (typeof b.detected !== 'boolean') errors.push('detected ต้องเป็น boolean');
+    if (errors.length) return NextResponse.json({ error: 'ข้อมูลไม่ครบ', errors }, { status: 400 });
+
+    const model = await getEffectiveModel(b.modelId || getActiveModelId());
+    const shouldDetect = b.expected?.shouldDetect ?? b.anomaly.type !== 'none';
+    const run: ExperimentRun = {
+      runId: `exp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      kind: 'sandbox',
+      createdAt: new Date().toISOString(),
+      experimentId: String(b.experimentId),
+      model: { modelId: model.id, configVersion: model.configVersion },
+      referenceId: b.referenceId || model.referenceDatasetId,
+      anomaly: {
+        type: b.anomaly.type,
+        severity: b.anomaly.severity,
+        targetFeatures: Array.isArray(b.anomaly.targetFeatures) ? b.anomaly.targetFeatures : [],
+        params: b.anomaly.params ?? {},
+        seed: b.anomaly.seed,
+      },
+      thresholdsSnapshot: b.thresholdsSnapshot ?? model.thresholds,
+      expected: { shouldDetect, layer: b.expected?.layer ?? (shouldDetect ? 'drift' : 'none') },
+      validation: b.validation ?? null,
+      drift: b.drift ?? null,
+      detected: b.detected,
+      outcome: outcomeOf(shouldDetect, b.detected),
+      notes: b.notes,
+    };
+    await saveRun(run);
+    return NextResponse.json({ success: true, run });
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 500 });
+  }
+}

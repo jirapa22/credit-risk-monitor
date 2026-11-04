@@ -110,8 +110,6 @@ export function calculateAScore(customer: Record<string, number>): number {
  * Higher score → better odds → lower PD.
  */
 export function scoreToPD(score: number): number {
-  const oddsGoodToBad = BASE_ODDS * Math.pow(2, (score - BASE_SCORE) / (BASE_SCORE - SCORE_OFFSET) * SCORE_FACTOR / SCORE_FACTOR);
-  // Simplified: use factor & offset directly
   // ln(odds) = (Score − Offset) / Factor  ← standard formula
   const logOddsGood = (score - SCORE_OFFSET) / SCORE_FACTOR;
   const odds = Math.exp(logOddsGood);

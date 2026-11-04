@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -24,8 +24,10 @@ interface ModelEntry {
     lockedAt: string;
     sample_size: number;
     bad_rate: number;
-    performance: { train?: { auc: number; gini: number; ks: number }; test?: { auc: number; gini: number; ks: number } };
+    performance: { train?: { auc: number; gini: number; ks: number; period?: string }; test?: { auc: number; gini: number; ks: number; period?: string } };
     feature_stats: Record<string, { mean: number; std: number; min: number; p25: number; p50: number; p75: number; max: number }>;
+    score_distribution?: { mean: number; min: number; max: number; decile_bounds: number[] };
+    ksDecileTable?: { decile: string; n: number; bad: number; good: number; minScore: number; maxScore: number; badRate: number; cumBad: number; cumGood: number; ks: number }[];
   };
   thresholds: {
     psi_warning: number;
@@ -37,47 +39,48 @@ interface ModelEntry {
   };
 }
 
-interface HistoryEntry {
-  month: string;
-  timestamp: string;
-  source: string;
-  psi: number;
-  csi: Record<string, number>;
-  auc: number | null;
-  gini: number | null;
-  ks: number | null;
-  lift: number | null;
-  status: string;
-  fileName?: string;
-  rowCount?: number;
+interface UploadSummary {
+  totalRows: number;
+  periods: { period: string; count: number; pct: number }[];
+  missingData: { column: string; label: string; missingCount: number; missingPct: number }[];
 }
 
 interface MonitorLog {
   logId: string;
   modelId: string;
   modelName: string;
+  configVersion?: string;
+  referenceId?: string;
   uploadedAt: string;
   fileName: string;
   rowCount: number;
-  results: { psi: number; csi: Record<string, number>; auc: number | null; gini: number | null; ks: number | null; lift: number | null; status: string };
+  processedRows?: number;
+  skippedRows?: number;
+  validationOk?: boolean;
+  results: { psi: number; csi: Record<string, number>; status: string } | null;
+  uploadSummary?: UploadSummary;
   verdict: string;
 }
+
+interface ValidationIssueGroup { type: string; severity: 'error' | 'warning'; column?: string; count: number; sampleRows: number[]; message: string }
+interface ValidationIssue { type: string; severity: 'error' | 'warning'; column?: string; row?: number; value?: string; message: string }
+interface ValidationResult {
+  ok: boolean; totalRows: number; validRows: number; rejectedRows: number; rejectedPct: number;
+  blockingErrors: ValidationIssue[]; warnings: ValidationIssue[]; groups: ValidationIssueGroup[]; issues: ValidationIssue[];
+}
+interface ReferenceMeta { referenceId: string; version: string; rowCount: number; badRate: number; periodStart: string; periodEnd: string; sha256: string; source: string }
+interface StorageInfo { kind: 'upstash' | 'file' | 'memory'; persistent: boolean; error?: string }
+
+const ISSUE_LABEL: Record<string, string> = {
+  EMPTY_FILE: 'ไฟล์/ข้อมูลไม่พอ', MISSING_COLUMN: 'ไม่พบคอลัมน์', DUPLICATE_COLUMN: 'คอลัมน์ซ้ำ', MISSING_VALUE: 'ค่าว่าง',
+  INVALID_TYPE: 'ชนิดข้อมูลผิด', OUT_OF_RANGE: 'ค่านอกช่วง', INVALID_DATE: 'วันที่ผิดรูปแบบ', INVALID_BINARY: 'ต้องเป็น 0/1',
+  DUPLICATE_ID: 'รหัสลูกค้าซ้ำ', MALFORMED_ROW: 'แถวผิดรูปแบบ',
+};
 
 type ActiveTab = 'sandbox' | 'monitor';
 type CsiFeatureItem = { key: string; label: string; source: string; threshold: string; bins: string[] };
 
-// ─── CSV Parser ──────────────────────────────────────────────────────────────
-function parseCSV(text: string): Record<string, string>[] {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
-  return lines.slice(1).map(line => {
-    const vals = line.split(',').map(v => v.trim().replace(/^["']|["']$/g, ''));
-    const row: Record<string, string> = {};
-    headers.forEach((h, i) => { row[h] = vals[i] ?? ''; });
-    return row;
-  }).filter(r => Object.values(r).some(v => v));
-}
+// CSV is parsed and validated on the server (lib/csv.ts + lib/validation.ts).
 
 // ─── Helper Components ───────────────────────────────────────────────────────
 function Badge({ status }: { status: string }) {
@@ -87,8 +90,9 @@ function Badge({ status }: { status: string }) {
     CRITICAL: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
     PASS: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
     FAIL: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
+    INVALID_DATA: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30',
   };
-  const icons: Record<string, string> = { STABLE: '✅', WARNING: '⚠️', CRITICAL: '🚨', PASS: '✅', FAIL: '❌' };
+  const icons: Record<string, string> = { STABLE: '✅', WARNING: '⚠️', CRITICAL: '🚨', PASS: '✅', FAIL: '❌', INVALID_DATA: '🧾' };
   return (
     <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${map[status] || 'bg-slate-700/30 text-slate-400 border-slate-600'}`}>
       {icons[status] || ''} {status}
@@ -111,14 +115,10 @@ function MetricCard({ label, value, suffix = '', color = 'text-slate-200', small
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('sandbox');
   const [config, setConfig] = useState<ModelConfig | null>(null);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [monitorLogs, setMonitorLogs] = useState<MonitorLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Sandbox state
-  const [driftLevel, setDriftLevel] = useState(0.05);
-  const [liveMetrics, setLiveMetrics] = useState<any>(null);
-  const [isSimulating, setIsSimulating] = useState(false);
   const [thresholds, setThresholds] = useState({
     psi_warning: '0.10', psi_critical: '0.25',
     gini_min: '0.10', auc_min: '0.55', ks_min: '0.10',
@@ -129,9 +129,7 @@ export default function Dashboard() {
     { key: 'dti_ratio',      label: 'DTI Ratio',      source: 'WOE-transformed — อัตราส่วนหนี้ต่อรายได้ (existing_monthly_debt / monthly_income)', threshold: '0.10', bins: ['0.264', '0.36', '0.47', '0.606'] },
   ];
   const [csiFeatures, setCsiFeatures] = useState<CsiFeatureItem[]>(defaultCsiFeatures);
-  const csiFeatureMap = Object.fromEntries(csiFeatures.map(f => [f.key, f]));
   const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const [isAppending, setIsAppending] = useState(false);
 
   // Monitor state
   const [fileName, setFileName] = useState('');
@@ -140,33 +138,36 @@ export default function Dashboard() {
   const [uploadedCsiDetail, setUploadedCsiDetail] = useState<Record<string, any> | null>(null);
   const [uploadedRiskGrades, setUploadedRiskGrades] = useState<any[]>([]);
   const [previewCustomers, setPreviewCustomers] = useState<any[]>([]);
+  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [selectedLog, setSelectedLog] = useState<MonitorLog | null>(null);
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [reference, setReference] = useState<ReferenceMeta | null>(null);
+  const [storage, setStorage] = useState<StorageInfo | null>(null);
+  const [onlyCurrentVersion, setOnlyCurrentVersion] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── localStorage keys ──
-  const LS_HISTORY = 'ascore_psi_history';
-  const LS_LOGS    = 'ascore_monitor_logs';
+  const loadLogs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/monitor-log', { cache: 'no-store' });
+      const data = await res.json();
+      setMonitorLogs(Array.isArray(data.log) ? data.log : []);
+      if (data.storage) setStorage(data.storage);
+    } catch (err) {
+      console.error('loadLogs error:', err);
+    }
+  }, []);
 
-  // ── Load data (stateless: config from API, history/logs from localStorage) ──
+  // ── Load data: effective config + reference + persisted monitoring runs ──
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
       const psiRes = await fetch('/api/get-latest-psi', { cache: 'no-store' });
       const psiData = await psiRes.json();
-
-      // History from localStorage
-      try {
-        const storedHistory = localStorage.getItem(LS_HISTORY);
-        if (storedHistory) setHistory(JSON.parse(storedHistory));
-      } catch {}
-
-      // Monitor logs from localStorage
-      try {
-        const storedLogs = localStorage.getItem(LS_LOGS);
-        if (storedLogs) setMonitorLogs(JSON.parse(storedLogs).reverse());
-      } catch {}
+      if (psiData.reference) setReference(psiData.reference);
+      if (psiData.storage) setStorage(psiData.storage);
+      await loadLogs();
 
       if (psiData.config) {
         setConfig(psiData.config);
@@ -199,22 +200,9 @@ export default function Dashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [loadLogs]);
 
   useEffect(() => { loadData(); }, [loadData]);
-
-  // ── Simulate metrics ──
-  const runSimulation = useCallback(async () => {
-    setIsSimulating(true);
-    try {
-      const res = await fetch(`/api/risk-score?drift=${driftLevel}`, { cache: 'no-store' });
-      const data = await res.json();
-      setLiveMetrics(data);
-    } catch (err) { console.error(err); }
-    finally { setIsSimulating(false); }
-  }, [driftLevel]);
-
-  useEffect(() => { runSimulation(); }, [runSimulation]);
 
   // ── Save config ──
   const saveConfig = async () => {
@@ -232,21 +220,28 @@ export default function Dashboard() {
           bin_labels: [], // auto-generated from bins in backend if needed
         };
       }
-      await fetch('/api/save-model-config', {
+      const res = await fetch('/api/save-model-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           thresholds: {
-            psi_warning: parseFloat(thresholds.psi_warning),
-            psi_critical: parseFloat(thresholds.psi_critical),
-            gini_min: parseFloat(thresholds.gini_min),
-            auc_min: parseFloat(thresholds.auc_min),
-            ks_min: parseFloat(thresholds.ks_min),
+            psi_warning: thresholds.psi_warning,
+            psi_critical: thresholds.psi_critical,
+            gini_min: thresholds.gini_min,
+            auc_min: thresholds.auc_min,
+            ks_min: thresholds.ks_min,
             csi_features: csiPayload,
           },
         }),
       });
-      alert('✅ บันทึก Feature Config เรียบร้อยแล้ว');
+      const data = await res.json();
+      if (!res.ok) {
+        alert('❌ บันทึกไม่สำเร็จ:\n• ' + (data.errors?.join('\n• ') || data.error || res.status));
+        return;
+      }
+      if (data.model) setConfig(prev => prev ? { ...prev, models: { ...prev.models, [prev.activeModelId]: data.model } } : prev);
+      if (data.storage) setStorage(data.storage);
+      alert(`✅ บันทึกแล้ว — Config Version ${data.configVersion}${data.warning ? `\n⚠️ ${data.warning}` : ''}`);
     } catch (err: any) {
       alert('❌ บันทึกไม่สำเร็จ: ' + err.message);
     } finally {
@@ -281,25 +276,6 @@ export default function Dashboard() {
     setCsiFeatures(prev => prev.filter((_, i) => i !== idx));
   };
 
-  // ── Append to history (localStorage) ──
-  const appendToHistory = async () => {
-    setIsAppending(true);
-    try {
-      const res = await fetch('/api/risk-score', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ drift: driftLevel, source: 'simulation' }),
-      });
-      const newEntry = await res.json();
-      setHistory(prev => {
-        const updated = [...prev, newEntry];
-        try { localStorage.setItem(LS_HISTORY, JSON.stringify(updated)); } catch {}
-        return updated;
-      });
-    } catch (err) { console.error(err); }
-    finally { setIsAppending(false); }
-  };
-
   // ── File upload ──
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -310,61 +286,38 @@ export default function Dashboard() {
     setUploadedCsiDetail(null);
     setUploadedRiskGrades([]);
     setPreviewCustomers([]);
+    setUploadSummary(null);
+    setValidation(null);
     setIsUploading(true);
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
         const text = event.target?.result as string;
-        const parsed = parseCSV(text);
-        if (parsed.length === 0) throw new Error('ไฟล์ CSV ว่างเปล่า หรือ header ไม่ถูกต้อง');
-        setRowCount(parsed.length);
+        if (!text || !text.trim()) throw new Error('ไฟล์ CSV ว่างเปล่า');
 
+        // Server parses + validates (single source of truth for the rules)
         const res = await fetch('/api/monitor-upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ customers: parsed, fileName: file.name }),
+          body: JSON.stringify({ csvText: text, fileName: file.name }),
         });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || err.detail || 'เกิดข้อผิดพลาดในการประมวลผล');
-        }
         const data = await res.json();
+        if (data.validation) {
+          setValidation(data.validation);
+          setRowCount(data.validation.totalRows);
+        }
+        if (data.storage) setStorage(data.storage);
+        if (data.uploadSummary) setUploadSummary(data.uploadSummary);
+        if (!res.ok) {
+          await loadLogs();
+          throw new Error(data.error || data.detail || 'เกิดข้อผิดพลาดในการประมวลผล');
+        }
         setUploadedMetrics(data);
         setUploadedCsiDetail(data.csiDetail || null);
         setUploadedRiskGrades(data.riskGradeDist || []);
         setPreviewCustomers(data.scoredCustomers || []);
-
-        // Persist log entry to localStorage
-        if (data.logEntry) {
-          try {
-            const stored = localStorage.getItem(LS_LOGS);
-            const logs: any[] = stored ? JSON.parse(stored) : [];
-            logs.push(data.logEntry);
-            localStorage.setItem(LS_LOGS, JSON.stringify(logs));
-            setMonitorLogs([...logs].reverse());
-          } catch {}
-        }
-        // Persist PSI history entry to localStorage
-        try {
-          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-          const now = new Date();
-          const histEntry = {
-            month: months[now.getMonth()],
-            timestamp: now.toISOString(),
-            source: 'upload',
-            fileName: file.name,
-            rowCount: parsed.length,
-            psi: data.psi, csi: data.csi,
-            auc: data.auc, gini: data.gini, ks: data.ks, lift: data.lift,
-            status: data.status,
-          };
-          const storedH = localStorage.getItem(LS_HISTORY);
-          const histArr: any[] = storedH ? JSON.parse(storedH) : [];
-          histArr.push(histEntry);
-          localStorage.setItem(LS_HISTORY, JSON.stringify(histArr));
-          setHistory(histArr);
-        } catch {}
+        await loadLogs();
       } catch (err: any) {
         setUploadError(err.message || 'เกิดข้อผิดพลาด');
       } finally {
@@ -386,6 +339,14 @@ export default function Dashboard() {
   const psiWarningNum = parseFloat(thresholds.psi_warning) || 0.10;
   const psiCriticalNum = parseFloat(thresholds.psi_critical) || 0.25;
 
+  const ksDecileTable = model?.baseline?.ksDecileTable ?? [];
+  const maxKS = ksDecileTable.length > 0 ? Math.max(...ksDecileTable.map(r => r.ks)) : 0;
+  const currentVersion = (model as any)?.configVersion as string | undefined;
+  const visibleLogs = onlyCurrentVersion && currentVersion
+    ? monitorLogs.filter(l => (l.configVersion ?? currentVersion) === currentVersion)
+    : monitorLogs;
+  const driftLogs = visibleLogs.filter(l => l.results);
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -406,11 +367,19 @@ export default function Dashboard() {
                 onClick={() => setActiveTab(tab)}
                 className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === tab ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:text-slate-200'}`}
               >
-                {tab === 'sandbox' ? '🔬 Model Sandbox' : '📊 Monitoring'}
+                {tab === 'sandbox' ? '📋 Model Reference' : '📊 Monitoring'}
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            {storage && (
+              <span
+                title={storage.persistent ? `จัดเก็บผลถาวร (${storage.kind})` : 'ยังไม่ได้ตั้งค่าฐานข้อมูล — ผลจะหายเมื่อ server restart'}
+                className={`px-2 py-0.5 rounded border text-[10px] font-mono ${storage.persistent ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' : 'border-amber-500/40 text-amber-300 bg-amber-500/10'}`}>
+                {storage.persistent ? '💾' : '⚠️'} {storage.kind}
+              </span>
+            )}
+            {currentVersion && <span className="font-mono text-[10px] text-slate-500">cfg v{currentVersion}</span>}
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             Model Active
           </div>
@@ -620,57 +589,6 @@ export default function Dashboard() {
 
               {/* Center + Right: Simulation */}
               <div className="xl:col-span-2 space-y-5">
-                {/* Drift Simulator */}
-                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-sm font-bold text-slate-200">🎚️ Drift Simulator</h2>
-                    <button onClick={appendToHistory} disabled={isAppending}
-                      className="px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-xs font-bold transition hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50">
-                      {isAppending ? '...' : '+ Add to History'}
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-4">
-                      <span className="text-[11px] text-slate-400 w-24">Drift Level:</span>
-                      <input type="range" min="0" max="1" step="0.01" value={driftLevel}
-                        onChange={e => setDriftLevel(parseFloat(e.target.value))}
-                        className="flex-1 accent-indigo-500" />
-                      <span className="text-sm font-mono text-indigo-400 w-10">{driftLevel.toFixed(2)}</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500">
-                      Drift 0 = Baseline population | 0.5 = Moderate shift (income↓ DTI↑) | 1.0 = Severe drift
-                    </p>
-                  </div>
-
-                  {/* Live Metrics */}
-                  {isSimulating ? (
-                    <div className="mt-4 text-center text-slate-500 text-xs animate-pulse">Simulating...</div>
-                  ) : liveMetrics && (
-                    <div className="mt-4 space-y-3">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <MetricCard label="PSI (Score)" value={liveMetrics.psi} color={liveMetrics.psi < psiWarningNum ? 'text-emerald-400' : liveMetrics.psi < psiCriticalNum ? 'text-amber-400' : 'text-rose-400'} />
-                        <MetricCard label="AUC" value={liveMetrics.auc} color="text-blue-400" />
-                        <MetricCard label="Gini" value={liveMetrics.gini} color="text-purple-400" />
-                        <MetricCard label="KS" value={liveMetrics.ks} color="text-cyan-400" />
-                      </div>
-                      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(3, Object.keys(liveMetrics.csi || {}).length)}, 1fr)` }}>
-                        {Object.entries(liveMetrics.csi || {}).map(([feat, val]) => {
-                          const cfg = csiFeatureMap[feat];
-                          const limit = parseFloat(cfg?.threshold || '0.10') || 0.10;
-                          return (
-                            <MetricCard key={feat} label={`CSI — ${cfg?.label || feat}`} value={val as number}
-                              color={(val as number) > limit ? 'text-rose-400' : 'text-emerald-400'}
-                              small />
-                          );
-                        })}
-                      </div>
-                      <div className="flex justify-end">
-                        <Badge status={liveMetrics.status} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
                 {/* Scorecard Table — with IV per feature */}
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
                   <h2 className="text-sm font-bold text-slate-200 mb-4">📋 Scorecard Reference</h2>
@@ -730,72 +648,6 @@ export default function Dashboard() {
                     })}
                   </div>
                 </div>
-
-                {/* PSI / CSI Summary Panel */}
-                {liveMetrics && (
-                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-sm font-bold text-slate-200">📉 PSI / CSI — Drift Summary</h2>
-                      <Badge status={liveMetrics.status} />
-                    </div>
-
-                    {/* PSI row */}
-                    <div className="mb-4">
-                      <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-2">Population Stability Index (Score Distribution)</p>
-                      <div className="flex items-center gap-3">
-                        <span className={`text-2xl font-bold font-mono ${
-                          liveMetrics.psi < psiWarningNum ? 'text-emerald-400'
-                          : liveMetrics.psi < psiCriticalNum ? 'text-amber-400'
-                          : 'text-rose-400'
-                        }`}>{liveMetrics.psi?.toFixed(4)}</span>
-                        <div className="flex-1">
-                          <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all duration-500 ${
-                                liveMetrics.psi < psiWarningNum ? 'bg-emerald-500'
-                                : liveMetrics.psi < psiCriticalNum ? 'bg-amber-500'
-                                : 'bg-rose-500'
-                              }`}
-                              style={{ width: `${Math.min(liveMetrics.psi / psiCriticalNum * 100, 100)}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between text-[9px] text-slate-600 mt-1">
-                            <span>0</span>
-                            <span className="text-amber-600">Warn {psiWarningNum}</span>
-                            <span className="text-rose-600">Critical {psiCriticalNum}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* CSI per feature */}
-                    <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-2">Characteristic Stability Index (per Feature)</p>
-                    <div className="space-y-2">
-                      {Object.entries(liveMetrics.csi || {}).map(([feat, val]) => {
-                        const cfg = csiFeatureMap[feat];
-                        const limit = parseFloat(cfg?.threshold || '0.10') || 0.10;
-                        const csiVal = val as number;
-                        const pct = Math.min(csiVal / limit * 100, 100);
-                        const barColor = csiVal > limit ? 'bg-rose-500' : 'bg-indigo-500';
-                        const textColor = csiVal > limit ? 'text-rose-400' : 'text-emerald-400';
-                        return (
-                          <div key={feat}>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-[10px] text-slate-400">{cfg?.label || feat}</span>
-                              <div className="flex items-center gap-2">
-                                <span className={`text-[10px] font-mono font-bold ${textColor}`}>{csiVal.toFixed(4)}</span>
-                                <span className="text-[9px] text-slate-600">limit {limit.toFixed(2)}</span>
-                              </div>
-                            </div>
-                            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${pct}%` }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
 
                 {/* IV Summary — ทุกตัวแปรที่พิจารณา (จาก ascore_model_report.xlsx) */}
                 {(model as any)?.ivSummary && (
@@ -878,21 +730,73 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* History Chart */}
-                {history.length > 0 && (
+                {/* Score Distribution — จาก ascore_model_report.xlsx */}
+                {model?.baseline?.score_distribution && (
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
-                    <h2 className="text-sm font-bold text-slate-200 mb-4">📈 PSI Trend (Simulation History)</h2>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <LineChart data={history}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                        <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} />
-                        <YAxis domain={[0, 0.4]} tick={{ fontSize: 11, fill: '#64748b' }} />
-                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11 }} />
-                        <ReferenceLine y={psiWarningNum} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Warning', fill: '#f59e0b', fontSize: 10 }} />
-                        <ReferenceLine y={psiCriticalNum} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Critical', fill: '#ef4444', fontSize: 10 }} />
-                        <Line type="monotone" dataKey="psi" stroke="#6366f1" strokeWidth={2} dot={{ fill: '#6366f1', r: 4 }} name="PSI" />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    <h2 className="text-sm font-bold text-slate-200 mb-1">📐 Score Distribution</h2>
+                    <p className="text-[9px] text-slate-500 mb-4">จาก ascore_model_report.xlsx · Baseline scorecard distribution (n = {model.baseline.sample_size})</p>
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className="bg-slate-950/50 rounded-xl p-3 text-center">
+                        <p className="text-[9px] text-slate-500 uppercase mb-1">Mean</p>
+                        <p className="text-lg font-bold font-mono text-indigo-400">{model.baseline.score_distribution.mean?.toFixed(1)}</p>
+                      </div>
+                      <div className="bg-slate-950/50 rounded-xl p-3 text-center">
+                        <p className="text-[9px] text-slate-500 uppercase mb-1">Min</p>
+                        <p className="text-lg font-bold font-mono text-rose-400">{model.baseline.score_distribution.min?.toFixed(1)}</p>
+                      </div>
+                      <div className="bg-slate-950/50 rounded-xl p-3 text-center">
+                        <p className="text-[9px] text-slate-500 uppercase mb-1">Max</p>
+                        <p className="text-lg font-bold font-mono text-emerald-400">{model.baseline.score_distribution.max?.toFixed(1)}</p>
+                      </div>
+                    </div>
+                    <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-2">Decile Bounds</p>
+                    <div className="flex flex-wrap gap-2">
+                      {model.baseline.score_distribution.decile_bounds?.map((b: number, i: number) => (
+                        <div key={i} className="bg-slate-950/50 border border-slate-800 rounded-lg px-2.5 py-1.5 text-center">
+                          <p className="text-[8px] text-slate-600">D{i + 1}</p>
+                          <p className="text-[11px] font-mono text-slate-300">{b.toFixed(2)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* KS Decile Table — จาก ascore_model_report.xlsx */}
+                {ksDecileTable.length > 0 && (
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+                    <h2 className="text-sm font-bold text-slate-200 mb-1">📊 KS Decile Table</h2>
+                    <p className="text-[9px] text-slate-500 mb-4">
+                      จาก ascore_model_report.xlsx · Test period {model?.baseline?.performance?.test?.period ?? '—'} · Max KS = {(maxKS * 100).toFixed(1)}%
+                    </p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[10px]">
+                        <thead>
+                          <tr className="border-b border-slate-800">
+                            {['Decile', 'N', 'Bad', 'Good', 'Score Range', 'Bad Rate', 'Cum Bad', 'Cum Good', 'KS'].map((h, i) => (
+                              <th key={h} className={`pb-1 px-1.5 text-slate-500 font-medium ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ksDecileTable.map(row => {
+                            const isMaxKS = row.ks === maxKS;
+                            return (
+                              <tr key={row.decile} className={`border-b border-slate-800/40 hover:bg-slate-800/20 ${isMaxKS ? 'bg-indigo-500/5' : ''}`}>
+                                <td className="py-1 px-1.5 text-left text-slate-300 font-mono">{row.decile}</td>
+                                <td className="py-1 px-1.5 text-right font-mono text-slate-400">{row.n}</td>
+                                <td className="py-1 px-1.5 text-right font-mono text-rose-400">{row.bad}</td>
+                                <td className="py-1 px-1.5 text-right font-mono text-emerald-400">{row.good}</td>
+                                <td className="py-1 px-1.5 text-right font-mono text-slate-400">{row.minScore?.toFixed(1)}–{row.maxScore?.toFixed(1)}</td>
+                                <td className="py-1 px-1.5 text-right font-mono text-slate-300">{(row.badRate * 100).toFixed(1)}%</td>
+                                <td className="py-1 px-1.5 text-right font-mono text-slate-400">{(row.cumBad * 100).toFixed(1)}%</td>
+                                <td className="py-1 px-1.5 text-right font-mono text-slate-400">{(row.cumGood * 100).toFixed(1)}%</td>
+                                <td className={`py-1 px-1.5 text-right font-mono font-bold ${isMaxKS ? 'text-indigo-400' : 'text-slate-300'}`}>{(row.ks * 100).toFixed(1)}%</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>
@@ -907,26 +811,25 @@ export default function Dashboard() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Active Model Info */}
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
-                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-3">Active Model Baseline</p>
+                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-3">Reference Dataset (คงที่)</p>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-400" />
                       <span className="text-xs font-bold text-slate-200">{model?.name}</span>
+                      {currentVersion && <span className="text-[9px] font-mono text-slate-500">v{currentVersion}</span>}
                     </div>
-                    <div className="grid grid-cols-3 gap-2 mt-2">
-                      {[
-                        { k: 'AUC', v: model?.baseline?.performance?.test?.auc?.toFixed(3) },
-                        { k: 'Gini', v: model?.baseline?.performance?.test?.gini?.toFixed(3) },
-                        { k: 'KS', v: model?.baseline?.performance?.test?.ks?.toFixed(3) },
-                      ].map(({ k, v }) => (
-                        <div key={k} className="bg-slate-950/50 rounded-lg p-2 text-center">
-                          <p className="text-[9px] text-slate-500">{k}</p>
-                          <p className="text-xs font-bold font-mono text-emerald-400">{v ?? '—'}</p>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-2">
-                      Dev: {model?.baseline?.sample_size} obs | Bad rate: {((model?.baseline?.bad_rate ?? 0) * 100).toFixed(1)}%
+                    {reference ? (
+                      <div className="text-[10px] text-slate-400 space-y-0.5 mt-2 font-mono">
+                        <p><span className="text-slate-500">ID:</span> {reference.referenceId} <span className="text-slate-600">v{reference.version}</span></p>
+                        <p><span className="text-slate-500">N:</span> {reference.rowCount.toLocaleString()} · <span className="text-slate-500">Bad:</span> {(reference.badRate * 100).toFixed(2)}%</p>
+                        <p><span className="text-slate-500">ช่วง:</span> {reference.periodStart} → {reference.periodEnd}</p>
+                        <p title={reference.sha256}><span className="text-slate-500">sha256:</span> {reference.sha256.slice(0, 12)}…</p>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-rose-400 mt-2">ไม่พบ Reference Dataset</p>
+                    )}
+                    <p className="text-[9px] text-slate-600">
+                      PSI/CSI ทุกครั้งเทียบกับข้อมูลชุดนี้ชุดเดียว — ดูค่าประสิทธิภาพโมเดล (AUC/Gini/KS) ได้ที่แท็บ 📋 Model Reference
                     </p>
                   </div>
                 </div>
@@ -950,7 +853,7 @@ export default function Dashboard() {
                         <p className="text-3xl mb-2 group-hover:scale-110 transition-transform">📂</p>
                         <p className="text-sm text-slate-300 font-medium">คลิกเพื่อเลือก CSV</p>
                         <p className="text-[10px] text-slate-500 mt-1">
-                          ต้องการคอลัมน์: {csiFeatures.map(f => f.key || '?').join(', ')}, (default_flag ถ้ามี)
+                          ต้องการคอลัมน์: {csiFeatures.map(f => f.key || '?').join(', ')} (default_flag, application_date ถ้ามี — application_date ใช้สรุปช่วงเวลา)
                         </p>
                       </div>
                     )}
@@ -960,27 +863,131 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {/* ── [1] Data Validation report (separate from drift) ── */}
+              {validation && (
+                <div className={`border rounded-2xl p-4 ${validation.ok ? 'border-slate-800 bg-slate-900/60' : 'border-fuchsia-500/40 bg-fuchsia-500/5'}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <p className="text-[10px] font-bold text-fuchsia-300 uppercase tracking-wider">🧾 ขั้นที่ 1 — ตรวจสอบความถูกต้องของข้อมูล (Data Validation)</p>
+                    <Badge status={validation.ok ? 'PASS' : 'FAIL'} />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                    <MetricCard small label="แถวทั้งหมด" value={validation.totalRows.toLocaleString()} />
+                    <MetricCard small label="ผ่าน (ใช้คำนวณ)" value={validation.validRows.toLocaleString()} color="text-emerald-400" />
+                    <MetricCard small label="ตัดออก" value={validation.rejectedRows.toLocaleString()} color={validation.rejectedRows ? 'text-rose-400' : 'text-slate-400'} />
+                    <MetricCard small label="% ตัดออก" value={`${validation.rejectedPct}%`} color={validation.rejectedPct > 5 ? 'text-rose-400' : 'text-slate-400'} />
+                  </div>
+                  {validation.blockingErrors.length > 0 && (
+                    <div className="mb-3 space-y-1">
+                      <p className="text-[10px] font-bold text-rose-400">หยุดการคำนวณ PSI/CSI เนื่องจาก:</p>
+                      {validation.blockingErrors.map((e, i) => (
+                        <p key={i} className="text-[11px] text-rose-300">• {e.message}</p>
+                      ))}
+                    </div>
+                  )}
+                  {validation.warnings.length > 0 && (
+                    <div className="mb-3 space-y-1">
+                      {validation.warnings.map((w, i) => (
+                        <p key={i} className="text-[11px] text-amber-300">⚠️ {w.message}</p>
+                      ))}
+                    </div>
+                  )}
+                  {validation.groups.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[10px]">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-slate-500">
+                            <th className="text-left py-1.5 px-2 font-medium">ประเภท</th>
+                            <th className="text-left py-1.5 px-2 font-medium">คอลัมน์</th>
+                            <th className="text-right py-1.5 px-2 font-medium">จำนวน</th>
+                            <th className="text-left py-1.5 px-2 font-medium">ผล</th>
+                            <th className="text-left py-1.5 px-2 font-medium">ตัวอย่างแถว</th>
+                            <th className="text-left py-1.5 px-2 font-medium">รายละเอียด (ตัวอย่าง)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {validation.groups.map((g, i) => (
+                            <tr key={i} className="border-b border-slate-800/40">
+                              <td className={`py-1.5 px-2 font-semibold ${g.severity === 'error' ? 'text-rose-400' : 'text-amber-300'}`}>{ISSUE_LABEL[g.type] ?? g.type}</td>
+                              <td className="py-1.5 px-2 font-mono text-slate-300">{g.column ?? '—'}</td>
+                              <td className="py-1.5 px-2 text-right font-mono text-slate-300">{g.count.toLocaleString()}</td>
+                              <td className="py-1.5 px-2 text-slate-400">{g.severity === 'error' ? 'ตัดแถวออก' : 'ใช้ได้ (แจ้งเตือน)'}</td>
+                              <td className="py-1.5 px-2 font-mono text-slate-500">{g.sampleRows.join(', ')}{g.count > g.sampleRows.length ? ', …' : ''}</td>
+                              <td className="py-1.5 px-2 text-slate-400">{g.message}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="text-[9px] text-slate-600 mt-2">เลขแถวนับจากแถวข้อมูลแรก = 1 (ไม่นับ header) — แถวที่ถูกตัดออกจะไม่ถูกนำไปคำนวณ PSI/CSI จึงไม่ปะปนกับการเปลี่ยนแปลงของการกระจายตัว</p>
+                    </div>
+                  ) : validation.ok && (
+                    <p className="text-[11px] text-emerald-400">✅ ข้อมูลทุกแถวผ่านการตรวจสอบ</p>
+                  )}
+                </div>
+              )}
+
               {/* Results after upload */}
               {uploadedMetrics && (
                 <div className="space-y-5">
-                  {/* KPI Cards */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                    {[
-                      { label: 'PSI', value: uploadedMetrics.psi, color: uploadedMetrics.psi < psiWarningNum ? 'text-emerald-400' : uploadedMetrics.psi < psiCriticalNum ? 'text-amber-400' : 'text-rose-400' },
-                      { label: 'AUC', value: uploadedMetrics.auc, color: uploadedMetrics.auc !== null && uploadedMetrics.auc >= (parseFloat(thresholds.auc_min) || 0.55) ? 'text-emerald-400' : 'text-rose-400' },
-                      { label: 'Gini', value: uploadedMetrics.gini, color: uploadedMetrics.gini !== null && uploadedMetrics.gini >= (parseFloat(thresholds.gini_min) || 0.10) ? 'text-emerald-400' : 'text-rose-400' },
-                      { label: 'KS', value: uploadedMetrics.ks, color: uploadedMetrics.ks !== null && uploadedMetrics.ks >= (parseFloat(thresholds.ks_min) || 0.10) ? 'text-emerald-400' : 'text-rose-400' },
-                      { label: 'Lift (Top10%)', value: uploadedMetrics.lift, color: 'text-purple-400' },
-                      { label: 'N Customers', value: rowCount.toLocaleString(), color: 'text-slate-200' },
-                    ].map(({ label, value, color }) => (
-                      <MetricCard key={label} label={label} value={typeof value === 'number' ? value : null} color={color} />
-                    ))}
+                  {/* KPI Cards — PSI/CSI เท่านั้น */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <MetricCard label="PSI" value={uploadedMetrics.psi} color={uploadedMetrics.psi < psiWarningNum ? 'text-emerald-400' : uploadedMetrics.psi < psiCriticalNum ? 'text-amber-400' : 'text-rose-400'} />
+                    <MetricCard label="N Used (valid)" value={(uploadedMetrics.processedRows ?? rowCount).toLocaleString()} color="text-slate-200" />
+                    <MetricCard label="N Periods" value={uploadSummary ? String(uploadSummary.periods.length) : null} color="text-cyan-400" />
+                    <MetricCard
+                      label="Max Missing %"
+                      value={uploadSummary ? `${Math.max(...uploadSummary.missingData.map(m => m.missingPct)).toFixed(1)}%` : null}
+                      color={uploadSummary && Math.max(...uploadSummary.missingData.map(m => m.missingPct)) > 5 ? 'text-rose-400' : 'text-amber-400'}
+                    />
                   </div>
+
+                  {/* Upload Data Summary — ช่วงเวลา + ข้อมูลขาดหาย */}
+                  {uploadSummary && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* Period breakdown */}
+                      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                        <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider mb-3">🗓️ ช่วงเวลาของข้อมูลที่อัปโหลด</p>
+                        {uploadSummary.periods.length === 0 ? (
+                          <p className="text-[10px] text-slate-600 italic">ไม่มีข้อมูล</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {uploadSummary.periods.map(p => (
+                              <div key={p.period} className="flex items-center gap-2">
+                                <span className={`text-[10px] font-mono w-20 shrink-0 ${p.period === 'ไม่ระบุวันที่' ? 'text-slate-600 italic' : 'text-slate-300'}`}>{p.period}</span>
+                                <div className="flex-1 h-3 bg-slate-800 rounded overflow-hidden">
+                                  <div className="h-full bg-cyan-500/70 rounded" style={{ width: `${Math.max(p.pct, 2)}%` }} />
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-400 w-24 text-right">{p.count.toLocaleString()} ราย ({p.pct}%)</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Missing data */}
+                      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                        <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider mb-3">⚠️ ข้อมูลขาดหายต่อคอลัมน์</p>
+                        <div className="space-y-1.5">
+                          {uploadSummary.missingData.map(m => {
+                            const bad = m.missingPct > 5;
+                            return (
+                              <div key={m.column} className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-300 w-28 shrink-0 truncate">{m.label}</span>
+                                <div className="flex-1 h-3 bg-slate-800 rounded overflow-hidden">
+                                  <div className={`h-full rounded ${bad ? 'bg-rose-500/80' : 'bg-emerald-500/60'}`} style={{ width: `${Math.max(m.missingPct, m.missingPct > 0 ? 2 : 0)}%` }} />
+                                </div>
+                                <span className={`text-[10px] font-mono w-28 text-right ${bad ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>{m.missingCount.toLocaleString()} ({m.missingPct}%)</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Comparison Table */}
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden">
                     <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-slate-200">📊 Comparison: New Data vs Baseline</h3>
+                      <h3 className="text-sm font-bold text-slate-200">📊 ขั้นที่ 2 — Drift Detection: New Data vs Reference ({reference?.referenceId ?? '—'})</h3>
                       <Badge status={uploadedMetrics.status} />
                     </div>
                     <div className="overflow-x-auto">
@@ -1001,46 +1008,18 @@ export default function Dashboard() {
                             <td className="py-3 px-4 text-center font-mono text-slate-400">&lt; {psiWarningNum.toFixed(2)}</td>
                             <td className="py-3 px-4 text-center font-mono font-bold text-slate-200">{uploadedMetrics.psi.toFixed(4)}</td>
                             <td className="py-3 px-4 text-center font-mono text-slate-400">—</td>
-                            <td className="py-3 px-4 text-center"><Badge status={uploadedMetrics.status} /></td>
+                            <td className="py-3 px-4 text-center"><Badge status={uploadedMetrics.psiStatus ?? uploadedMetrics.status} /></td>
                           </tr>
-                          {/* AUC */}
-                          {[
-                            { k: 'AUC', val: uploadedMetrics.auc, base: model?.baseline?.performance?.test?.auc, thres: parseFloat(thresholds.auc_min) || 0.55, dir: 'higher' },
-                            { k: 'Gini', val: uploadedMetrics.gini, base: model?.baseline?.performance?.test?.gini, thres: parseFloat(thresholds.gini_min) || 0.10, dir: 'higher' },
-                            { k: 'KS', val: uploadedMetrics.ks, base: model?.baseline?.performance?.test?.ks, thres: parseFloat(thresholds.ks_min) || 0.10, dir: 'higher' },
-                          ].map(({ k, val, base, thres, dir }) => {
-                            if (val === null) return (
-                              <tr key={k} className="border-b border-slate-800/50 hover:bg-slate-800/20">
-                                <td className="py-3 px-4 font-semibold text-slate-300">{k} <span className="text-slate-500 font-normal">(ต้องการ default_flag)</span></td>
-                                <td colSpan={4} className="py-3 px-4 text-center text-slate-600 italic text-xs">ไม่มีข้อมูล default_flag ในไฟล์</td>
-                              </tr>
-                            );
-                            const pass = val >= thres;
-                            const diff = val - (base ?? thres);
-                            return (
-                              <tr key={k} className="border-b border-slate-800/50 hover:bg-slate-800/20">
-                                <td className="py-3 px-4 font-semibold text-slate-300">{k} <span className="text-slate-500 font-normal">(สูงกว่า = ดี)</span></td>
-                                <td className="py-3 px-4 text-center font-mono text-emerald-400">{base?.toFixed(3) ?? '—'}</td>
-                                <td className="py-3 px-4 text-center font-mono font-bold text-slate-200">{val.toFixed(4)}</td>
-                                <td className={`py-3 px-4 text-center font-mono font-semibold ${diff >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{diff >= 0 ? '+' : ''}{diff.toFixed(4)}</td>
-                                <td className="py-3 px-4 text-center"><Badge status={pass ? 'PASS' : 'FAIL'} /></td>
-                              </tr>
-                            );
-                          })}
-                          {/* CSI per feature — dynamic from csiFeatures config */}
-                          {csiFeatures.map(featCfg => {
-                            const feat = featCfg.key;
-                            const csiVal = uploadedMetrics.csi?.[feat];
-                            if (csiVal === undefined) return null;
-                            const limit = parseFloat(featCfg.threshold) || 0.10;
-                            const pass = csiVal < limit;
+                          {/* CSI per feature — from server result (thresholds snapshot used for this run) */}
+                          {Object.entries((uploadedCsiDetail ?? {}) as Record<string, any>).map(([feat, detail]) => {
+                            const csiVal: number = detail.value;
+                            const limit: number = detail.threshold ?? 0.10;
                             const diff = csiVal - limit;
-                            const detail = uploadedCsiDetail?.[feat];
-                            const displayName = featCfg.label || feat;
-                            const sourceText = featCfg.source;
+                            const displayName = detail.displayName || feat;
+                            const sourceText = detail.source;
                             return (
-                              <>
-                                <tr key={feat} className="hover:bg-slate-800/20">
+                              <Fragment key={feat}>
+                                <tr className="hover:bg-slate-800/20">
                                   <td className="py-3 px-4">
                                     <p className="font-semibold text-slate-300">CSI — {displayName} <span className="text-slate-500 font-normal">(ต่ำกว่า = ดี)</span></p>
                                     {sourceText && <p className="text-[9px] text-slate-600 mt-0.5 font-mono">{sourceText}</p>}
@@ -1048,10 +1027,10 @@ export default function Dashboard() {
                                   <td className="py-3 px-4 text-center font-mono text-rose-400">&lt; {limit.toFixed(3)}</td>
                                   <td className="py-3 px-4 text-center font-mono font-bold text-slate-200">{csiVal.toFixed(4)}</td>
                                   <td className={`py-3 px-4 text-center font-mono font-semibold ${diff <= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{diff >= 0 ? '+' : ''}{diff.toFixed(4)}</td>
-                                  <td className="py-3 px-4 text-center"><Badge status={pass ? 'PASS' : 'FAIL'} /></td>
+                                  <td className="py-3 px-4 text-center"><Badge status={detail.status ?? (csiVal < limit ? 'STABLE' : 'WARNING')} /></td>
                                 </tr>
                                 {detail?.bin_distribution && (
-                                  <tr key={`${feat}-bins`} className="bg-slate-950/30">
+                                <tr className="bg-slate-950/30">
                                     <td colSpan={5} className="px-5 pb-3 pt-1">
                                       <p className="text-[9px] text-slate-500 mb-2">Bin Distribution — Baseline vs New Data</p>
                                       <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${detail.bin_distribution.length}, 1fr)` }}>
@@ -1083,7 +1062,7 @@ export default function Dashboard() {
                                     </td>
                                   </tr>
                                 )}
-                              </>
+                              </Fragment>
                             );
                           })}
                         </tbody>
@@ -1123,53 +1102,45 @@ export default function Dashboard() {
                     </div>
                   )}
 
-                  {/* ── คำแนะนำการใช้แบบจำลอง ── */}
+                  {/* ── คำแนะนำการใช้แบบจำลอง (อิงจาก PSI/CSI เท่านั้น) ── */}
                   {uploadedMetrics && (() => {
                     const psi      = uploadedMetrics.psi;
-                    const gini     = uploadedMetrics.gini;
-                    const auc      = uploadedMetrics.auc;
                     const psiWarn  = parseFloat(thresholds.psi_warning)  || 0.10;
                     const psiCrit  = parseFloat(thresholds.psi_critical) || 0.25;
-                    const giniMin  = parseFloat(thresholds.gini_min)     || 0.10;
-                    const aucMin   = parseFloat(thresholds.auc_min)      || 0.55;
-                    const baseGini = model?.baseline?.performance?.test?.gini ?? null;
-                    const baseAuc  = model?.baseline?.performance?.test?.auc  ?? null;
+                    const csiEntries: [string, number][] = Object.entries(uploadedMetrics.csi || {});
+                    const worstCsi = csiEntries.reduce<{ feat: string; val: number; limit: number } | null>((worst, [feat, val]) => {
+                      const limit = (uploadedCsiDetail as any)?.[feat]?.threshold ?? 0.10;
+                      const ratio = val / limit;
+                      if (!worst || ratio > worst.val / worst.limit) return { feat, val, limit };
+                      return worst;
+                    }, null);
+                    const worstCsiBreached = worstCsi ? worstCsi.val >= worstCsi.limit : false;
 
-                    // Determine recommendation level
-                    const psiOk   = psi < psiWarn;
                     const psiWarn_ = psi >= psiWarn && psi < psiCrit;
                     const psiCrit_ = psi >= psiCrit;
-                    const perfOk  = (auc === null || auc >= aucMin) && (gini === null || gini >= giniMin);
-                    const perfDrop = baseGini && gini !== null && (baseGini - gini) > 0.05;
 
-                    let recLevel: 'ok' | 'cutoff' | 'monitor' | 'retrain' = 'ok';
                     let recTitle  = '';
                     let recDetail = '';
                     let recColor  = '';
 
-                    if (psiCrit_ || (perfDrop && !perfOk)) {
-                      recLevel  = 'retrain';
+                    if (psiCrit_) {
                       recTitle  = '🔴 แนะนำ: ทบทวน/พัฒนาแบบจำลองใหม่';
                       recColor  = 'border-rose-500/40 bg-rose-500/5';
-                      recDetail = `PSI = ${psi.toFixed(3)} สูงเกินเกณฑ์ Critical (${psiCrit}) หรือ Gini ลดลงอย่างมีนัยสำคัญ `;
-                      recDetail += `บ่งชี้ว่า Distribution ของ Population เปลี่ยนแปลงอย่างรุนแรง หรือความสามารถจำแนกดี/ไม่ดีลดลงเกิน Threshold `;
+                      recDetail = `PSI = ${psi.toFixed(3)} สูงเกินเกณฑ์ Critical (${psiCrit}) บ่งชี้ว่า Distribution ของ Population เปลี่ยนแปลงอย่างรุนแรง `;
                       recDetail += `แนะนำ: (1) ตรวจสอบ Population Shift จาก CSI ต่อตัวแปร (2) Retrain ด้วยข้อมูลที่เป็น Out-of-Time `;
                       recDetail += `(3) พิจารณา Champion-Challenger Testing`;
-                    } else if (psiWarn_) {
-                      recLevel  = 'cutoff';
+                    } else if (psiWarn_ || worstCsiBreached) {
                       recTitle  = '🟡 แนะนำ: ปรับ Cut-off คะแนน หรือ Monitor เพิ่มเติม';
                       recColor  = 'border-amber-500/40 bg-amber-500/5';
-                      recDetail = `PSI = ${psi.toFixed(3)} อยู่ในระดับ Warning (${psiWarn}–${psiCrit}) บ่งชี้ว่า Distribution เปลี่ยนแปลงบ้าง แต่ยังไม่รุนแรง `;
+                      recDetail = `PSI = ${psi.toFixed(3)} อยู่ในระดับ${psiWarn_ ? ` Warning (${psiWarn}–${psiCrit})` : 'ปกติ'}${worstCsiBreached && worstCsi ? ` และ CSI ของ ${csiFeatures.find(f => f.key === worstCsi.feat)?.label || worstCsi.feat} เกินเกณฑ์ (${worstCsi.val.toFixed(3)} ≥ ${worstCsi.limit.toFixed(2)})` : ''} บ่งชี้ว่า Distribution เปลี่ยนแปลงบ้าง แต่ยังไม่รุนแรง `;
                       recDetail += `แนะนำ: (1) ตรวจ CSI ต่อตัวแปร ว่าตัวแปรใดเปลี่ยนมากที่สุด `;
                       recDetail += `(2) Back-test Cut-off ปัจจุบัน vs Approval Rate/Bad Rate `;
                       recDetail += `(3) พิจารณาขยาย Cut-off 5–10 points หากต้องการลด Bad Rate `;
                       recDetail += `(4) วาง monitoring cycle ถี่ขึ้นเป็นรายเดือน`;
                     } else {
-                      recLevel  = 'ok';
                       recTitle  = '🟢 แบบจำลองยังใช้งานได้ — ติดตามต่อเนื่อง';
                       recColor  = 'border-emerald-500/40 bg-emerald-500/5';
-                      recDetail = `PSI = ${psi.toFixed(3)} อยู่ในเกณฑ์ปกติ (< ${psiWarn}) Distribution ของ Population ไม่เปลี่ยนแปลงอย่างมีนัยสำคัญ `;
-                      if (auc !== null) recDetail += `AUC = ${auc.toFixed(3)} ${auc >= aucMin ? 'ผ่านเกณฑ์ขั้นต่ำ' : 'ใกล้เกณฑ์ขั้นต่ำ — ควรติดตาม'}. `;
+                      recDetail = `PSI = ${psi.toFixed(3)} อยู่ในเกณฑ์ปกติ (< ${psiWarn}) และ CSI ทุกตัวแปรอยู่ในเกณฑ์ Distribution ของ Population ไม่เปลี่ยนแปลงอย่างมีนัยสำคัญ `;
                       recDetail += `แนะนำ: ติดตาม PSI/CSI ตาม monitoring cycle ปกติ (รายไตรมาส หรือรายเดือนหาก portfolio เติบโตเร็ว)`;
                     }
 
@@ -1182,18 +1153,17 @@ export default function Dashboard() {
                         <p className="text-[11px] text-slate-300 leading-relaxed">{recDetail}</p>
 
                         {/* Summary metrics strip */}
-                        <div className="mt-4 grid grid-cols-3 gap-3">
-                          {[
-                            { label: 'PSI', val: psi.toFixed(4), color: psiCrit_ ? 'text-rose-400' : psiWarn_ ? 'text-amber-400' : 'text-emerald-400', note: psiCrit_ ? 'Critical' : psiWarn_ ? 'Warning' : 'Stable' },
-                            { label: 'AUC', val: auc !== null ? auc.toFixed(4) : '—', color: auc !== null && auc >= aucMin ? 'text-emerald-400' : 'text-rose-400', note: auc !== null ? `Min ${aucMin}` : 'ไม่มี label' },
-                            { label: 'Gini', val: gini !== null ? gini.toFixed(4) : '—', color: gini !== null && gini >= giniMin ? 'text-emerald-400' : 'text-rose-400', note: gini !== null ? `Min ${giniMin}` : 'ไม่มี label' },
-                          ].map(({ label, val, color, note }) => (
-                            <div key={label} className="bg-slate-950/40 rounded-xl p-3 text-center">
-                              <p className="text-[9px] text-slate-500 uppercase mb-1">{label}</p>
-                              <p className={`text-lg font-bold font-mono ${color}`}>{val}</p>
-                              <p className="text-[9px] text-slate-600 mt-0.5">{note}</p>
-                            </div>
-                          ))}
+                        <div className="mt-4 grid grid-cols-2 gap-3">
+                          <div className="bg-slate-950/40 rounded-xl p-3 text-center">
+                            <p className="text-[9px] text-slate-500 uppercase mb-1">PSI</p>
+                            <p className={`text-lg font-bold font-mono ${psiCrit_ ? 'text-rose-400' : psiWarn_ ? 'text-amber-400' : 'text-emerald-400'}`}>{psi.toFixed(4)}</p>
+                            <p className="text-[9px] text-slate-600 mt-0.5">{psiCrit_ ? 'Critical' : psiWarn_ ? 'Warning' : 'Stable'}</p>
+                          </div>
+                          <div className="bg-slate-950/40 rounded-xl p-3 text-center">
+                            <p className="text-[9px] text-slate-500 uppercase mb-1">Worst CSI</p>
+                            <p className={`text-lg font-bold font-mono ${worstCsiBreached ? 'text-rose-400' : 'text-emerald-400'}`}>{worstCsi ? worstCsi.val.toFixed(4) : '—'}</p>
+                            <p className="text-[9px] text-slate-600 mt-0.5">{worstCsi ? (csiFeatures.find(f => f.key === worstCsi.feat)?.label || worstCsi.feat) : '—'}</p>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1278,11 +1248,22 @@ export default function Dashboard() {
 
               {/* Monitor Log Table */}
               <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+                <div className="px-5 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-bold text-slate-200">🗂️ Monitoring Log</h3>
-                  <span className="text-[10px] text-slate-500">{monitorLogs.length} sessions</span>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 text-[10px] text-slate-400 cursor-pointer">
+                      <input id="log-only-current-version" type="checkbox" checked={onlyCurrentVersion} onChange={e => setOnlyCurrentVersion(e.target.checked)} className="accent-indigo-500" />
+                      เฉพาะ config v{currentVersion ?? '—'}
+                    </label>
+                    <span className="text-[10px] text-slate-500">{visibleLogs.length}/{monitorLogs.length} sessions</span>
+                  </div>
                 </div>
-                {monitorLogs.length === 0 ? (
+                {storage && !storage.persistent && (
+                  <p className="px-5 py-2 text-[10px] text-amber-300 bg-amber-500/5 border-b border-amber-500/20">
+                    ⚠️ ยังไม่ได้เชื่อมฐานข้อมูล (ตั้ง KV_REST_API_URL / KV_REST_API_TOKEN บน Vercel) — Log จะหายเมื่อ server restart
+                  </p>
+                )}
+                {visibleLogs.length === 0 ? (
                   <div className="text-center text-slate-600 py-10 text-sm">ยังไม่มี log — อัปโหลด CSV เพื่อเริ่ม Monitor</div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1290,7 +1271,7 @@ export default function Dashboard() {
                       <thead>
                         <tr className="border-b border-slate-800 bg-slate-950/30">
                           {/* Headers — dynamic CSI columns */}
-                          {['วันที่', 'ไฟล์', 'N Rows', 'PSI', 'AUC', 'Gini', 'KS',
+                          {['วันที่', 'ไฟล์', 'Config', 'Valid / Rows', 'PSI',
                             ...csiFeatures.map(f => `CSI — ${f.label || f.key}`),
                             'Verdict'
                           ].map(h => (
@@ -1299,32 +1280,72 @@ export default function Dashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {monitorLogs.map(log => {
-                          const psi = log.results.psi;
-                          const psiColor = psi < psiWarningNum ? 'text-emerald-400' : psi < psiCriticalNum ? 'text-amber-400' : 'text-rose-400';
+                        {visibleLogs.map(log => {
+                          const psi = log.results?.psi;
+                          const psiColor = psi === undefined ? 'text-slate-600' : psi < psiWarningNum ? 'text-emerald-400' : psi < psiCriticalNum ? 'text-amber-400' : 'text-rose-400';
+                          const isSelected = selectedLog?.logId === log.logId;
+                          const csiStatus = (log.results as any)?.csiStatus as Record<string, string> | undefined;
                           return (
-                            <tr key={log.logId} className="border-b border-slate-800/40 hover:bg-slate-800/20 cursor-pointer"
-                              onClick={() => setSelectedLog(selectedLog?.logId === log.logId ? null : log)}>
+                            <Fragment key={log.logId}>
+                            <tr className="border-b border-slate-800/40 hover:bg-slate-800/20 cursor-pointer"
+                              onClick={() => setSelectedLog(isSelected ? null : log)}>
                               <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">{new Date(log.uploadedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</td>
                               <td className="py-2.5 px-3 text-slate-300 max-w-32 truncate">{log.fileName}</td>
-                              <td className="py-2.5 px-3 font-mono text-slate-400">{log.rowCount.toLocaleString()}</td>
-                              <td className={`py-2.5 px-3 font-mono font-bold ${psiColor}`}>{psi.toFixed(4)}</td>
-                              <td className="py-2.5 px-3 font-mono text-slate-300">{log.results.auc?.toFixed(3) ?? '—'}</td>
-                              <td className="py-2.5 px-3 font-mono text-slate-300">{log.results.gini?.toFixed(3) ?? '—'}</td>
-                              <td className="py-2.5 px-3 font-mono text-slate-300">{log.results.ks?.toFixed(3) ?? '—'}</td>
+                              <td className="py-2.5 px-3 font-mono text-[10px] text-slate-500">{log.configVersion ? `v${log.configVersion}` : '—'}</td>
+                              <td className="py-2.5 px-3 font-mono text-slate-400">{(log.processedRows ?? log.rowCount).toLocaleString()} / {log.rowCount.toLocaleString()}</td>
+                              <td className={`py-2.5 px-3 font-mono font-bold ${psiColor}`}>{psi !== undefined ? psi.toFixed(4) : '—'}</td>
                           {/* CSI columns — dynamic from csiFeatures */}
                           {csiFeatures.map(featCfg => {
-                            const csiVal = log.results.csi?.[featCfg.key];
-                            const limit = parseFloat(featCfg.threshold) || 0.10;
-                            const ok = csiVal !== undefined && csiVal < limit;
+                            const csiVal = log.results?.csi?.[featCfg.key];
+                            const st = csiStatus?.[featCfg.key];
+                            const ok = st ? st === 'STABLE' : csiVal !== undefined && csiVal < (parseFloat(featCfg.threshold) || 0.10);
                             return (
-                              <td key={featCfg.key} className={`py-2.5 px-3 font-mono ${ok ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              <td key={featCfg.key} className={`py-2.5 px-3 font-mono ${csiVal === undefined ? 'text-slate-600' : ok ? 'text-emerald-400' : 'text-rose-400'}`}>
                                 {csiVal !== undefined ? csiVal.toFixed(4) : '—'}
                               </td>
                             );
                           })}
                               <td className="py-2.5 px-3"><Badge status={log.verdict} /></td>
                             </tr>
+                            {isSelected && (
+                              <tr key={`${log.logId}-detail`} className="bg-slate-950/40">
+                                <td colSpan={6 + csiFeatures.length} className="px-4 py-3">
+                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    <div>
+                                      <p className="text-[9px] font-bold text-cyan-400 uppercase tracking-wider mb-2">🗓️ ช่วงเวลาของไฟล์นี้</p>
+                                      {log.uploadSummary?.periods?.length ? (
+                                        <div className="space-y-1">
+                                          {log.uploadSummary.periods.map(p => (
+                                            <div key={p.period} className="flex justify-between text-[10px]">
+                                              <span className={p.period === 'ไม่ระบุวันที่' ? 'text-slate-600 italic' : 'text-slate-300'}>{p.period}</span>
+                                              <span className="text-slate-400 font-mono">{p.count.toLocaleString()} ราย ({p.pct}%)</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-[10px] text-slate-600 italic">ไม่มีข้อมูลบันทึกไว้ในไฟล์นี้ (log เก่ากว่าฟีเจอร์นี้)</p>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className="text-[9px] font-bold text-amber-400 uppercase tracking-wider mb-2">⚠️ ข้อมูลขาดหายต่อคอลัมน์</p>
+                                      {log.uploadSummary?.missingData?.length ? (
+                                        <div className="space-y-1">
+                                          {log.uploadSummary.missingData.map(m => (
+                                            <div key={m.column} className="flex justify-between text-[10px]">
+                                              <span className="text-slate-300">{m.label}</span>
+                                              <span className={`font-mono ${m.missingPct > 5 ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>{m.missingCount.toLocaleString()} ({m.missingPct}%)</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-[10px] text-slate-600 italic">ไม่มีข้อมูลบันทึกไว้ในไฟล์นี้ (log เก่ากว่าฟีเจอร์นี้)</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            </Fragment>
                           );
                         })}
                       </tbody>
@@ -1333,17 +1354,18 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* PSI Trend from log */}
-              {monitorLogs.length > 1 && (
+              {/* PSI Trend from log (drift runs of the selected config version only) */}
+              {driftLogs.length > 1 && (
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
-                  <h3 className="text-sm font-bold text-slate-200 mb-4">📈 PSI Trend (from Upload History)</h3>
+                  <h3 className="text-sm font-bold text-slate-200 mb-4">📈 PSI / CSI Trend (from Upload History)</h3>
                   <ResponsiveContainer width="100%" height={200}>
-                    <LineChart data={[...monitorLogs].reverse().map(l => ({
+                    <LineChart data={[...driftLogs].reverse().map(l => ({
                       date: new Date(l.uploadedAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' }),
-                      PSI: parseFloat(l.results.psi.toFixed(4)),
-                      'CSI Income': parseFloat((l.results.csi?.monthly_income ?? 0).toFixed(4)),
-                      'CSI Loan': parseFloat((l.results.csi?.loan_amount ?? 0).toFixed(4)),
-                      'CSI DTI': parseFloat((l.results.csi?.dti_ratio ?? 0).toFixed(4)),
+                      PSI: parseFloat(l.results!.psi.toFixed(4)),
+                      ...Object.fromEntries(csiFeatures.map(f => [
+                        `CSI — ${f.label || f.key}`,
+                        l.results!.csi?.[f.key] !== undefined ? parseFloat(l.results!.csi[f.key].toFixed(4)) : null,
+                      ])),
                     }))}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                       <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />

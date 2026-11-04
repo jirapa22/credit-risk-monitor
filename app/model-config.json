@@ -8,6 +8,7 @@
       "type": "scorecard",
       "createdAt": "2026-01-15T00:00:00Z",
       "status": "active",
+      "referenceDatasetId": "ascore_v1_dev855",
 
       "configVersion": "1.1.0",
       "configStatus": "published",
@@ -172,6 +173,42 @@
             "uniqueCount": null
           },
           "csiThreshold": 0.10
+        },
+        "application_date": {
+          "featureId": "feat_005",
+          "columnName": "application_date",
+          "displayName": "Application Date",
+          "description": "วันที่ยื่นขอสินเชื่อ — ใช้สรุปช่วงเวลาของข้อมูลที่อัปโหลดเข้ามา Monitor (ไม่ใช้คำนวณ PSI/CSI)",
+          "source": "Application form field: application_date (รูปแบบแนะนำ YYYY-MM-DD)",
+          "dataType": "date",
+          "required": false,
+          "monitoringEnabled": false,
+          "displayOrder": 4,
+          "validation": {
+            "minValue": null,
+            "maxValue": null,
+            "allowNull": true,
+            "defaultValue": null,
+            "missingStrategy": "ignore"
+          },
+          "binning": {
+            "method": "manual",
+            "numBins": 0,
+            "boundaries": [],
+            "binLabels": []
+          },
+          "baselineDistribution": {
+            "mean": null,
+            "std": null,
+            "median": null,
+            "p25": null,
+            "p75": null,
+            "min": null,
+            "max": null,
+            "missingPct": 0,
+            "uniqueCount": null
+          },
+          "csiThreshold": null
         },
         "default_flag": {
           "featureId": "feat_004",

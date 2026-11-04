@@ -65,6 +65,12 @@
         "age":             { "iv": 0.0674, "numBins": 5, "strength": "Weak (อ่อน)",        "usedInModel": false }
       },
 
+      "anomalyConfig": {
+        "crossFieldRules": [
+          { "numerator": "loan_amount", "denominator": "monthly_income", "op": ">", "threshold": 20, "label": "วงเงินกู้ต่อรายได้" }
+        ]
+      },
+
       "featureRegistry": {
         "monthly_income": {
           "featureId": "feat_001",

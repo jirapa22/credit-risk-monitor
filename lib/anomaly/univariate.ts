@@ -20,6 +20,17 @@
 import type { AnomalyFlag, AnomalyTransform, FeatureDefinition } from '../types';
 import type { ReferenceProfile } from '../reference';
 import type { CleanRow } from '../validation';
+import modelConfig from '../../app/model-config.json';
+
+/**
+ * FALLBACK ONLY: model-level rules from the bundled app/model-config.json.
+ * Callers should pass `options.anomalyConfig` from getEffectiveModel() so that
+ * edits saved via storage are honoured.
+ */
+export function configCrossFieldRules(modelId: string): CrossFieldRule[] {
+  const m = (modelConfig as any).models?.[modelId];
+  return (m?.anomalyConfig?.crossFieldRules ?? []) as CrossFieldRule[];
+}
 
 export interface CrossFieldRule {
   id?: string;                 // defaults to "numerator/denominator"
@@ -30,11 +41,17 @@ export interface CrossFieldRule {
   label?: string;              // Thai description shown in reason
 }
 
+export interface AnomalyConfig {
+  crossFieldRules?: CrossFieldRule[];
+}
+
 export interface UnivariateOptions {
   iqrK?: number;               // default 1.5
   madThreshold?: number;       // |robust z| threshold, default 3.5
   methods?: ('iqr' | 'mad' | 'cross_field')[]; // default all
-  crossFieldRules?: CrossFieldRule[];
+  crossFieldRules?: CrossFieldRule[];         // explicit override (highest precedence)
+  /** Model-level anomaly config, normally `effectiveModel.anomalyConfig`. Falls back to the bundled config when omitted. */
+  anomalyConfig?: AnomalyConfig;
   /** Override registry transforms, e.g. { monthly_income: 'none' } (used for comparisons). */
   transformOverride?: Record<string, AnomalyTransform>;
 }
@@ -119,8 +136,11 @@ export function detectUnivariateAnomaliesDetailed(
   options: UnivariateOptions = {},
 ): UnivariateResult {
   const {
-    iqrK = 1.5, madThreshold = 3.5, methods = ['iqr', 'mad', 'cross_field'], crossFieldRules = [], transformOverride = {},
+    iqrK = 1.5, madThreshold = 3.5, methods = ['iqr', 'mad', 'cross_field'], transformOverride = {},
   } = options;
+  const crossFieldRules = options.crossFieldRules
+    ?? options.anomalyConfig?.crossFieldRules
+    ?? configCrossFieldRules(reference.meta.modelId);
   const { stats, warnings } = computeReferenceStats(reference, registry, iqrK, transformOverride);
   const flags: AnomalyFlag[] = [];
   const name = (k: string) => registry[k]?.displayName || k;

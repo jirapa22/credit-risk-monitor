@@ -173,7 +173,7 @@ export interface DriftResult {
 
 // ─── Anomaly detection (layers 3–4) ─────────────────────────────────────────
 /** A warning-only flag: rows are never removed automatically; the user decides. */
-export type AnomalyMethod = 'iqr' | 'mad' | 'cross_field';
+export type AnomalyMethod = 'iqr' | 'mad' | 'cross_field' | 'isolation_forest' | 'lof';
 
 export interface AnomalyFlag {
   row: number;            // CleanRow.row (1-based data row)

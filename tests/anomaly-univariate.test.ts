@@ -55,6 +55,16 @@ describe('layer 3 — univariate anomalies (reference-based)', () => {
     expect(summary.mad / rows.length).toBeLessThanOrEqual(0.05);
   });
 
+  it('cross-field rules: options.anomalyConfig wins, bundled config is the fallback', () => {
+    const r = medianRow(4); r.values.loan_amount = r.values.monthly_income * 10;
+    const cf = (o: object) => detectUnivariateAnomalies(reference, [r], registry, o).filter(f => f.method === 'cross_field');
+    expect(cf({})).toHaveLength(0);   // bundled threshold 20 → 10× is fine
+    expect(cf({ anomalyConfig: { crossFieldRules: [{ numerator: 'loan_amount', denominator: 'monthly_income', op: '>', threshold: 5 }] } })).toHaveLength(1);
+    expect(cf({ anomalyConfig: { crossFieldRules: [] } })).toHaveLength(0);
+    r.values.loan_amount = r.values.monthly_income * 30;
+    expect(cf({})).toHaveLength(1);   // fallback still active
+  });
+
   it('(5) monthly_income = 25 (wrong unit) is flagged by iqr on the low side', () => {
     const r = medianRow(5); r.values.monthly_income = 25;
     const iqr = detectUnivariateAnomalies(reference, [r], registry).filter(f => f.method === 'iqr' && f.feature === 'monthly_income');

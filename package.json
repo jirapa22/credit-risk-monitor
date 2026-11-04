@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "build:reference": "python3 scripts/build_reference_dataset.py"
+    "build:reference": "python3 scripts/build_reference_dataset.py",
+    "experiments": "tsx scripts/run_experiments.ts"
   },
   "dependencies": {
     "next": "16.2.10",
@@ -24,6 +25,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^3.2.7"
   }

@@ -28,6 +28,8 @@ export interface MonitoringInput {
   anomalyScreening?: boolean;
   /** Max flaggedRows kept in the stored run (default anomalyConfig.maxStoredRows ?? 500). */
   maxStoredFlaggedRows?: number;
+  /** Max row-level validation issues kept (default 200). Experiments pass Infinity for exact row metrics. */
+  maxValidationIssues?: number;
 }
 
 const UNKNOWN_PERIOD = 'ไม่ระบุวันที่';
@@ -93,6 +95,7 @@ export function runMonitoring(input: MonitoringInput) {
   // ── [1] Validation ──
   const { result: validation, rows: clean } = validateDataset(rows, headers, registry, {
     scoringFeatures: scoring.features, malformedRows,
+    ...(input.maxValidationIssues !== undefined ? { maxIssues: input.maxValidationIssues } : {}),
   });
   const uploadSummary = buildUploadSummary(rows, registry);
 

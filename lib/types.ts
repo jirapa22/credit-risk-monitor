@@ -286,6 +286,11 @@ export interface ExperimentRun {
   drift: Pick<DriftResult, 'overallStatus' | 'triggered'> & { psi: number; csi: Record<string, number> } | null;
   detected: boolean;
   outcome: 'TP' | 'FP' | 'TN' | 'FN';
+  /** From lib/experiment.ts runTrial (absent in records created via plain POST). */
+  rate?: number;
+  metrics?: Record<string, { n: number; TP: number; FP: number; FN: number; TN: number; precision: number | null; recall: number | null; f1: number | null; flagRate: number | null }>;
+  fileMetrics?: { blocked: boolean; alarm: boolean; alarmExcludingFlagged: boolean; falseAlarm: boolean | null; rescued: boolean | null; detected: boolean | null; preserved: boolean | null; routedLayer: ExpectedLayer; routingCorrect: boolean };
+  driftExcludingFlagged?: { overallStatus: DriftStatus; psi: number; csi: Record<string, number> } | null;
   notes?: string;
 }
 

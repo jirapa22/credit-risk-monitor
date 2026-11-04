@@ -66,10 +66,11 @@ describe('anomaly injection (sandbox)', () => {
     }
   });
 
-  it('expected layer table (hypothesis) is complete and unit_error/high → validation', () => {
+  it('expected layer table (hypothesis) is complete and severity-aware for unit_error', () => {
     for (const t of ALL_TYPES) expect(EXPECTED_LAYER[t]).toBeDefined();
+    expect(expectedFor('unit_error', 'low').layer).toBe('anomaly');
+    expect(expectedFor('unit_error', 'medium').layer).toBe('validation');
     expect(expectedFor('unit_error', 'high').layer).toBe('validation');
-    expect(expectedFor('unit_error', 'medium').layer).toBe('anomaly');
   });
 
   it('(7) preliminary report: every type, severity medium, rate 0.05 (B: rate 1), seed 42', () => {

@@ -47,18 +47,21 @@ export const ANOMALY_KIND: Record<AnomalyType, InjectionKind> = {
   mean_shift: 'drift', variance_change: 'drift',
 };
 
-/** Hypothesis: which layer should catch each type. unit_error/high is overridden to 'validation' in expectedFor(). */
-export const EXPECTED_LAYER: Record<AnomalyType, ExpectedLayer> = {
+/** Hypothesis: which layer should catch each type (may depend on severity). */
+export const EXPECTED_LAYER: Record<AnomalyType, ExpectedLayer | Record<Sev, ExpectedLayer>> = {
   none: 'none',
   type_error: 'validation', missing_injection: 'validation', negative_value: 'validation', schema_break: 'validation',
   duplicate_rows: 'validation',            // DUPLICATE_ID (warning)
-  unit_error: 'anomaly',                   // low/medium; high → validation (exceeds maxValue)
+  // Depends on monthly_income.validation.maxValue in model-config.json (500,000):
+  // ×10 stays in range → anomaly layer; ×100 / ×1000 exceed maxValue → OUT_OF_RANGE in validation.
+  unit_error: { low: 'anomaly', medium: 'validation', high: 'validation' },
   extreme_outlier: 'anomaly', swapped_columns: 'anomaly', multivariate_inconsistent: 'anomaly',
   mean_shift: 'drift', variance_change: 'drift',
 };
 
 export function expectedFor(type: AnomalyType, severity?: AnomalySeverity): { layer: ExpectedLayer; shouldAlarm: boolean } {
-  const layer = type === 'unit_error' && severity === 'high' ? 'validation' : EXPECTED_LAYER[type] ?? 'none';
+  const e = EXPECTED_LAYER[type] ?? 'none';
+  const layer = typeof e === 'string' ? e : e[(severity && severity !== 'none' ? severity : 'medium') as Sev];
   return { layer, shouldAlarm: type !== 'none' };
 }
 

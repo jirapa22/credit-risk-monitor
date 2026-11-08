@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { getActiveModelId, getEffectiveModel, saveRun, storageInfo } from '@/lib/storage/repositories';
 import { runTrial, trialDetected, DETECTORS, stat, rate as rateStat, type TrialResult } from '@/lib/experiment';
 import { ANOMALY_KIND } from '@/lib/injection';
-import type { AnomalySeverity, AnomalyType, ExperimentRun } from '@/lib/types';
+import type { AnomalySeverity, AnomalyType, DriftStatus, ExperimentRun } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,19 +55,23 @@ export async function POST(request: Request) {
         thresholdsSnapshot: model.thresholds,
         expected: { shouldDetect, layer: t.expected.layer },
         validation: null,
-        drift: t.drift ? { overallStatus: t.drift.status as any, triggered: [], psi: t.drift.psi, csi: t.drift.csi } : null,
+        drift: t.drift ? { overallStatus: t.drift.status as DriftStatus, triggered: [], psi: t.drift.psi, csi: t.drift.csi } : null,
         detected,
         outcome: shouldDetect ? (detected ? 'TP' : 'FN') : (detected ? 'FP' : 'TN'),
         rate: t.spec.rate,
         metrics: t.detectors,
         fileMetrics: t.file,
-        driftExcludingFlagged: t.driftExcludingFlagged ? { overallStatus: t.driftExcludingFlagged.status as any, psi: t.driftExcludingFlagged.psi, csi: t.driftExcludingFlagged.csi } : null,
+        driftExcludingFlagged: t.driftExcludingFlagged ? { overallStatus: t.driftExcludingFlagged.status as DriftStatus, psi: t.driftExcludingFlagged.psi, csi: t.driftExcludingFlagged.csi } : null,
       };
       try { await saveRun(run); } catch (e) { storageError = String(e); }
       runs.push(run);
     }
 
     const detectors = Object.fromEntries(DETECTORS.map(d => [d, {
+      TP: stat(trials.map(t => t.detectors[d].TP)).mean,
+      FP: stat(trials.map(t => t.detectors[d].FP)).mean,
+      FN: stat(trials.map(t => t.detectors[d].FN)).mean,
+      TN: stat(trials.map(t => t.detectors[d].TN)).mean,
       precision: stat(trials.map(t => t.detectors[d].precision)),
       recall: stat(trials.map(t => t.detectors[d].recall)),
       f1: stat(trials.map(t => t.detectors[d].f1)),
@@ -81,6 +85,11 @@ export async function POST(request: Request) {
       expected: trials[0]?.expected, detectors, file,
       psi: stat(trials.map(t => t.drift?.psi)), psiExcludingFlagged: stat(trials.map(t => t.driftExcludingFlagged?.psi ?? t.drift?.psi)),
       msPerTrial: stat(trials.map(t => t.timingMs)).mean,
+      trials: trials.map(t => ({
+        seed: t.spec.seed, kind: t.kind, rowCount: t.rowCount, injectedCount: t.injectedCount,
+        routedLayer: t.file.routedLayer, routingCorrect: t.file.routingCorrect, blocked: t.file.blocked,
+        drift: t.drift, driftExcludingFlagged: t.driftExcludingFlagged,
+      })),
       runIds: runs.map(r => r.runId),
       storage: { ...storageInfo(), error: storageError },
     });

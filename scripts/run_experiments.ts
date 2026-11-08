@@ -24,7 +24,7 @@ const SEV: AnomalySeverity[] = ['low', 'medium', 'high'];
 const RATES = [0.01, 0.05, 0.10, 0.20, 0.30];
 const seeds = (full: number) => range(1, quick ? Math.min(3, full) : full);
 
-const model = structuredClone((modelConfig as any).models[(modelConfig as any).activeModelId ?? 'ascore_v1'] ?? (modelConfig as any).models.ascore_v1);
+const model = structuredClone(modelConfig.models.ascore_v1);
 const types = Object.keys(ANOMALY_KIND) as AnomalyType[];
 
 type Cell = { type: AnomalyType; severity: AnomalySeverity; rate: number; seed: number };
@@ -132,4 +132,17 @@ writeFileSync(`${prefix}_run_meta.json`, JSON.stringify({
 }, null, 2));
 
 console.log(`Done: ${grid.length} trials in ${fmtSec(elapsedSec)} (${((elapsedSec * 1000) / grid.length).toFixed(1)} ms/trial)`);
+
+// ── public/experiments/latest_summary.json (same data as summary + batch + meta, for the web UI) ──
+const publicDir = join(process.cwd(), 'public', 'experiments');
+mkdirSync(publicDir, { recursive: true });
+writeFileSync(join(publicDir, quick ? 'latest_summary_quick.json' : 'latest_summary.json'), JSON.stringify({
+  meta: {
+    commit, startedAt: new Date(t0).toISOString(), elapsedSec, trials: grid.length, msPerTrial: (elapsedSec * 1000) / grid.length,
+    quick, modelId: model.id, configVersion: model.configVersion, referenceId: model.referenceDatasetId, forestSeed: 42,
+    severities: SEV, rates: RATES, files: `${stamp}_${commit}${quick ? '_quick' : ''}_*`,
+  },
+  summary,
+  batch,
+}));
 console.log(`→ ${prefix}_{trials_raw,summary,batch_summary}.csv, _run_meta.json`);

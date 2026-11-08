@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import AnomalyExperimentPanel from './components/AnomalyExperimentPanel';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -114,6 +115,7 @@ function MetricCard({ label, value, suffix = '', color = 'text-slate-200', small
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('sandbox');
+  const [sandboxSubTab, setSandboxSubTab] = useState<'reference' | 'experiment'>('reference');
   const [config, setConfig] = useState<ModelConfig | null>(null);
   const [monitorLogs, setMonitorLogs] = useState<MonitorLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -397,6 +399,21 @@ export default function Dashboard() {
              TAB: SANDBOX
           ════════════════════════════════════════════════════════ */
           activeTab === 'sandbox' ? (
+            <div className="space-y-4">
+            {/* Sandbox sub-tabs */}
+            <div className="flex items-center gap-1 bg-slate-900/60 border border-slate-800 rounded-xl p-1 w-fit">
+              {([['reference', '📋 Model Reference'], ['experiment', '🧪 Anomaly Experiment']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  id={`sandbox-subtab-${key}`}
+                  onClick={() => setSandboxSubTab(key)}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${sandboxSubTab === key ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {sandboxSubTab === 'reference' ? (
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
               {/* Left: Model Info + Config */}
               <div className="xl:col-span-1 space-y-4">
@@ -800,6 +817,10 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
+            </div>
+            ) : (
+              <AnomalyExperimentPanel />
+            )}
             </div>
 
           /* ════════════════════════════════════════════════════════

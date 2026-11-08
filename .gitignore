@@ -44,3 +44,5 @@ next-env.d.ts
 
 # local persistent store (dev only)
 .data/
+results/*_quick_*
+public/experiments/*_quick.json

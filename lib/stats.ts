@@ -16,12 +16,12 @@
 export const PSI_EPS = 0.0001;
 
 export interface DataPoint {
-  score: number;
-  label: number; // 0 = Good, 1 = Bad (Default)
+  score: number | null;
+  label: number | null; // 0 = Good, 1 = Bad (Default), null = missing
 }
 
-/** Which way the score points. A-Score: higher score = lower risk. */
-export type ScoreDirection = 'higher_is_better' | 'higher_is_riskier';
+/** Which way the score points. A-Score: higher score = lower risk ('higher_is_safer' / 'higher_is_better'). */
+export type ScoreDirection = 'higher_is_safer' | 'higher_is_better' | 'higher_is_riskier';
 
 // ─── Binning ────────────────────────────────────────────────────────────────
 export function getBinIndex(value: number, boundaries: number[]): number {
@@ -115,23 +115,40 @@ export function calculateCSIWithBins(baseValues: number[], actualValues: number[
 }
 
 // ─── Discrimination metrics ─────────────────────────────────────────────────
+interface ValidDataPoint {
+  score: number;
+  label: 0 | 1;
+}
+
+function validPoints(data: DataPoint[]): ValidDataPoint[] {
+  const out: ValidDataPoint[] = [];
+  for (const d of data) {
+    if (d.score !== null && Number.isFinite(d.score) && (d.label === 0 || d.label === 1)) {
+      out.push({ score: d.score, label: d.label });
+    }
+  }
+  return out;
+}
+
 /** Convert so that "higher = riskier", which the rank formulas below assume. */
-function orient(data: DataPoint[], direction: ScoreDirection): DataPoint[] {
-  return direction === 'higher_is_better' ? data.map(d => ({ score: -d.score, label: d.label })) : data;
+function orient(data: DataPoint[], direction: ScoreDirection): ValidDataPoint[] {
+  const valid = validPoints(data);
+  const safer = direction === 'higher_is_safer' || direction === 'higher_is_better';
+  return safer ? valid.map(d => ({ score: -d.score, label: d.label })) : valid;
 }
 
 /**
  * AUC via Mann–Whitney U with average ranks for ties.
  * AUC = P(score of a random Bad is riskier than a random Good).
  *
- * IMPORTANT: pass direction = 'higher_is_better' for A-Score. The previous
- * implementation assumed higher = riskier, which returns 1 − AUC for a
+ * IMPORTANT: pass direction = 'higher_is_safer' (or 'higher_is_better') for A-Score.
+ * The previous implementation assumed higher = riskier, which returns 1 − AUC for a
  * scorecard (e.g. 0.29 instead of 0.71).
  */
 export function calculateAUC(data: DataPoint[], direction: ScoreDirection = 'higher_is_riskier'): number {
-  const n = data.length;
-  if (n === 0) return 0.5;
   const d = orient(data, direction);
+  const n = d.length;
+  if (n === 0) return 0.5;
   const totalBad = d.filter(x => x.label === 1).length;
   const totalGood = n - totalBad;
   if (totalGood === 0 || totalBad === 0) return 0.5;
@@ -159,12 +176,13 @@ export function calculateGini(data: DataPoint[], direction: ScoreDirection = 'hi
  * tied scores (evaluating inside a tie group inflates KS — previous bug).
  */
 export function calculateKS(data: DataPoint[]): number {
-  if (data.length === 0) return 0;
-  const totalBad = data.filter(d => d.label === 1).length;
-  const totalGood = data.length - totalBad;
+  const valid = validPoints(data);
+  if (valid.length === 0) return 0;
+  const totalBad = valid.filter(d => d.label === 1).length;
+  const totalGood = valid.length - totalBad;
   if (totalGood === 0 || totalBad === 0) return 0;
 
-  const sorted = [...data].sort((a, b) => a.score - b.score);
+  const sorted = [...valid].sort((a, b) => a.score - b.score);
   let cumGood = 0, cumBad = 0, maxDiff = 0;
   for (let i = 0; i < sorted.length; i++) {
     if (sorted[i].label === 1) cumBad++; else cumGood++;
@@ -176,13 +194,14 @@ export function calculateKS(data: DataPoint[]): number {
 
 /** Cumulative lift in the riskiest `percentile` of the population. */
 export function calculateLift(data: DataPoint[], percentile = 0.1, direction: ScoreDirection = 'higher_is_riskier'): number {
-  const n = data.length;
+  const d = orient(data, direction);
+  const n = d.length;
   if (n === 0) return 0;
-  const totalBad = data.filter(d => d.label === 1).length;
+  const totalBad = d.filter(x => x.label === 1).length;
   if (totalBad === 0) return 0;
-  const sorted = [...orient(data, direction)].sort((a, b) => b.score - a.score);
+  const sorted = [...d].sort((a, b) => b.score - a.score);
   const cutOff = Math.max(1, Math.floor(n * percentile));
-  const topBad = sorted.slice(0, cutOff).filter(d => d.label === 1).length;
+  const topBad = sorted.slice(0, cutOff).filter(x => x.label === 1).length;
   return (topBad / cutOff) / (totalBad / n);
 }
 
@@ -200,9 +219,10 @@ export interface MetricReliability {
  * scoring the training data, or too few bad accounts.
  */
 export function assessMetricReliability(data: DataPoint[], auc: number, ks: number, minBads = 30): MetricReliability {
+  const valid = validPoints(data);
   const warnings: string[] = [];
-  const bads = data.filter(d => d.label === 1).length;
-  const goods = data.length - bads;
+  const bads = valid.filter(d => d.label === 1).length;
+  const goods = valid.length - bads;
   if (bads === 0 || goods === 0) warnings.push('มีเพียง class เดียว (ไม่มี Bad หรือไม่มี Good) — คำนวณ AUC/KS ไม่ได้');
   else if (bads < minBads) warnings.push(`จำนวน Bad มีเพียง ${bads} ราย (< ${minBads}) — AUC/KS แกว่งสูง ไม่ควรสรุปผล`);
   if (auc >= 0.99 || auc <= 0.01) warnings.push(`AUC = ${auc.toFixed(3)} สูง/ต่ำผิดปกติ — ตรวจ target leakage หรือ label ที่สร้างจาก score`);

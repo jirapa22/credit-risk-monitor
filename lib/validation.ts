@@ -16,6 +16,9 @@ export interface ValidationOptions {
   scoringFeatures: string[];
   idColumn?: string;
   dateColumn?: string;
+  labelColumn?: string;
+  /** Reference mean/median per feature (computed from Reference dataset; falls back to baselineDistribution when omitted). */
+  referenceStats?: Record<string, { mean: number; median: number }>;
   /** Block the run when more than this % of rows is rejected. */
   maxRejectedPct?: number;
   /** Warn when fewer valid rows than this (PSI becomes unstable). */
@@ -71,8 +74,8 @@ export function validateDataset(
   opts: ValidationOptions,
 ): ValidationOutput {
   const {
-    scoringFeatures, idColumn = 'customer_id', dateColumn = 'application_date',
-    maxRejectedPct = 50, minRowsForDrift = 100, malformedRows = [], maxIssues = 200,
+    scoringFeatures, idColumn = 'customer_id', dateColumn = 'application_date', labelColumn = 'default_flag',
+    referenceStats, maxRejectedPct = 50, minRowsForDrift = 100, malformedRows = [], maxIssues = 200,
   } = opts;
 
   const blockingErrors: ValidationIssue[] = [];
@@ -144,14 +147,19 @@ export function validateDataset(
       const v = raw[col];
       const required = def.required || scoringFeatures.includes(key);
       const strategy = def.validation?.missingStrategy ?? (required ? 'reject' : 'ignore');
-      const isLabel = def.dataType === 'binary' && key === 'default_flag';
+      const isLabel = def.dataType === 'binary' && (key === labelColumn || col === labelColumn);
 
       if (isBlank(v)) {
         if (strategy === 'reject' || (required && strategy === 'ignore')) {
           add('MISSING_VALUE', 'error', col, '', `"${def.displayName}" ว่าง — ตัวแปรนี้จำเป็นต่อการคำนวณคะแนน`);
         } else if (strategy === 'fillMean' || strategy === 'fillMedian' || strategy === 'fillDefault') {
+          const refStat = referenceStats?.[key];
           const bd = def.baselineDistribution ?? {};
-          const fill = strategy === 'fillMean' ? bd.mean : strategy === 'fillMedian' ? bd.median : def.validation?.defaultValue;
+          const fill = strategy === 'fillMean'
+            ? (refStat?.mean ?? bd.mean)
+            : strategy === 'fillMedian'
+              ? (refStat?.median ?? bd.median)
+              : def.validation?.defaultValue;
           if (isLabel) continue; // never impute the target
           if (typeof fill === 'number') {
             values[key] = fill; imputed.push(key);
@@ -186,6 +194,12 @@ export function validateDataset(
         }
         if (isLabel) label = n; else values[key] = n;
       }
+    }
+
+    // If labelColumn is present in raw data but was not in featureRegistry, parse it when valid 0/1 (never default to 0).
+    if (label === null && labelColumn && headerSet.has(labelColumn) && !isBlank(raw[labelColumn])) {
+      const n = parseNumber(raw[labelColumn]);
+      if (n === 0 || n === 1) label = n;
     }
 
     const id = isBlank(raw[idColumn]) ? `ROW_${rowNo}` : String(raw[idColumn]).trim();

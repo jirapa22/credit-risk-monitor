@@ -146,6 +146,30 @@ export interface ValidationResult {
 
 // ─── Drift detection ─────────────────────────────────────────────────────────
 export type DriftStatus = 'STABLE' | 'WARNING' | 'CRITICAL';
+export type DriftSectionStatus = DriftStatus | 'NOT_AVAILABLE';
+
+export interface DriftConfig {
+  /** KS two-sample D thresholds (ค่าเริ่มต้นชั่วคราว 0.10 / 0.20 — จะปรับให้แม่นขึ้นใน Step 11). */
+  ksWarning?: number;
+  ksCritical?: number;
+  /** Wasserstein-1 (scaled by Reference MAD/0.6745) thresholds (ค่าเริ่มต้นชั่วคราว 0.10 / 0.25 — จะปรับให้แม่นขึ้นใน Step 11). */
+  wassersteinWarning?: number;
+  wassersteinCritical?: number;
+  /** Missing-rate increase thresholds in proportion (0.02 = 2 จุด%, 0.05 = 5 จุด%). */
+  missingDeltaWarning?: number;
+  missingDeltaCritical?: number;
+  /** Minimum labeled rows in new data to evaluate label/concept drift (default 100). */
+  minLabeledRows?: number;
+  /** Relative bad-rate change thresholds (0.20 = 20%, 0.50 = 50%) when p < labelPValueThreshold. */
+  labelRelChangeWarning?: number;
+  labelRelChangeCritical?: number;
+  labelPValueThreshold?: number;
+  /** Minimum bads per bin on both Reference and actual to judge bin-level concept drift (default 5). */
+  minBadsPerBin?: number;
+  /** Relative Gini drop thresholds (0.10 = 10%, 0.25 = 25%). */
+  giniRelDropWarning?: number;
+  giniRelDropCritical?: number;
+}
 
 export interface BinContribution {
   label: string;
@@ -169,6 +193,171 @@ export interface DriftResult {
   csi: Record<string, StabilityResult & { displayName: string; source?: string }>;
   overallStatus: DriftStatus;
   triggered: string[];                        // e.g. ["psi", "csi:dti_ratio"]
+}
+
+// ─── Full Drift Report (Step 8: covariate / missing / label / concept) ───────
+export interface DistributionStats {
+  n: number;
+  mean: number;
+  median: number;
+  sd: number;
+  iqr: number;
+  p5: number;
+  p95: number;
+  skewness: number;
+  excessKurtosis: number;
+}
+
+export interface DistributionProfile {
+  reference: DistributionStats;
+  actual: DistributionStats;
+  pctChange: {
+    mean: number | null;
+    median: number | null;
+    sd: number | null;
+    iqr: number | null;
+    p5: number | null;
+    p95: number | null;
+    skewness: number | null;
+    excessKurtosis: number | null;
+  };
+}
+
+export interface KsTwoSampleResult {
+  d: number;
+  /** Asymptotic p-value — informational only, never used to determine status. */
+  pValue: number;
+  status: DriftStatus;
+  threshold: { warning: number; critical: number };
+}
+
+export interface WassersteinResult {
+  raw: number;
+  /** Divided by Reference robust scale (MAD / 0.6745) on the transformed scale. */
+  scaled: number;
+  referenceScale: number;
+  transform: AnomalyTransform;
+  status: DriftStatus;
+  threshold: { warning: number; critical: number };
+}
+
+export interface CovariateFeatureReport {
+  key: string;
+  displayName: string;
+  kind: 'feature' | 'score';
+  status: DriftSectionStatus;
+  reason: string;
+  psiOrCsi: StabilityResult | null;
+  distributionProfile: DistributionProfile | null;
+  ks: KsTwoSampleResult | null;
+  wasserstein: WassersteinResult | null;
+}
+
+export interface MissingFeatureReport {
+  key: string;
+  displayName: string;
+  referenceMissingRate: number;
+  actualMissingRate: number;
+  /** actualMissingRate - referenceMissingRate (in proportion, e.g. 0.02 = +2 percentage points). */
+  deltaMissingRate: number;
+  /** deltaMissingRate * 100 (percentage points). */
+  deltaPercentagePoints: number;
+  actualMissingCount: number;
+  imputedCount: number;
+  imputedRate: number;
+  status: DriftStatus;
+  reason: string;
+}
+
+export interface LabelDriftMetrics {
+  referenceLabeledRows: number;
+  referenceBadCount: number;
+  referenceBadRate: number;
+  actualLabeledRows: number;
+  actualBadCount: number;
+  actualBadRate: number;
+  absoluteChange: number;
+  relativeChange: number | null;
+  zStat: number | null;
+  pValue: number | null;
+  threshold: {
+    minLabeledRows: number;
+    relChangeWarning: number;
+    relChangeCritical: number;
+    pValueThreshold: number;
+  };
+}
+
+export interface ConceptBinBadRate {
+  label: string;
+  referenceTotal: number;
+  referenceBads: number;
+  referenceBadRate: number | null;
+  actualTotal: number;
+  actualBads: number;
+  actualBadRate: number | null;
+  ratio: number | null;
+  deltaBadRate: number | null;
+  lowSample: boolean;
+  note?: string;
+}
+
+export interface ConceptFeatureReport {
+  key: string;
+  displayName: string;
+  bins: ConceptBinBadRate[];
+  maxBinRatio: number | null;
+  status: DriftSectionStatus;
+  reason: string;
+}
+
+export interface ConceptPerformanceReport {
+  status: DriftSectionStatus;
+  reason: string;
+  reliable: boolean;
+  reliabilityWarnings: string[];
+  reference: { n: number; bads: number; auc: number; gini: number; ks: number } | null;
+  actual: { n: number; bads: number; auc: number; gini: number; ks: number } | null;
+  relativeChange: { auc: number | null; gini: number | null; ks: number | null } | null;
+  thresholds: {
+    auc_min: number;
+    gini_min: number;
+    ks_min: number;
+    giniRelDropWarning: number;
+    giniRelDropCritical: number;
+  };
+}
+
+export interface DriftReportSection<T> {
+  status: DriftSectionStatus;
+  reason: string;
+  metrics: T;
+}
+
+export interface DriftReportSummaryMetrics {
+  overallStatus: DriftStatus;
+  driftTypesDetected: string[];
+  notAvailable: { section: string; reason: string }[];
+}
+
+export interface DriftReport {
+  model: ModelVersionRef;
+  referenceId: string;
+  covariate: DriftReportSection<{
+    features: Record<string, CovariateFeatureReport>;
+    score: CovariateFeatureReport;
+  }>;
+  missing: DriftReportSection<{
+    features: Record<string, MissingFeatureReport>;
+    threshold: { warningDelta: number; criticalDelta: number };
+  }>;
+  label: DriftReportSection<LabelDriftMetrics | null>;
+  concept: DriftReportSection<{
+    features: Record<string, ConceptFeatureReport>;
+    performance: ConceptPerformanceReport;
+    minBadsPerBin: number;
+  } | null>;
+  summary: DriftReportSection<DriftReportSummaryMetrics> & DriftReportSummaryMetrics;
 }
 
 // ─── Anomaly detection (layers 3–4) ─────────────────────────────────────────
@@ -239,6 +428,8 @@ export interface MonitoringRun {
   anomaly?: AnomalyResult | null;
   /** What-if: drift with every flagged row removed. null when nothing was flagged. */
   driftExcludingFlagged?: DriftResult | null;
+  /** Full 5-section drift report (covariate / missing / label / concept / summary). Optional for backward compatibility. */
+  driftReport?: DriftReport | null;
   /** Audit trail: rows the user chose to exclude from the official drift. */
   excludedRows?: number[];
   uploadSummary?: unknown;

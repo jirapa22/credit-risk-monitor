@@ -14,6 +14,7 @@ import { validateDataset, isValidDate, type CleanRow } from './validation';
 import { calculateAScore, scoreToPD } from './scoring';
 import { getReferenceProfile } from './reference';
 import { runDriftDetection, resolveCsiFeatures } from './drift';
+import { buildDriftReport, computeDistributionStats } from './driftReport';
 import { getBinIndex } from './stats';
 import { runAnomalyScreening, truncateAnomalyResult, resolveAnomalyConfig, referenceFlaggedIndices, referenceWithout } from './anomaly';
 
@@ -43,11 +44,15 @@ function toPeriod(raw: unknown): string | null {
   return m ? `${m[2]}-${m[1].padStart(2, '0')}` : null;
 }
 
-export function buildUploadSummary(rows: Record<string, unknown>[], registry: Record<string, FeatureDefinition>) {
+export function buildUploadSummary(
+  rows: Record<string, unknown>[],
+  registry: Record<string, FeatureDefinition>,
+  dateColumn: string | null = 'application_date',
+) {
   const total = rows.length || 1;
   const periodCounts: Record<string, number> = {};
   for (const r of rows) {
-    const p = toPeriod(r['application_date']) ?? UNKNOWN_PERIOD;
+    const p = (dateColumn ? toPeriod(r[dateColumn]) : null) ?? UNKNOWN_PERIOD;
     periodCounts[p] = (periodCounts[p] || 0) + 1;
   }
   const periods = Object.entries(periodCounts)
@@ -77,10 +82,21 @@ function riskGradeDistribution(scores: number[]) {
 
 export function runMonitoring(input: MonitoringInput) {
   const { model, fileName, anomalyScreening = true } = input;
-  const scoring = model.scoring as ScoringConfig;
+  const scoring = (model.scoring ?? { base_points: 0, factor: 1, offset: 0, features: [], scorecard: {} }) as ScoringConfig;
   const registry = (model.featureRegistry ?? {}) as Record<string, FeatureDefinition>;
   const thresholds = model.thresholds as MonitoringThresholds;
   const referenceId: string = model.referenceDatasetId;
+  const idColumn: string = model.idColumn ?? 'customer_id';
+  const dateColumn: string | null = model.dateColumn === null || model.dateColumn === '' ? null : (model.dateColumn ?? 'application_date');
+  const labelColumn: string = model.labelColumn ?? 'default_flag';
+  const scoreColumn: string | undefined = model.scoreColumn ?? undefined;
+
+  const reference = getReferenceProfile(referenceId, scoring, { labelColumn, scoreColumn });
+  const referenceStats: Record<string, { mean: number; median: number }> = {};
+  for (const [k, vals] of Object.entries(reference.features)) {
+    const st = computeDistributionStats(vals);
+    referenceStats[k] = { mean: st.mean, median: st.median };
+  }
 
   // ── Parse ──
   let headers: string[]; let rows: Record<string, unknown>[]; let malformedRows: { row: number; expected: number; actual: number }[] = [];
@@ -94,10 +110,15 @@ export function runMonitoring(input: MonitoringInput) {
 
   // ── [1] Validation ──
   const { result: validation, rows: clean } = validateDataset(rows, headers, registry, {
-    scoringFeatures: scoring.features, malformedRows,
+    scoringFeatures: scoring.features ?? [],
+    idColumn,
+    dateColumn: dateColumn ?? '',
+    labelColumn,
+    referenceStats,
+    malformedRows,
     ...(input.maxValidationIssues !== undefined ? { maxIssues: input.maxValidationIssues } : {}),
   });
-  const uploadSummary = buildUploadSummary(rows, registry);
+  const uploadSummary = buildUploadSummary(rows, registry, dateColumn);
 
   const run: MonitoringRun = {
     runId: `mon_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -112,12 +133,11 @@ export function runMonitoring(input: MonitoringInput) {
     drift: null,
     anomaly: null,
     driftExcludingFlagged: null,
+    driftReport: null,
     excludedRows: [],
     uploadSummary,
   };
   if (!validation.ok) return { run, scored: [] as ReturnType<typeof scoreRows>, riskGradeDist: [], skipped: {} };
-
-  const reference = getReferenceProfile(referenceId, scoring);
 
   // ── [2] Anomaly screening (warning-only, on CleanRow) ──
   let flagged = new Set<number>();
@@ -134,14 +154,28 @@ export function runMonitoring(input: MonitoringInput) {
   const official = excludeSet.size ? clean.filter(r => !excludeSet.has(r.row)) : clean;
 
   // ── [3] Scoring ──
+  const hasScorecard = Boolean(
+    scoring.scorecard && Object.keys(scoring.scorecard).length > 0 && (scoring.features?.length ?? 0) > 0,
+  );
   const scored = scoreRows(official, scoring);
+  const officialScores = hasScorecard
+    ? scored.map(s => s.aScore)
+    : scoreColumn
+      ? official.map(r => r.values[scoreColumn]).filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+      : [];
 
   // ── [4] Drift (official) ──
   const minRows = ValidationDefaults.minRowsForDrift;
   let skipped: Record<string, string> = {};
   if (official.length > 0) {
-    const r = driftFor(reference, official, scored.map(s => s.aScore), registry, thresholds);
+    const r = driftFor(reference, official, officialScores, registry, thresholds);
     skipped = r.skipped; run.drift = r.drift;
+    run.driftReport = buildDriftReport(reference, model, {
+      cleanRows: official,
+      rawRows: rows,
+      driftResult: run.drift,
+      actualScores: officialScores,
+    });
   }
 
   // ── [4b] What-if drift without flagged rows ──
@@ -186,17 +220,22 @@ function driftFor(
   return { drift, skipped };
 }
 function scoreRows(clean: CleanRow[], scoring: ScoringConfig) {
+  const hasCard = Boolean(scoring?.scorecard && Object.keys(scoring.scorecard).length > 0 && scoring.features?.length);
   return clean.map(r => {
-    const aScore = calculateAScore(scoring, r.values);
+    const aScore = hasCard ? calculateAScore(scoring, r.values) : 0;
     const bins: Record<string, number> = {};
-    for (const f of scoring.features) bins[`${f}_bin`] = getBinIndex(r.values[f], scoring.scorecard[f].bins);
+    if (hasCard) {
+      for (const f of scoring.features) {
+        if (scoring.scorecard[f]?.bins) bins[`${f}_bin`] = getBinIndex(r.values[f], scoring.scorecard[f].bins);
+      }
+    }
     return {
       row: r.row,
       customer_id: r.id,
-      ...Object.fromEntries(scoring.features.map(f => [f, r.values[f]])),
+      ...Object.fromEntries((scoring.features ?? []).map(f => [f, r.values[f]])),
       ...bins,
       aScore,
-      pd: scoreToPD(scoring, aScore),
+      pd: hasCard ? scoreToPD(scoring, aScore) : 0,
       defaultLabel: r.label,
       imputed: r.imputed,
     };

@@ -32,5 +32,8 @@ export function toLegacyLog(run: MonitoringRun) {
     flaggedPct: run.anomaly?.flaggedPct ?? null,
     excludedCount: run.excludedRows?.length ?? 0,
     verdictExcludingFlagged: run.driftExcludingFlagged?.overallStatus ?? null,
+    // ── Full Drift Report (Step 8) ──
+    driftReportStatus: run.driftReport?.summary.overallStatus ?? null,
+    driftTypesDetected: run.driftReport?.summary.driftTypesDetected ?? [],
   };
 }

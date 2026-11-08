@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       logEntry: toLegacyLog(run),
       anomaly: run.anomaly ?? null,
       driftExcludingFlagged: run.driftExcludingFlagged ?? null,
+      driftReport: run.driftReport ?? null,
       excludedRows: run.excludedRows ?? [],
     };
 

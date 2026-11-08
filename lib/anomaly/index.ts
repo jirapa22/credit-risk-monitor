@@ -85,12 +85,17 @@ export function referenceFlaggedIndices(reference: ReferenceProfile, model: any)
 /** Reference without the given rows. scoreBoundaries are KEPT from the full reference (never recomputed). */
 export function referenceWithout(reference: ReferenceProfile, drop: Set<number>): ReferenceProfile {
   const keep = (_: unknown, i: number) => !drop.has(i);
+  const labels = reference.labels.filter(keep);
   return {
     meta: reference.meta,
     features: Object.fromEntries(Object.entries(reference.features).map(([k, v]) => [k, v.filter(keep)])),
-    labels: reference.labels.filter(keep),
+    labels,
+    hasLabels: labels.some(l => l !== null),
     scores: reference.scores.filter(keep),
+    hasScores: reference.hasScores,
     scoreBoundaries: reference.scoreBoundaries,
+    missingCount: reference.missingCount,
+    missingRate: reference.missingRate,
   };
 }
 

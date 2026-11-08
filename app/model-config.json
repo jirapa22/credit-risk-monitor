@@ -9,6 +9,10 @@
       "createdAt": "2026-01-15T00:00:00Z",
       "status": "active",
       "referenceDatasetId": "ascore_v1_dev855",
+      "idColumn": "customer_id",
+      "dateColumn": "application_date",
+      "labelColumn": "default_flag",
+      "scoreDirection": "higher_is_safer",
 
       "configVersion": "1.1.0",
       "configStatus": "published",
@@ -305,6 +309,22 @@
           "loan_amount":    { "label": "Loan Amount",    "source": "WOE-transformed — วงเงินกู้ที่ขอจากใบสมัคร", "threshold": 0.10, "bins": [46000, 63000, 81000, 112000], "bin_labels": ["≤46,000", "46,001–63,000", "63,001–81,000", "81,001–112,000", ">112,000"] },
           "dti_ratio":      { "label": "DTI Ratio",      "source": "WOE-transformed — อัตราส่วนหนี้ต่อรายได้ (existing_monthly_debt / monthly_income)", "threshold": 0.10, "bins": [0.264, 0.360, 0.470, 0.606], "bin_labels": ["≤0.264", "0.265–0.360", "0.361–0.470", "0.471–0.606", ">0.606"] }
         }
+      },
+
+      "driftConfig": {
+        "ksWarning": 0.10,
+        "ksCritical": 0.20,
+        "wassersteinWarning": 0.10,
+        "wassersteinCritical": 0.25,
+        "missingDeltaWarning": 0.02,
+        "missingDeltaCritical": 0.05,
+        "minLabeledRows": 100,
+        "labelRelChangeWarning": 0.20,
+        "labelRelChangeCritical": 0.50,
+        "labelPValueThreshold": 0.05,
+        "minBadsPerBin": 5,
+        "giniRelDropWarning": 0.10,
+        "giniRelDropCritical": 0.25
       }
     }
   }

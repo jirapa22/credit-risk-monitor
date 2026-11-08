@@ -26,6 +26,9 @@ export interface KeyValueStore {
   /** prepend to a list and keep at most `max` items */
   listPush(key: string, value: unknown, max: number): Promise<void>;
   listRange<T>(key: string, limit: number): Promise<T[]>;
+  /** Synchronous read/write for local MemoryStore / FileStore when called inside synchronous pipeline functions. */
+  peek?<T>(key: string): T | null;
+  putSync?(key: string, value: unknown): void;
 }
 
 // ─── Upstash ────────────────────────────────────────────────────────────────
@@ -86,6 +89,8 @@ class MemoryStore implements KeyValueStore {
     this.flush();
   }
   async listRange<T>(key: string, limit: number) { return ((this.data[key] as T[]) ?? []).slice(0, limit); }
+  peek<T>(key: string): T | null { return (this.data[key] as T) ?? null; }
+  putSync(key: string, value: unknown): void { this.data[key] = structuredClone(value); this.flush(); }
 }
 
 class FileStore extends MemoryStore {

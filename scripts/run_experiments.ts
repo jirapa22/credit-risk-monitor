@@ -14,7 +14,7 @@ import { execSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import modelConfig from '../app/model-config.json';
-import { runTrial, DETECTORS, stat, rate as rateStat, type TrialResult } from '../lib/experiment';
+import { runTrial, DETECTORS, stat, rate as rateStat, summarizeTriggerActions, type TrialResult } from '../lib/experiment';
 import { ANOMALY_KIND, SEVERITY_TABLE, EXPECTED_LAYER } from '../lib/injection';
 import type { AnomalySeverity, AnomalyType } from '../lib/types';
 
@@ -83,6 +83,7 @@ for (const { cell, t } of results) for (const det of DETECTORS) {
     blocked: t.file.blocked, alarm: t.file.alarm, alarm_excl_flagged: t.file.alarmExcludingFlagged,
     falseAlarm: t.file.falseAlarm, rescued: t.file.rescued, detected: t.file.detected, preserved: t.file.preserved,
     routed_layer: t.file.routedLayer, routingCorrect: t.file.routingCorrect,
+    trigger_action: t.triggerAction,
     status: t.drift?.status ?? 'BLOCKED', psi: t.drift?.psi, ...csiCols('', t.drift),
     status_excl: t.driftExcludingFlagged?.status ?? '', psi_excl: t.driftExcludingFlagged?.psi, ...csiCols('excl_', t.driftExcludingFlagged),
     rows: t.rowCount, injected: t.injectedCount, ms: +t.timingMs.toFixed(1),
@@ -117,7 +118,7 @@ for (const { cell, ts } of groups.values()) {
     Object.assign(row, { [`${f}_rate`]: s.mean, [`${f}_ci_low`]: s.ciLow, [`${f}_ci_high`]: s.ciHigh });
   }
   const psi = stat(ts.map(t => t.drift?.psi)), psiEx = stat(ts.map(t => t.driftExcludingFlagged?.psi ?? t.drift?.psi));
-  Object.assign(row, { psi_mean: psi.mean, psi_sd: psi.sd, psi_excl_mean: psiEx.mean, psi_excl_sd: psiEx.sd });
+  Object.assign(row, { psi_mean: psi.mean, psi_sd: psi.sd, psi_excl_mean: psiEx.mean, psi_excl_sd: psiEx.sd }, summarizeTriggerActions(ts));
   batch.push(row);
 }
 writeCsv(`${prefix}_batch_summary.csv`, batch);

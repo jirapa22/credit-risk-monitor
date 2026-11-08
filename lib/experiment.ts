@@ -13,13 +13,23 @@
  * File-level: alarm = drift.overallStatus ≠ STABLE (and not blocked).
  * The Isolation Forest seed is fixed at 42; only the injection seed varies.
  */
-import type { AnomalyMethod, AnomalySeverity, AnomalyType, DriftResult, ExpectedLayer, MonitoringRun } from './types';
+import type { AnomalyMethod, AnomalySeverity, AnomalyType, DriftResult, ExpectedLayer, MonitoringRun, TriggerAction } from './types';
 import { injectAnomaly, expectedFor, type InjectionParams, type InjectionSpec, type InjectionKind } from './injection';
 import { runMonitoring } from './monitoring';
 
 export const DETECTORS = ['validation', 'iqr', 'mad', 'cross_field', 'isolation_forest', 'lof', 'anomaly_any', 'all_layers'] as const;
 export type Detector = typeof DETECTORS[number];
 const ANOMALY_METHODS: AnomalyMethod[] = ['iqr', 'mad', 'cross_field', 'isolation_forest', 'lof'];
+
+export const TRIGGER_ACTIONS: readonly TriggerAction[] = [
+  'CONTINUE',
+  'MONITOR_CLOSELY',
+  'INVESTIGATE_DATA',
+  'INVESTIGATE_DRIFT',
+  'RECALIBRATE',
+  'CONSIDER_RETRAIN',
+  'BLOCKED_INVALID_DATA',
+] as const;
 
 export interface DetectorMetrics {
   n: number;                 // rows in this detector's universe (= TP+FP+FN+TN)
@@ -52,6 +62,7 @@ export interface TrialResult {
   file: FileMetrics;
   drift: DriftSnapshot | null;
   driftExcludingFlagged: DriftSnapshot | null;
+  triggerAction: TriggerAction;
   timingMs: number;
 }
 
@@ -131,11 +142,15 @@ export function evaluateTrial(run: MonitoringRun, inj: ReturnType<typeof injectA
     routingCorrect: kind === 'drift' ? alarm : routedLayer === expected.layer,
   };
 
+  const triggerAction: TriggerAction =
+    run.trigger?.action ?? (blocked ? 'BLOCKED_INVALID_DATA' : 'CONTINUE');
+
   return {
     spec: inj.spec, expected, kind,
     rowCount: all.length, injectedCount: injected.length,
     detectors, file,
     drift: snap(run.drift), driftExcludingFlagged: snap(run.driftExcludingFlagged),
+    triggerAction,
   };
 }
 
@@ -146,6 +161,7 @@ export function runTrial(model: any, params: InjectionParams): TrialResult {
   const { run } = runMonitoring({
     model: m, fileName: `trial_${params.type}.csv`, csvText: inj.csvText,
     maxValidationIssues: Infinity, maxStoredFlaggedRows: Infinity,
+    history: [], recordTriggerEvent: false,
   });
   return { ...evaluateTrial(run, inj), timingMs: performance.now() - t0 };
 }
@@ -169,5 +185,27 @@ export function stat(values: (number | null | undefined)[]): Stat {
   return { n, mean, sd, ciLow: mean - h, ciHigh: mean + h };
 }
 export const rate = (values: (boolean | null)[]) => stat(values.map(b => (b === null ? null : b ? 1 : 0)));
+
+/** Proportion of each TriggerAction across a list of trials (for batch_summary.csv). */
+export function summarizeTriggerActions(trials: TrialResult[]): Record<string, number> {
+  const n = trials.length;
+  const counts: Record<TriggerAction, number> = {
+    CONTINUE: 0,
+    MONITOR_CLOSELY: 0,
+    INVESTIGATE_DATA: 0,
+    INVESTIGATE_DRIFT: 0,
+    RECALIBRATE: 0,
+    CONSIDER_RETRAIN: 0,
+    BLOCKED_INVALID_DATA: 0,
+  };
+  for (const t of trials) {
+    if (t.triggerAction in counts) counts[t.triggerAction]++;
+  }
+  const out: Record<string, number> = {};
+  for (const act of TRIGGER_ACTIONS) {
+    out[`action_${act}_rate`] = n > 0 ? counts[act] / n : 0;
+  }
+  return out;
+}
 
 export type { AnomalySeverity, AnomalyType };

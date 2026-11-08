@@ -35,5 +35,8 @@ export function toLegacyLog(run: MonitoringRun) {
     // ── Full Drift Report (Step 8) ──
     driftReportStatus: run.driftReport?.summary.overallStatus ?? null,
     driftTypesDetected: run.driftReport?.summary.driftTypesDetected ?? [],
+    // ── Trigger Decision (Step 9) ──
+    triggerAction: run.trigger?.action ?? null,
+    triggerSeverity: run.trigger?.severity ?? null,
   };
 }

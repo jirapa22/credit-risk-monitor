@@ -412,6 +412,107 @@ export interface AnomalyResult {
   configSnapshot: AnomalyConfigSnapshot;
 }
 
+// ─── Trigger & Recommended Actions (Step 9: MLOps Monitoring → Trigger) ──────
+export type TriggerAction =
+  | 'CONTINUE'
+  | 'MONITOR_CLOSELY'
+  | 'INVESTIGATE_DATA'
+  | 'INVESTIGATE_DRIFT'
+  | 'RECALIBRATE'
+  | 'CONSIDER_RETRAIN'
+  | 'BLOCKED_INVALID_DATA';
+
+export type TriggerSeverity = 'info' | 'warning' | 'critical';
+
+export type TriggerSectionName = 'covariate' | 'missing' | 'label' | 'concept' | 'overall';
+
+export type TriggerCondition =
+  | { type: 'validationBlocked' }
+  | { type: 'sectionStatus'; section: TriggerSectionName; atLeast: 'WARNING' | 'CRITICAL' }
+  | { type: 'driftResolvedByExclusion' }
+  | { type: 'flaggedPctAbove'; multiplierOfReference: number }
+  | { type: 'persistence'; section: TriggerSectionName; atLeast: 'WARNING' | 'CRITICAL'; runs: number }
+  | { type: 'not'; condition: TriggerCondition };
+
+export interface TriggerRule {
+  id: string;
+  priority: number;
+  when: TriggerCondition[];
+  action: TriggerAction;
+  severity: TriggerSeverity;
+  message: string;
+  recommendedSteps: string[];
+}
+
+export interface TriggerConfig {
+  rules?: TriggerRule[];
+}
+
+export interface TriggerEvidence {
+  validation?: {
+    ok: boolean;
+    totalRows: number;
+    validRows: number;
+    rejectedRows: number;
+    rejectedPct: number;
+    blockingErrorCount: number;
+  } | null;
+  anomaly?: {
+    flaggedRowCount: number;
+    flaggedPct: number;
+    referenceFlaggedCount: number;
+    referenceFlaggedPct: number;
+    byMethod: AnomalyResult['byMethod'];
+  } | null;
+  driftReport?: {
+    overallStatus?: DriftStatus;
+    driftTypesDetected?: string[];
+    covariateStatus?: DriftSectionStatus;
+    missingStatus?: DriftSectionStatus;
+    labelStatus?: DriftSectionStatus;
+    conceptStatus?: DriftSectionStatus;
+    officialDriftStatus?: DriftStatus | null;
+    driftExcludingFlaggedStatus?: DriftStatus | null;
+  } | null;
+}
+
+export interface TriggerDecision {
+  action: TriggerAction;
+  severity: TriggerSeverity;
+  matchedRuleId: string;
+  reasons: string[];
+  evidence: TriggerEvidence;
+  recommendedSteps: string[];
+  requiresHumanReview: boolean;
+  configWarnings?: string[];
+}
+
+export type TriggerReviewDecision =
+  | 'ACCEPTED'
+  | 'DISMISSED'
+  | 'RETRAIN_SCHEDULED'
+  | 'RECALIBRATED';
+
+export interface TriggerReview {
+  decision: TriggerReviewDecision;
+  note: string;
+  reviewer: string;
+  reviewedAt: string;
+}
+
+export type TriggerEventStatus = 'OPEN' | 'REVIEWED';
+
+export interface TriggerEvent {
+  eventId: string;
+  runId: string;
+  createdAt: string;
+  model: ModelVersionRef;
+  referenceId: string;
+  decision: TriggerDecision;
+  status: TriggerEventStatus;
+  review: TriggerReview | null;
+}
+
 // ─── Persisted runs ──────────────────────────────────────────────────────────
 export interface MonitoringRun {
   runId: string;
@@ -430,6 +531,8 @@ export interface MonitoringRun {
   driftExcludingFlagged?: DriftResult | null;
   /** Full 5-section drift report (covariate / missing / label / concept / summary). Optional for backward compatibility. */
   driftReport?: DriftReport | null;
+  /** MLOps trigger decision (Step 9). Optional for backward compatibility. */
+  trigger?: TriggerDecision | null;
   /** Audit trail: rows the user chose to exclude from the official drift. */
   excludedRows?: number[];
   uploadSummary?: unknown;
@@ -482,6 +585,7 @@ export interface ExperimentRun {
   metrics?: Record<string, { n: number; TP: number; FP: number; FN: number; TN: number; precision: number | null; recall: number | null; f1: number | null; flagRate: number | null }>;
   fileMetrics?: { blocked: boolean; alarm: boolean; alarmExcludingFlagged: boolean; falseAlarm: boolean | null; rescued: boolean | null; detected: boolean | null; preserved: boolean | null; routedLayer: ExpectedLayer; routingCorrect: boolean };
   driftExcludingFlagged?: { overallStatus: DriftStatus; psi: number; csi: Record<string, number> } | null;
+  triggerAction?: TriggerAction;
   notes?: string;
 }
 

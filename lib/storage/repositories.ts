@@ -7,10 +7,21 @@
  * different thresholds stay distinguishable.
  */
 import modelConfigJson from '../../app/model-config.json';
-import type { ExperimentRun, MonitoringRun, MonitoringThresholds, ModelVersionRef, StoredRun } from '../types';
+import type {
+  ExperimentRun,
+  MonitoringRun,
+  MonitoringThresholds,
+  ModelVersionRef,
+  StoredRun,
+  TriggerEvent,
+  TriggerEventStatus,
+  TriggerReviewDecision,
+} from '../types';
 import { getStore } from './store';
 
 const MAX_RUNS = 500;
+const MAX_EVENTS = 500;
+const knownEventModelIds = new Set<string>(Object.keys((modelConfigJson as any).models ?? {}));
 
 // ─── Model config ───────────────────────────────────────────────────────────
 export interface ConfigOverride {
@@ -75,9 +86,117 @@ export async function resetOverrides(modelId: string) {
 
 // ─── Runs (monitoring + sandbox) ────────────────────────────────────────────
 const runsKey = (kind: StoredRun['kind'], modelId: string) => `runs:${kind}:${modelId}`;
+const eventsKey = (modelId: string) => `events:${modelId}`;
+
+export function createTriggerEventFromRun(run: MonitoringRun): TriggerEvent | null {
+  if (!run.trigger || run.trigger.action === 'CONTINUE') return null;
+  return {
+    eventId: `evt_${run.model.modelId}_${run.runId}`,
+    runId: run.runId,
+    createdAt: run.createdAt,
+    model: run.model,
+    referenceId: run.referenceId,
+    decision: run.trigger,
+    status: 'OPEN',
+    review: null,
+  };
+}
+
+/** Synchronous history lookup when using local MemoryStore or FileStore. */
+export function getMonitoringHistorySync(modelId: string, referenceId?: string): MonitoringRun[] {
+  const s = getStore();
+  if (!s.peek) return [];
+  const list = s.peek<MonitoringRun[]>(runsKey('monitoring', modelId)) ?? [];
+  return referenceId ? list.filter(r => r.referenceId === referenceId) : list;
+}
+
+/** Synchronous event persistence when using local MemoryStore or FileStore. */
+export function recordTriggerEventSync(run: MonitoringRun): TriggerEvent | null {
+  const ev = createTriggerEventFromRun(run);
+  if (!ev) return null;
+  knownEventModelIds.add(ev.model.modelId);
+  const s = getStore();
+  if (s.peek && s.putSync) {
+    const key = eventsKey(ev.model.modelId);
+    const list = s.peek<TriggerEvent[]>(key) ?? [];
+    if (!list.some(x => x.eventId === ev.eventId || x.runId === ev.runId)) {
+      s.putSync(key, [ev, ...list].slice(0, MAX_EVENTS));
+    }
+  }
+  return ev;
+}
+
+export async function saveTriggerEvent(ev: TriggerEvent): Promise<TriggerEvent> {
+  knownEventModelIds.add(ev.model.modelId);
+  const s = getStore();
+  const key = eventsKey(ev.model.modelId);
+  const list = (await s.get<TriggerEvent[]>(key)) ?? [];
+  const filtered = list.filter(x => x.eventId !== ev.eventId && x.runId !== ev.runId);
+  await s.set(key, [ev, ...filtered].slice(0, MAX_EVENTS));
+  return ev;
+}
+
+export async function listTriggerEvents(opts: {
+  modelId?: string;
+  status?: TriggerEventStatus;
+} = {}): Promise<TriggerEvent[]> {
+  const s = getStore();
+  const modelIds = opts.modelId ? [opts.modelId] : [...knownEventModelIds];
+  const all: TriggerEvent[] = [];
+  for (const mId of modelIds) {
+    const list = (await s.get<TriggerEvent[]>(eventsKey(mId))) ?? [];
+    all.push(...list);
+  }
+  return opts.status ? all.filter(e => e.status === opts.status) : all;
+}
+
+export async function reviewTriggerEvent(
+  eventId: string,
+  payload: { decision: TriggerReviewDecision; note?: string; reviewer?: string },
+): Promise<
+  | { status: 'ok'; event: TriggerEvent }
+  | { status: 'already_reviewed'; event: TriggerEvent }
+  | { status: 'not_found' }
+> {
+  const s = getStore();
+  const modelIds = new Set<string>(knownEventModelIds);
+  // Extract modelId if eventId has pattern evt_<modelId>_mon_...
+  const m = eventId.match(/^evt_(.+)_mon_/);
+  if (m?.[1]) modelIds.add(m[1]);
+
+  for (const mId of modelIds) {
+    const key = eventsKey(mId);
+    const list = (await s.get<TriggerEvent[]>(key)) ?? [];
+    const idx = list.findIndex(e => e.eventId === eventId);
+    if (idx === -1) continue;
+    const current = list[idx];
+    if (current.status === 'REVIEWED' || current.review !== null) {
+      return { status: 'already_reviewed', event: current };
+    }
+    const updated: TriggerEvent = {
+      ...current,
+      status: 'REVIEWED',
+      review: {
+        decision: payload.decision,
+        note: payload.note ?? '',
+        reviewer: payload.reviewer ?? 'unknown',
+        reviewedAt: new Date().toISOString(),
+      },
+    };
+    const nextList = [...list];
+    nextList[idx] = updated;
+    await s.set(key, nextList);
+    return { status: 'ok', event: updated };
+  }
+  return { status: 'not_found' };
+}
 
 export async function saveRun(run: StoredRun) {
   await getStore().listPush(runsKey(run.kind, run.model.modelId), run, MAX_RUNS);
+  if (run.kind === 'monitoring') {
+    const ev = createTriggerEventFromRun(run);
+    if (ev) await saveTriggerEvent(ev);
+  }
 }
 
 export async function listRuns<T extends StoredRun = StoredRun>(
@@ -96,4 +215,4 @@ export function storageInfo() {
   return { kind: s.kind, persistent: s.persistent };
 }
 
-export type { MonitoringRun, ExperimentRun, ModelVersionRef };
+export type { MonitoringRun, ExperimentRun, ModelVersionRef, TriggerEvent };

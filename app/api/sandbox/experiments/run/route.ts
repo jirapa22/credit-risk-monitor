@@ -62,6 +62,7 @@ export async function POST(request: Request) {
         metrics: t.detectors,
         fileMetrics: t.file,
         driftExcludingFlagged: t.driftExcludingFlagged ? { overallStatus: t.driftExcludingFlagged.status as DriftStatus, psi: t.driftExcludingFlagged.psi, csi: t.driftExcludingFlagged.csi } : null,
+        triggerAction: t.triggerAction,
       };
       try { await saveRun(run); } catch (e) { storageError = String(e); }
       runs.push(run);
@@ -89,6 +90,7 @@ export async function POST(request: Request) {
         seed: t.spec.seed, kind: t.kind, rowCount: t.rowCount, injectedCount: t.injectedCount,
         routedLayer: t.file.routedLayer, routingCorrect: t.file.routingCorrect, blocked: t.file.blocked,
         drift: t.drift, driftExcludingFlagged: t.driftExcludingFlagged,
+        triggerAction: t.triggerAction,
       })),
       runIds: runs.map(r => r.runId),
       storage: { ...storageInfo(), error: storageError },

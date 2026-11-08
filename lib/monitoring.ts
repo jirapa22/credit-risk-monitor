@@ -15,6 +15,8 @@ import { calculateAScore, scoreToPD } from './scoring';
 import { getReferenceProfile } from './reference';
 import { runDriftDetection, resolveCsiFeatures } from './drift';
 import { buildDriftReport, computeDistributionStats } from './driftReport';
+import { evaluateTrigger } from './trigger';
+import { getMonitoringHistorySync, recordTriggerEventSync } from './storage/repositories';
 import { getBinIndex } from './stats';
 import { runAnomalyScreening, truncateAnomalyResult, resolveAnomalyConfig, referenceFlaggedIndices, referenceWithout } from './anomaly';
 
@@ -31,6 +33,10 @@ export interface MonitoringInput {
   maxStoredFlaggedRows?: number;
   /** Max row-level validation issues kept (default 200). Experiments pass Infinity for exact row metrics. */
   maxValidationIssues?: number;
+  /** Prior monitoring runs for evaluating persistence rules (defaults to stored runs for modelId + referenceId). */
+  history?: MonitoringRun[];
+  /** Whether to persist non-CONTINUE TriggerEvent to storage (default true; false in synthetic sandbox trials). */
+  recordTriggerEvent?: boolean;
 }
 
 const UNKNOWN_PERIOD = 'ไม่ระบุวันที่';
@@ -134,10 +140,17 @@ export function runMonitoring(input: MonitoringInput) {
     anomaly: null,
     driftExcludingFlagged: null,
     driftReport: null,
+    trigger: null,
     excludedRows: [],
     uploadSummary,
   };
-  if (!validation.ok) return { run, scored: [] as ReturnType<typeof scoreRows>, riskGradeDist: [], skipped: {} };
+  const history = input.history ?? getMonitoringHistorySync(model.id, referenceId);
+  const shouldRecordEvent = input.recordTriggerEvent !== false;
+  if (!validation.ok) {
+    run.trigger = evaluateTrigger(run, model, history);
+    if (shouldRecordEvent) recordTriggerEventSync(run);
+    return { run, scored: [] as ReturnType<typeof scoreRows>, riskGradeDist: [], skipped: {} };
+  }
 
   // ── [2] Anomaly screening (warning-only, on CleanRow) ──
   let flagged = new Set<number>();
@@ -194,6 +207,10 @@ export function runMonitoring(input: MonitoringInput) {
   }
 
   if (run.anomaly) run.anomaly = truncateAnomalyResult(run.anomaly, input.maxStoredFlaggedRows ?? resolveAnomalyConfig(model, reference).maxStoredRows);
+
+  // ── [5] Trigger & Recommended Actions (Step 9) ──
+  run.trigger = evaluateTrigger(run, model, history);
+  if (shouldRecordEvent) recordTriggerEventSync(run);
 
   return { run, scored, riskGradeDist: riskGradeDistribution(scored.map(s => s.aScore)), skipped };
 }

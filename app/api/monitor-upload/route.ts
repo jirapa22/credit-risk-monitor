@@ -14,7 +14,8 @@
  */
 import { NextResponse } from 'next/server';
 import { runMonitoring } from '@/lib/monitoring';
-import { getEffectiveModel, saveRun, storageInfo } from '@/lib/storage/repositories';
+import { getEffectiveModel, listRuns, saveRun, storageInfo } from '@/lib/storage/repositories';
+import type { MonitoringRun } from '@/lib/types';
 import { getReferenceMeta } from '@/lib/reference';
 import { toLegacyLog } from '@/lib/legacy';
 
@@ -32,9 +33,11 @@ export async function POST(request: Request) {
       ? body.excludeRows.map(Number).filter((n: number) => Number.isInteger(n) && n > 0)
       : undefined;
     const model = await getEffectiveModel();
+    const history = await listRuns<MonitoringRun>('monitoring', model.id);
     const { run, scored, riskGradeDist, skipped } = runMonitoring({
       model, fileName, csvText: body.csvText, rows: body.customers,
       excludeRows, anomalyScreening: body.anomalyScreening !== false,
+      history,
     });
 
     let storageError: string | undefined;
@@ -50,6 +53,7 @@ export async function POST(request: Request) {
       anomaly: run.anomaly ?? null,
       driftExcludingFlagged: run.driftExcludingFlagged ?? null,
       driftReport: run.driftReport ?? null,
+      trigger: run.trigger ?? null,
       excludedRows: run.excludedRows ?? [],
     };
 

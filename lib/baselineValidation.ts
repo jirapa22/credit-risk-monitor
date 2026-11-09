@@ -17,6 +17,7 @@ import type {
   ScoringConfig,
 } from './types';
 import { buildReferenceProfileFromData } from './reference';
+import { DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from './defaults';
 import { computeRowsSha256, type ReferenceDatasetBlob } from './storage/blob';
 import { validateScoringConfig } from './scoring';
 import { isValidDate, parseNumber } from './validation';
@@ -111,7 +112,7 @@ function normalizeBaselineSpec(baseline: BaselineVersion | any) {
       ? 'scorecard'
       : 'score_column');
   const idColumn: string = String(
-    baseline.columns?.idColumn ?? baseline.idColumn ?? 'customer_id',
+    baseline.columns?.idColumn ?? baseline.idColumn ?? DEFAULT_ID_COLUMN,
   );
   const dateColumn: string | null =
     baseline.columns !== undefined
@@ -120,7 +121,7 @@ function normalizeBaselineSpec(baseline: BaselineVersion | any) {
   const labelColumn: string | null =
     baseline.columns !== undefined
       ? (baseline.columns.labelColumn ?? null)
-      : (baseline.labelColumn ?? 'default_flag');
+      : (baseline.labelColumn ?? DEFAULT_LABEL_COLUMN);
   const scoreColumn: string | null =
     baseline.columns !== undefined
       ? (baseline.columns.scoreColumn ?? null)

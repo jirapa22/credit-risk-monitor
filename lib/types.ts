@@ -182,17 +182,19 @@ export interface BinContribution {
 
 export interface StabilityResult {
   value: number;
-  status: DriftStatus;
+  status: DriftSectionStatus;
   threshold: { warning: number; critical: number };
   bins: BinContribution[];
 }
 
 export interface DriftResult {
   referenceId: string;
-  psi: StabilityResult;                       // on total score
+  // on total score (status = 'NOT_AVAILABLE' when score is unavailable)
+  psi: StabilityResult;
   csi: Record<string, StabilityResult & { displayName: string; source?: string }>;
   overallStatus: DriftStatus;
-  triggered: string[];                        // e.g. ["psi", "csi:dti_ratio"]
+  // e.g. ["psi", "csi:<feature>"]
+  triggered: string[];
 }
 
 // ─── Full Drift Report (Step 8: covariate / missing / label / concept) ───────
@@ -367,7 +369,8 @@ export type AnomalyMethod = 'iqr' | 'mad' | 'cross_field' | 'isolation_forest' |
 export interface AnomalyFlag {
   row: number;            // CleanRow.row (1-based data row)
   method: AnomalyMethod;
-  feature: string;        // feature key, or rule id for cross_field (e.g. "loan_amount/monthly_income")
+  // feature key, or rule id for cross_field
+  feature: string;
   value: number;          // observed value (ratio for cross_field)
   score: number;          // iqr: distance beyond fence in IQR units; mad: robust z; cross_field: value / threshold
   reason: string;         // human-readable (Thai)
@@ -661,6 +664,7 @@ export interface BaselineVersion {
   driftConfig?: DriftConfig;
   triggerConfig?: TriggerConfig;
   riskGrades?: { grade: string; minScore: number }[];
+  experimentConfig?: { multivariateTargets?: string[] };
   referenceDatasetId: string;
   validationReport?: BaselineValidationReport | null;
   createdAt: string;

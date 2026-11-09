@@ -10,6 +10,7 @@
 import type {
   FeatureDefinition, ValidationIssue, ValidationIssueGroup, ValidationResult, ValidationIssueType, ValidationSeverity,
 } from './types';
+import { DEFAULT_DATE_COLUMN, DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from './defaults';
 
 export interface ValidationOptions {
   /** Columns the scorecard needs — always treated as required. */
@@ -35,7 +36,7 @@ export interface CleanRow {
   id: string;
   date: string | null;               // raw date if valid
   values: Record<string, number>;    // numeric/binary features (after imputation)
-  label: number | null;              // default_flag if present & valid
+  label: number | null;              // binary target label if present & valid
   imputed: string[];                 // features that were filled by a missing strategy
 }
 
@@ -75,7 +76,11 @@ export function validateDataset(
   opts: ValidationOptions,
 ): ValidationOutput {
   const {
-    scoringFeatures, idColumn = 'customer_id', dateColumn = 'application_date', labelColumn = 'default_flag', scoreColumn,
+    scoringFeatures,
+    idColumn = DEFAULT_ID_COLUMN,
+    dateColumn = DEFAULT_DATE_COLUMN,
+    labelColumn = DEFAULT_LABEL_COLUMN,
+    scoreColumn,
     referenceStats, maxRejectedPct = 50, minRowsForDrift = 100, malformedRows = [], maxIssues = 200,
   } = opts;
 

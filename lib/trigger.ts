@@ -388,13 +388,14 @@ function evaluateCondition(
         };
       }
 
-      // Filter history to the same (modelId, referenceId) excluding the current runId
+      // Filter history to the same (modelId, referenceId, configVersion) excluding the current runId
       const sameLineage = history.filter(
         h =>
           h &&
           h.kind === 'monitoring' &&
           h.model?.modelId === run.model?.modelId &&
           h.referenceId === run.referenceId &&
+          (!run.model?.configVersion || !h.model?.configVersion || h.model.configVersion === run.model.configVersion) &&
           h.runId !== run.runId,
       );
 

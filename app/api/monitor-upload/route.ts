@@ -36,8 +36,8 @@ export async function POST(request: Request) {
     const requestedModelId = url.searchParams.get('modelId') || body.modelId || (await getDefaultModelId());
     const model = await getEffectiveModel(requestedModelId);
     await loadReferenceProfile(model.referenceDatasetId, model);
-    const history = await listRuns<MonitoringRun>('monitoring', model.id);
-    const { run, scored, riskGradeDist, skipped } = runMonitoring({
+    const history = await listRuns<MonitoringRun>('monitoring', model.id, { configVersion: model.configVersion });
+    const { run, scored, riskGradeDist, riskGradeStatus, skipped } = runMonitoring({
       model, fileName, csvText: body.csvText, rows: body.customers,
       excludeRows, anomalyScreening: body.anomalyScreening !== false,
       history,
@@ -98,9 +98,11 @@ export async function POST(request: Request) {
       skippedRows: run.validation.rejectedRows,
       scoredCustomers: scored.slice(0, 100),
       riskGradeDist,
+      riskGradeStatus,
     });
   } catch (error) {
     console.error('Error POST /api/monitor-upload:', error);
     return NextResponse.json({ error: 'Internal Server Error', detail: String(error) }, { status: 500 });
   }
 }
+

@@ -7,6 +7,7 @@
  */
 import { NextResponse } from 'next/server';
 import { parseCsv } from '../../../../lib/csv';
+import { DEFAULT_DATE_COLUMN, DEFAULT_LABEL_COLUMN } from '../../../../lib/defaults';
 import { inferColumnsFromRows } from '../../../../lib/baselineValidation';
 import {
   computeRowsSha256,
@@ -29,8 +30,8 @@ export async function POST(request: Request) {
     let version = '1.0.0';
     let description = 'Reference dataset uploaded via Registry API';
     let source = 'registry-upload';
-    let labelColumn = 'default_flag';
-    let dateColumn = 'application_date';
+    let labelColumn = DEFAULT_LABEL_COLUMN;
+    let dateColumn = DEFAULT_DATE_COLUMN;
 
     if (contentType.includes('multipart/form-data')) {
       const form = await request.formData();
@@ -175,3 +176,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
+

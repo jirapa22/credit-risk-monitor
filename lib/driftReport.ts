@@ -36,6 +36,7 @@ import type {
 } from './types';
 import type { ReferenceProfile } from './reference';
 import type { CleanRow } from './validation';
+import { DEFAULT_LABEL_COLUMN, resolveModelColumns } from './defaults';
 import { classify, resolveCsiFeatures, runDriftDetection } from './drift';
 import { calculateAScore } from './scoring';
 import {
@@ -335,11 +336,12 @@ interface ResolvedModelSpec {
 
 function resolveModelSpec(model: any): ResolvedModelSpec {
   const modelId = String(model?.id ?? model?.modelId ?? 'unknown_model');
-  const configVersion = String(model?.configVersion ?? '1.0.0');
-  const idColumn = String(model?.idColumn ?? 'customer_id');
-  const dateColumn = model?.dateColumn === null || model?.dateColumn === '' ? null : String(model?.dateColumn ?? 'application_date');
-  const labelColumn = String(model?.labelColumn ?? 'default_flag');
-  const scoreColumn = model?.scoreColumn ? String(model.scoreColumn) : null;
+  const configVersion = String(model?.configVersion ?? model?.version ?? '1.0.0');
+  const resolvedCols = resolveModelColumns(model);
+  const idColumn = resolvedCols.idColumn;
+  const dateColumn = resolvedCols.dateColumn;
+  const labelColumn = resolvedCols.labelColumn ?? DEFAULT_LABEL_COLUMN;
+  const scoreColumn = resolvedCols.scoreColumn;
   const scoreDirection: ScoreDirection =
     model?.scoreDirection === 'higher_is_riskier'
       ? 'higher_is_riskier'
@@ -349,6 +351,8 @@ function resolveModelSpec(model: any): ResolvedModelSpec {
   const scoringFeatures: string[] = Array.isArray(model?.scoring?.features) ? model.scoring.features : [];
   const scorecard = model?.scoring?.scorecard;
   const hasScorecard = Boolean(
+    model?.mode !== 'score_column' &&
+    !scoreColumn &&
     scorecard && typeof scorecard === 'object' && Object.keys(scorecard).length > 0 && scoringFeatures.length > 0,
   );
 
@@ -425,21 +429,34 @@ export function buildDriftReport(
   // Determine whether scores exist on both Reference and actual data
   let actualScores: number[] = [];
   let hasActualScores = false;
-  if (Array.isArray(input.actualScores) && input.actualScores.length > 0) {
+  if (Array.isArray(input.actualScores)) {
     actualScores = input.actualScores.filter(v => Number.isFinite(v));
-    hasActualScores = actualScores.length > 0;
-  } else if (spec.hasScorecard) {
-    actualScores = cleanRows.map(r => calculateAScore(model.scoring, r.values));
     hasActualScores = actualScores.length > 0;
   } else if (spec.scoreColumn) {
     const col = spec.scoreColumn;
     actualScores = cleanRows
-      .map(r => r.values[col])
+      .map(r => {
+        const v = r.values[col];
+        if (typeof v === 'number' && Number.isFinite(v)) return v;
+        const raw = rawRows?.[r.row - 1]?.[col];
+        if (raw === null || raw === undefined || String(raw).trim() === '') return NaN;
+        return Number(raw);
+      })
       .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+    hasActualScores = actualScores.length > 0;
+  } else if (spec.hasScorecard) {
+    actualScores = cleanRows.map(r => calculateAScore(model.scoring, r.values));
     hasActualScores = actualScores.length > 0;
   }
   const hasRefScores = Boolean(reference.hasScores && reference.scores.length > 0);
   const scoreAvailable = hasRefScores && hasActualScores;
+
+  const driftOpts = {
+    labelColumn: spec.labelColumn,
+    scoreColumn: spec.scoreColumn,
+    idColumn: spec.idColumn,
+    dateColumn: spec.dateColumn,
+  };
 
   // Reuse PSI/CSI from drift.ts (only call runDriftDetection if caller didn't pass driftResult)
   const driftResult: DriftResult =
@@ -450,6 +467,7 @@ export function buildDriftReport(
       actualFeatures,
       spec.registry,
       spec.thresholds,
+      driftOpts,
     );
 
   // ── (a) Covariate Drift ───────────────────────────────────────────────────
@@ -491,11 +509,11 @@ export function buildDriftReport(
       dc.wassersteinCritical,
     );
     const statuses: DriftStatus[] = [ks.status, wasserstein.status];
-    if (csiEntry) statuses.push(csiEntry.status);
+    if (csiEntry && csiEntry.status !== 'NOT_AVAILABLE') statuses.push(csiEntry.status);
     const fStatus = worstStatus(statuses);
 
     const triggeredMetrics: string[] = [];
-    if (csiEntry && csiEntry.status !== 'STABLE') {
+    if (csiEntry && csiEntry.status !== 'STABLE' && csiEntry.status !== 'NOT_AVAILABLE') {
       triggeredMetrics.push(`CSI=${csiEntry.value.toFixed(4)} (${csiEntry.status})`);
     }
     if (ks.status !== 'STABLE') {
@@ -545,9 +563,11 @@ export function buildDriftReport(
       dc.wassersteinWarning,
       dc.wassersteinCritical,
     );
-    const sStatus = worstStatus([psiEntry.status, ks.status, wasserstein.status]);
+    const sStatuses: DriftStatus[] = [ks.status, wasserstein.status];
+    if (psiEntry.status !== 'NOT_AVAILABLE') sStatuses.unshift(psiEntry.status);
+    const sStatus = worstStatus(sStatuses);
     const parts: string[] = [];
-    if (psiEntry.status !== 'STABLE') parts.push(`PSI=${psiEntry.value.toFixed(4)} (${psiEntry.status})`);
+    if (psiEntry.status !== 'STABLE' && psiEntry.status !== 'NOT_AVAILABLE') parts.push(`PSI=${psiEntry.value.toFixed(4)} (${psiEntry.status})`);
     if (ks.status !== 'STABLE') parts.push(`KS D=${ks.d.toFixed(4)} (${ks.status})`);
     if (wasserstein.status !== 'STABLE') parts.push(`Wasserstein=${wasserstein.scaled.toFixed(4)} (${wasserstein.status})`);
     scoreCovariate = {
@@ -736,7 +756,7 @@ export function buildDriftReport(
     };
   } else {
     // 1. Per-bin bad rate for each feature using the same bins as CSI (computed from Reference rows, never config bad_rate)
-    const csiFeatureSpecs = resolveCsiFeatures(spec.registry, spec.thresholds, reference);
+    const csiFeatureSpecs = resolveCsiFeatures(spec.registry, spec.thresholds, reference, driftOpts);
     const conceptFeatures: Record<string, ConceptFeatureReport> = {};
 
     for (const f of csiFeatureSpecs) {

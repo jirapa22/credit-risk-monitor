@@ -325,7 +325,19 @@
         "minBadsPerBin": 5,
         "giniRelDropWarning": 0.10,
         "giniRelDropCritical": 0.25
-      }
+      },
+
+      "riskGrades": [
+        { "grade": "AAA",  "minScore": 586 },
+        { "grade": "AA+",  "minScore": 578 },
+        { "grade": "AA",   "minScore": 572 },
+        { "grade": "A+",   "minScore": 566 },
+        { "grade": "A",    "minScore": 559 },
+        { "grade": "A-",   "minScore": 552 },
+        { "grade": "BBB+", "minScore": 546 },
+        { "grade": "BBB",  "minScore": 539 },
+        { "grade": "BBB-", "minScore": -1000000000 }
+      ]
     }
   }
 }

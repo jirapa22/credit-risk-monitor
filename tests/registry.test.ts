@@ -12,12 +12,14 @@ import {
   getDefaultModelId,
   getModel,
   listBaselineVersions,
+  listRuns,
   loadReferenceProfile,
 } from '../lib/storage/repositories';
+import { registerReferenceDataset } from '../lib/reference';
 import { validateBaseline } from '../lib/baselineValidation';
 import { detectMultivariateAnomaliesDetailed, clearMultivariateCache } from '../lib/anomaly/multivariate';
 import { toCsv } from '../lib/injection';
-import type { BaselineVersion, FeatureDefinition } from '../lib/types';
+import type { BaselineVersion, FeatureDefinition, MonitoringRun } from '../lib/types';
 
 // Import Registry & Monitoring API route handlers directly
 import { GET as getModelsRoute } from '../app/api/registry/models/route';
@@ -291,28 +293,27 @@ describe('Step 10a: Baseline Registry Backend (Lifecycle, Blob Storage, Validati
     console.table(stepLog);
   });
 
-  it('(3) สร้าง v2.0.0 ของโมเดลเดียวกัน → validate → activate → v1.0.0 ต้องเปลี่ยนเป็น ARCHIVED อัตโนมัติ และมี statusHistory ครบ', async () => {
+  it('(3) สร้าง v2.0.0 ของโมเดลเดียวกัน → validate → activate → v1.0.0 ต้องเปลี่ยนเป็น ARCHIVED อัตโนมัติ, run ของ v1.0.0 ยังอยู่, listRuns แยกตาม configVersion, และ trigger history ไม่ปนกันข้ามเวอร์ชัน', async () => {
     const modelId = 'auto_loan_v1';
     const refId = 'auto_loan_ref_250';
     const rows = buildFakeModelRows(250, 0);
-    await saveReferenceDatasetBlob({
-      meta: {
-        referenceId: refId,
-        version: '1.0.0',
-        modelId,
-        description: 'Auto loan reference',
-        source: 'unit-test',
-        createdAt: new Date().toISOString(),
-        rowCount: rows.length,
-        badCount: 40,
-        badRate: 40 / 250,
-        periodStart: '',
-        periodEnd: '',
-        columns: ['cust_id', 'age', 'salary', 'utilization', 'is_bad'],
-        sha256: computeRowsSha256(rows),
-      },
-      rows,
-    });
+    const refMeta = {
+      referenceId: refId,
+      version: '1.0.0',
+      modelId,
+      description: 'Auto loan reference',
+      source: 'unit-test',
+      createdAt: new Date().toISOString(),
+      rowCount: rows.length,
+      badCount: 40,
+      badRate: 40 / 250,
+      periodStart: '',
+      periodEnd: '',
+      columns: ['cust_id', 'age', 'salary', 'utilization', 'is_bad'],
+      sha256: computeRowsSha256(rows),
+    };
+    await saveReferenceDatasetBlob({ meta: refMeta, rows });
+    registerReferenceDataset(refMeta, rows);
 
     // สร้าง v1.0.0 -> validate -> activate
     await createVersionRoute(
@@ -338,6 +339,25 @@ describe('Step 10a: Baseline Registry Backend (Lifecycle, Blob Storage, Validati
       new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/activate`, { method: 'POST' }),
       { params: { modelId, version: '1.0.0' } },
     );
+
+    // รัน monitoring บน v1.0.0 ด้วยข้อมูลที่มี CRITICAL covariate drift ก่อนถูก archive
+    const shiftedRows = buildFakeModelRows(200, 100).map(r => ({
+      ...r,
+      age: Math.min(89, Number(r.age) + 25),
+    }));
+    const shiftedCsv = toCsv(shiftedRows, ['cust_id', 'age', 'salary', 'utilization', 'is_bad']);
+    const v1RunRes = await monitorUploadRoute(
+      new Request(`http://localhost/api/monitor-upload?modelId=${modelId}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ fileName: 'v1_shifted_batch.csv', csvText: shiftedCsv }),
+      }),
+    );
+    expect(v1RunRes.status).toBe(200);
+    const v1RunBody = await v1RunRes.json();
+    expect(v1RunBody.run.model.configVersion).toBe('1.0.0');
+    expect(v1RunBody.run.driftReport.covariate.status).toBe('CRITICAL');
+    expect(v1RunBody.run.trigger.action).toBe('INVESTIGATE_DRIFT');
 
     // สร้าง v2.0.0 -> validate -> activate
     await createVersionRoute(
@@ -380,6 +400,38 @@ describe('Step 10a: Baseline Registry Backend (Lifecycle, Blob Storage, Validati
 
     const modelMeta = await getModel(modelId);
     expect(modelMeta?.activeVersion?.version).toBe('2.0.0');
+
+    // (10b.4a-1) ตรวจว่า runMonitoring ของ v1.0.0 ก่อนถูก archive ยังอยู่ใน storage
+    const v1StoredRunsBefore = await listRuns<MonitoringRun>('monitoring', modelId, { configVersion: '1.0.0' });
+    expect(v1StoredRunsBefore).toHaveLength(1);
+    expect(v1StoredRunsBefore[0].runId).toBe(v1RunBody.run.runId);
+    expect(v1StoredRunsBefore[0].model.configVersion).toBe('1.0.0');
+
+    // (10b.4a-2 & 3) อัปโหลดรอบแรกบน v2.0.0 ที่มี CRITICAL covariate drift
+    // ต้องไม่นับรวม CRITICAL จาก v1.0.0 (ดังนั้นรอบแรกของ v2.0.0 ต้องเป็น INVESTIGATE_DRIFT ไม่ใช่ CONSIDER_RETRAIN)
+    const v2RunRes = await monitorUploadRoute(
+      new Request(`http://localhost/api/monitor-upload?modelId=${modelId}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ fileName: 'v2_shifted_batch_1.csv', csvText: shiftedCsv }),
+      }),
+    );
+    expect(v2RunRes.status).toBe(200);
+    const v2RunBody = await v2RunRes.json();
+    expect(v2RunBody.run.model.configVersion).toBe('2.0.0');
+    expect(v2RunBody.run.driftReport.covariate.status).toBe('CRITICAL');
+    expect(v2RunBody.run.trigger.action).not.toBe('CONSIDER_RETRAIN');
+    expect(v2RunBody.run.trigger.action).toBe('INVESTIGATE_DRIFT');
+
+    // ตรวจว่า listRuns แยกตาม configVersion ไม่ปนกัน
+    const v1Runs = await listRuns<MonitoringRun>('monitoring', modelId, { configVersion: '1.0.0' });
+    const v2Runs = await listRuns<MonitoringRun>('monitoring', modelId, { configVersion: '2.0.0' });
+    const allModelRuns = await listRuns<MonitoringRun>('monitoring', modelId);
+    expect(v1Runs).toHaveLength(1);
+    expect(v1Runs.every(r => r.model.configVersion === '1.0.0')).toBe(true);
+    expect(v2Runs).toHaveLength(1);
+    expect(v2Runs.every(r => r.model.configVersion === '2.0.0')).toBe(true);
+    expect(allModelRuns).toHaveLength(2);
   });
 
   it('(4) พยายาม activate เวอร์ชันที่ยังเป็น DRAFT → ต้องได้ error 400', async () => {

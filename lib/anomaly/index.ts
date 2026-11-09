@@ -16,7 +16,8 @@ import type {
 } from '../types';
 import type { ReferenceProfile } from '../reference';
 import type { CleanRow } from '../validation';
-import { detectUnivariateAnomaliesDetailed, univariateFeatures, configCrossFieldRules, type CrossFieldRule } from './univariate';
+import { resolveModelColumns } from '../defaults';
+import { detectUnivariateAnomaliesDetailed, univariateFeatures, type CrossFieldRule } from './univariate';
 import { detectMultivariateAnomaliesDetailed, fitMultivariate } from './multivariate';
 
 export const ANOMALY_DEFAULTS = {
@@ -25,14 +26,15 @@ export const ANOMALY_DEFAULTS = {
 
 const METHOD_ORDER: AnomalyMethod[] = ['iqr', 'mad', 'cross_field', 'isolation_forest', 'lof'];
 
-export function resolveAnomalyConfig(model: any, reference: ReferenceProfile): AnomalyConfigSnapshot & { maxStoredRows: number } {
+export function resolveAnomalyConfig(model: any, _reference?: ReferenceProfile): AnomalyConfigSnapshot & { maxStoredRows: number } {
   const cfg = model?.anomalyConfig ?? {};
   const registry = (model?.featureRegistry ?? {}) as Record<string, FeatureDefinition>;
+  const cols = resolveModelColumns(model);
   const pick = <K extends keyof typeof ANOMALY_DEFAULTS>(k: K): number =>
     typeof cfg[k] === 'number' ? cfg[k] : ANOMALY_DEFAULTS[k];
   const transforms: Record<string, AnomalyTransform> = {};
-  for (const f of univariateFeatures(registry)) transforms[f] = registry[f].anomalyTransform ?? 'none';
-  const crossFieldRules: CrossFieldRule[] = Array.isArray(cfg.crossFieldRules) ? cfg.crossFieldRules : configCrossFieldRules(reference.meta.modelId);
+  for (const f of univariateFeatures(registry, cols)) transforms[f] = registry[f].anomalyTransform ?? 'none';
+  const crossFieldRules: CrossFieldRule[] = Array.isArray(cfg.crossFieldRules) ? cfg.crossFieldRules : [];
   return {
     iqrK: pick('iqrK'), madThreshold: pick('madThreshold'), contamination: pick('contamination'),
     seed: pick('seed'), k: pick('k'), nTrees: pick('nTrees'), sampleSize: pick('sampleSize'),
@@ -57,12 +59,13 @@ export function toStoredFlag(f: AnomalyFlag): StoredAnomalyFlag {
 const refFlagCache = new Map<string, Set<number>>();
 export function referenceFlaggedIndices(reference: ReferenceProfile, model: any): Set<number> {
   const registry = (model?.featureRegistry ?? {}) as Record<string, FeatureDefinition>;
+  const cols = resolveModelColumns(model);
   const cfg = resolveAnomalyConfig(model, reference);
-  const key = JSON.stringify([reference.meta.referenceId, reference.meta.sha256, cfg]);
+  const key = JSON.stringify([reference.meta.referenceId, reference.meta.sha256, cfg, cols]);
   const hit = refFlagCache.get(key);
   if (hit) return hit;
 
-  const feats = univariateFeatures(registry);
+  const feats = univariateFeatures(registry, cols);
   const n = reference.labels.length;
   const refRows: CleanRow[] = Array.from({ length: n }, (_, i) => ({
     row: i + 1, id: `REF_${i + 1}`, date: null, label: null, imputed: [],
@@ -70,10 +73,12 @@ export function referenceFlaggedIndices(reference: ReferenceProfile, model: any)
   }));
   const out = new Set<number>();
   for (const f of detectUnivariateAnomaliesDetailed(reference, refRows, registry, {
-    iqrK: cfg.iqrK, madThreshold: cfg.madThreshold, crossFieldRules: cfg.crossFieldRules,
+    iqrK: cfg.iqrK, madThreshold: cfg.madThreshold, crossFieldRules: cfg.crossFieldRules, columns: cols,
   }).flags) out.add(f.row - 1);
 
-  const fit = fitMultivariate(reference, registry, { nTrees: cfg.nTrees, sampleSize: cfg.sampleSize, seed: cfg.seed, k: cfg.k, contamination: cfg.contamination });
+  const fit = fitMultivariate(reference, registry, {
+    nTrees: cfg.nTrees, sampleSize: cfg.sampleSize, seed: cfg.seed, k: cfg.k, contamination: cfg.contamination, columns: cols,
+  });
   fit.refIndex.forEach((ri, j) => {
     if (fit.referenceScores.isolation_forest[j] > fit.thresholds.isolation_forest) out.add(ri);
     if (fit.referenceScores.lof[j] > fit.thresholds.lof) out.add(ri);
@@ -102,14 +107,15 @@ export function referenceWithout(reference: ReferenceProfile, drop: Set<number>)
 export function runAnomalyScreening(reference: ReferenceProfile, cleanRows: CleanRow[], model: any): AnomalyResult {
   const t0 = performance.now();
   const registry = (model?.featureRegistry ?? {}) as Record<string, FeatureDefinition>;
+  const cols = resolveModelColumns(model);
   const cfg = resolveAnomalyConfig(model, reference);
 
   const uni = detectUnivariateAnomaliesDetailed(reference, cleanRows, registry, {
-    iqrK: cfg.iqrK, madThreshold: cfg.madThreshold, crossFieldRules: cfg.crossFieldRules,
+    iqrK: cfg.iqrK, madThreshold: cfg.madThreshold, crossFieldRules: cfg.crossFieldRules, columns: cols,
   });
   const t1 = performance.now();
   const multi = detectMultivariateAnomaliesDetailed(reference, cleanRows, registry, {
-    nTrees: cfg.nTrees, sampleSize: cfg.sampleSize, seed: cfg.seed, k: cfg.k, contamination: cfg.contamination,
+    nTrees: cfg.nTrees, sampleSize: cfg.sampleSize, seed: cfg.seed, k: cfg.k, contamination: cfg.contamination, columns: cols,
   });
 
   const idOf = new Map(cleanRows.map(r => [r.row, r.id]));

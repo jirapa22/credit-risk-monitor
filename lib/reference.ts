@@ -7,6 +7,7 @@
  * The model config points to its reference via `referenceDatasetId`.
  */
 import type { ReferenceDatasetMeta, ScoringConfig } from './types';
+import { DEFAULT_LABEL_COLUMN } from './defaults';
 import { calculateAScore } from './scoring';
 import { quantileBoundaries } from './stats';
 import ascoreV1Dev855 from '../data/reference/ascore_v1_dev855.json';
@@ -83,7 +84,7 @@ export function buildReferenceProfileFromData(
 ): ReferenceProfile {
   const referenceId = file.meta.referenceId;
   const sha256 = file.meta.sha256 || 'no_sha';
-  const labelColumn = options.labelColumn || 'default_flag';
+  const labelColumn = options.labelColumn || DEFAULT_LABEL_COLUMN;
   const scoreColumn = options.scoreColumn || '';
   const key = `${referenceId}|${sha256}|${labelColumn}|${scoreColumn}|${JSON.stringify([
     scoring?.base_points, scoring?.features, scoring?.scorecard,
@@ -117,18 +118,19 @@ export function buildReferenceProfileFromData(
   const hasLabels = labels.some(l => l === 0 || l === 1);
 
   const hasScorecard = Boolean(
-    scoring && Array.isArray(scoring.features) && scoring.features.length > 0 &&
+    scoring && Array.isArray(scoring.features) &&
+    scoring.features.length > 0 &&
     scoring.scorecard && scoring.features.every(f => scoring.scorecard[f] && file.meta.columns.includes(f)),
   );
   let scores: number[] = [];
-  if (hasScorecard && scoring) {
+  if (scoreColumn && file.meta.columns.includes(scoreColumn)) {
+    scores = file.rows.map(r => Number(r[scoreColumn])).filter(Number.isFinite);
+  } else if (hasScorecard && scoring) {
     scores = file.rows.map(r => {
       const rec: Record<string, number> = {};
       for (const f of scoring.features) rec[f] = Number(r[f]);
       return calculateAScore(scoring, rec);
     });
-  } else if (scoreColumn && file.meta.columns.includes(scoreColumn)) {
-    scores = file.rows.map(r => Number(r[scoreColumn])).filter(Number.isFinite);
   }
   const hasScores = scores.length > 0;
 

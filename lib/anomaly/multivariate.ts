@@ -15,7 +15,7 @@
 import type { AnomalyFlag, AnomalyTransform, FeatureDefinition } from '../types';
 import type { ReferenceProfile } from '../reference';
 import type { CleanRow } from '../validation';
-import { quantile, median, univariateFeatures } from './univariate';
+import { quantile, median, univariateFeatures, type UnivariateColumnOptions } from './univariate';
 
 const MAD_CONST = 0.6745;
 const IQR_CONST = 1.349;
@@ -37,10 +37,14 @@ export interface Preprocessor {
   transform(values: Record<string, number>): number[] | null;
 }
 
-export function preprocess(reference: ReferenceProfile, registry: Record<string, FeatureDefinition>): Preprocessor {
+export function preprocess(
+  reference: ReferenceProfile,
+  registry: Record<string, FeatureDefinition>,
+  columns?: UnivariateColumnOptions,
+): Preprocessor {
   const warnings: string[] = [];
   const features: string[] = [], transforms: AnomalyTransform[] = [], center: number[] = [], scale: number[] = [];
-  for (const key of univariateFeatures(registry)) {
+  for (const key of univariateFeatures(registry, columns)) {
     const t = registry[key].anomalyTransform ?? 'none';
     const raw = (reference.features[key] ?? []).filter(v => Number.isFinite(v) && (t !== 'log1p' || v >= 0));
     if (raw.length === 0) { warnings.push(`ไม่มีตัวแปร "${key}" ใน Reference — ไม่ใช้ในชั้นหลายตัวแปร`); continue; }
@@ -190,6 +194,7 @@ export interface MultivariateOptions {
   seed?: number;            // 42
   k?: number;               // 20
   contamination?: number;   // 0.01 → threshold = 99th percentile of reference LOO scores
+  columns?: UnivariateColumnOptions;
 }
 
 export interface MultivariateFit {
@@ -208,14 +213,14 @@ const fitCache = new Map<string, MultivariateFit>();
 export function clearMultivariateCache() { fitCache.clear(); }
 
 export function fitMultivariate(reference: ReferenceProfile, registry: Record<string, FeatureDefinition>, options: MultivariateOptions = {}): MultivariateFit {
-  const { nTrees = 100, sampleSize = 256, seed = 42, k = 20, contamination = 0.01 } = options;
-  const feats = univariateFeatures(registry).map(f => [f, registry[f].anomalyTransform ?? 'none']);
+  const { nTrees = 100, sampleSize = 256, seed = 42, k = 20, contamination = 0.01, columns } = options;
+  const feats = univariateFeatures(registry, columns).map(f => [f, registry[f].anomalyTransform ?? 'none']);
   const key = JSON.stringify([reference.meta.referenceId, reference.meta.sha256, feats, nTrees, sampleSize, seed, k, contamination]);
   const hit = fitCache.get(key);
   if (hit) return hit;
 
   const t0 = performance.now();
-  const pp = preprocess(reference, registry);
+  const pp = preprocess(reference, registry, columns);
   const { X, refIndex } = referenceMatrix(reference, pp);
   const forest = fitIsolationForest(X, nTrees, sampleSize, seed);
   const lof = fitLof(X, k);

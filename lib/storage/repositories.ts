@@ -32,6 +32,7 @@ import {
   type ReferenceDatasetBlob,
 } from './blob';
 import { buildReferenceProfileFromData, getReferenceProfile, type ReferenceProfile } from '../reference';
+import { DEFAULT_DATE_COLUMN, DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from '../defaults';
 import { validateBaseline } from '../baselineValidation';
 
 const MAX_RUNS = 500;
@@ -110,9 +111,9 @@ function buildBuiltInBaselineVersion(modelId: string, archivedByNewerActive = fa
     status,
     mode: 'scorecard',
     columns: {
-      idColumn: b.idColumn ?? 'customer_id',
-      dateColumn: b.dateColumn ?? 'application_date',
-      labelColumn: b.labelColumn ?? 'default_flag',
+      idColumn: b.idColumn ?? DEFAULT_ID_COLUMN,
+      dateColumn: b.dateColumn ?? DEFAULT_DATE_COLUMN,
+      labelColumn: b.labelColumn ?? DEFAULT_LABEL_COLUMN,
       scoreColumn: b.scoreColumn ?? null,
     },
     scoreDirection: b.scoreDirection === 'higher_is_riskier' ? 'higher_is_riskier' : 'higher_is_safer',
@@ -123,6 +124,7 @@ function buildBuiltInBaselineVersion(modelId: string, archivedByNewerActive = fa
     driftConfig: b.driftConfig,
     triggerConfig: b.triggerConfig,
     riskGrades: b.riskGrades,
+    experimentConfig: b.experimentConfig,
     referenceDatasetId: b.referenceDatasetId,
     validationReport: null,
     createdAt,
@@ -183,9 +185,9 @@ export function baselineToModelObject(baseline: BaselineVersion): any {
     status: baseline.status === 'ACTIVE' ? 'active' : baseline.status.toLowerCase(),
     configVersion: baseline.version,
     referenceDatasetId: baseline.referenceDatasetId,
-    idColumn: baseline.columns.idColumn ?? 'customer_id',
+    idColumn: baseline.columns.idColumn ?? DEFAULT_ID_COLUMN,
     dateColumn: baseline.columns.dateColumn ?? null,
-    labelColumn: baseline.columns.labelColumn ?? 'default_flag',
+    labelColumn: baseline.columns.labelColumn ?? DEFAULT_LABEL_COLUMN,
     scoreColumn: baseline.columns.scoreColumn ?? null,
     scoreDirection: baseline.scoreDirection ?? 'higher_is_safer',
     featureRegistry: baseline.featureRegistry ?? {},
@@ -195,6 +197,7 @@ export function baselineToModelObject(baseline: BaselineVersion): any {
     driftConfig: baseline.driftConfig,
     triggerConfig: baseline.triggerConfig,
     riskGrades: baseline.riskGrades,
+    experimentConfig: baseline.experimentConfig,
     builtIn: Boolean(baseline.builtIn),
     baselineVersion: baseline,
   };
@@ -356,7 +359,7 @@ export async function loadReferenceProfile(
       ? 'scorecard'
       : 'score_column');
   const labelColumn: string | undefined =
-    baseline?.columns?.labelColumn ?? baseline?.labelColumn ?? 'default_flag';
+    baseline?.columns?.labelColumn ?? baseline?.labelColumn ?? DEFAULT_LABEL_COLUMN;
   const scoreColumn: string | undefined =
     mode === 'score_column'
       ? (baseline?.columns?.scoreColumn ?? baseline?.scoreColumn ?? undefined)
@@ -472,7 +475,7 @@ export async function createDraftBaselineVersion(
     status: 'DRAFT',
     mode,
     columns: {
-      idColumn: input.columns?.idColumn || (input as any).idColumn || 'customer_id',
+      idColumn: input.columns?.idColumn || (input as any).idColumn || DEFAULT_ID_COLUMN,
       dateColumn:
         input.columns?.dateColumn !== undefined
           ? input.columns.dateColumn
@@ -480,7 +483,7 @@ export async function createDraftBaselineVersion(
       labelColumn:
         input.columns?.labelColumn !== undefined
           ? input.columns.labelColumn
-          : ((input as any).labelColumn ?? 'default_flag'),
+          : ((input as any).labelColumn ?? DEFAULT_LABEL_COLUMN),
       scoreColumn:
         input.columns?.scoreColumn !== undefined
           ? input.columns.scoreColumn
@@ -502,6 +505,7 @@ export async function createDraftBaselineVersion(
     ...(input.driftConfig ? { driftConfig: input.driftConfig } : {}),
     ...(input.triggerConfig ? { triggerConfig: input.triggerConfig } : {}),
     ...(input.riskGrades ? { riskGrades: input.riskGrades } : {}),
+    ...(input.experimentConfig ? { experimentConfig: input.experimentConfig } : {}),
     referenceDatasetId: String(input.referenceDatasetId ?? ''),
     validationReport: null,
     createdAt: existingIdx !== -1 ? stored[existingIdx].createdAt : now,
@@ -803,11 +807,19 @@ export function createTriggerEventFromRun(run: MonitoringRun): TriggerEvent | nu
 }
 
 /** Synchronous history lookup when using local MemoryStore or FileStore. */
-export function getMonitoringHistorySync(modelId: string, referenceId?: string): MonitoringRun[] {
+export function getMonitoringHistorySync(
+  modelId: string,
+  referenceId?: string,
+  configVersion?: string,
+): MonitoringRun[] {
   const s = getStore();
   if (!s.peek) return [];
   const list = s.peek<MonitoringRun[]>(runsKey('monitoring', modelId)) ?? [];
-  return referenceId ? list.filter(r => r.referenceId === referenceId) : list;
+  return list.filter(r => {
+    if (referenceId && r.referenceId !== referenceId) return false;
+    if (configVersion && r.model?.configVersion && r.model.configVersion !== configVersion) return false;
+    return true;
+  });
 }
 
 /** Synchronous event persistence when using local MemoryStore or FileStore. */

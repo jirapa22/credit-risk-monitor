@@ -15,8 +15,8 @@ export const SEVERITY_TABLE = {
   negative_value:    { low: -0.01, medium: -1, high: -10 },                // value × factor (always < 0)
   type_error:        { low: '<value> บาท', medium: 'N/A', high: '#VALUE!' }, // replaced by text
   missing_injection: { low: '', medium: '', high: '' },                    // blank cell
-  swapped_columns:   { low: 'swap', medium: 'swap', high: 'swap' },        // income ↔ loan in the same row
-  duplicate_rows:    { low: 'copy', medium: 'copy', high: 'copy' },        // exact copy (same customer_id) appended
+  swapped_columns:   { low: 'swap', medium: 'swap', high: 'swap' },        // feature pair swapped in the same row
+  duplicate_rows:    { low: 'copy', medium: 'copy', high: 'copy' },        // exact copy (same row id) appended
   multivariate_inconsistent: {                                             // Reference quantiles: income ≤ p, loan ≥ p, dti ≤ p
     low:    { income: 0.10, loan: 0.95, dti: 0.05 },
     medium: { income: 0.07, loan: 0.97, dti: 0.03 },

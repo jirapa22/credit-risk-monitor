@@ -6,6 +6,7 @@ import type {
   DriftResult, DriftStatus, FeatureDefinition, MonitoringThresholds, ScoringConfig, StabilityResult,
 } from './types';
 import type { ReferenceProfile } from './reference';
+import { DEFAULT_LABEL_COLUMN } from './defaults';
 import { defaultBinLabels, psiWithBoundaries, quantileBoundaries } from './stats';
 
 export function classify(value: number, warning: number, critical: number): DriftStatus {
@@ -26,15 +27,31 @@ function stability(base: number[], actual: number[], boundaries: number[], label
   };
 }
 
+export interface DriftDetectionOptions {
+  labelColumn?: string | null;
+  scoreColumn?: string | null;
+  idColumn?: string | null;
+  dateColumn?: string | null;
+}
+
 /** Which features get a CSI, and with which bins/threshold. */
 export function resolveCsiFeatures(
-  registry: Record<string, FeatureDefinition>, thresholds: MonitoringThresholds, reference: ReferenceProfile,
+  registry: Record<string, FeatureDefinition>,
+  thresholds: MonitoringThresholds,
+  reference: ReferenceProfile,
+  options?: DriftDetectionOptions,
 ) {
+  const labelCol = options && 'labelColumn' in options ? options.labelColumn : DEFAULT_LABEL_COLUMN;
+  const excluded = new Set<string>(
+    [labelCol, options?.scoreColumn, options?.idColumn, options?.dateColumn].filter(
+      (x): x is string => Boolean(x),
+    ),
+  );
   const keys = new Set<string>([
     ...Object.entries(registry)
-      .filter(([k, d]) => d.monitoringEnabled !== false && d.dataType === 'numeric' && k !== 'default_flag')
+      .filter(([k, d]) => d.monitoringEnabled !== false && d.dataType === 'numeric' && !excluded.has(k))
       .map(([k]) => k),
-    ...Object.keys(thresholds.csi_features ?? {}),
+    ...Object.keys(thresholds.csi_features ?? {}).filter(k => !excluded.has(k)),
   ]);
   const out: { key: string; displayName: string; source?: string; bins: number[]; labels: string[]; threshold: number; skipped?: string }[] = [];
   for (const key of keys) {
@@ -67,15 +84,24 @@ export function runDriftDetection(
   actualFeatures: Record<string, number[]>,
   registry: Record<string, FeatureDefinition>,
   thresholds: MonitoringThresholds,
+  options?: DriftDetectionOptions,
 ): DriftResult & { skipped: Record<string, string> } {
-  const psi = stability(
-    reference.scores, actualScores, reference.scoreBoundaries, defaultBinLabels(reference.scoreBoundaries),
-    thresholds.psi_warning, thresholds.psi_critical,
-  );
+  const scoresAvailable = reference.scores.length > 0 && actualScores.length > 0;
+  const psi: StabilityResult = scoresAvailable
+    ? stability(
+        reference.scores, actualScores, reference.scoreBoundaries, defaultBinLabels(reference.scoreBoundaries),
+        thresholds.psi_warning, thresholds.psi_critical,
+      )
+    : {
+        value: 0,
+        status: 'NOT_AVAILABLE',
+        threshold: { warning: thresholds.psi_warning, critical: thresholds.psi_critical },
+        bins: [],
+      };
 
   const csi: DriftResult['csi'] = {};
   const skipped: Record<string, string> = {};
-  for (const f of resolveCsiFeatures(registry, thresholds, reference)) {
+  for (const f of resolveCsiFeatures(registry, thresholds, reference, options)) {
     if (f.skipped) { skipped[f.key] = f.skipped; continue; }
     const actual = actualFeatures[f.key];
     if (!actual || actual.length === 0) { skipped[f.key] = 'ไม่มีข้อมูลตัวแปรนี้ในไฟล์ที่อัปโหลด'; continue; }
@@ -88,10 +114,17 @@ export function runDriftDetection(
   }
 
   const triggered: string[] = [];
-  if (psi.status !== 'STABLE') triggered.push('psi');
-  for (const [k, r] of Object.entries(csi)) if (r.status !== 'STABLE') triggered.push(`csi:${k}`);
-  const overallStatus = [psi.status, ...Object.values(csi).map(c => c.status)]
-    .reduce<DriftStatus>((w, s) => (RANK[s] > RANK[w] ? s : w), 'STABLE');
+  if (psi.status !== 'STABLE' && psi.status !== 'NOT_AVAILABLE') triggered.push('psi');
+  for (const [k, r] of Object.entries(csi)) {
+    if (r.status !== 'STABLE' && r.status !== 'NOT_AVAILABLE') triggered.push(`csi:${k}`);
+  }
+  const availableStatuses = [psi.status, ...Object.values(csi).map(c => c.status)].filter(
+    (s): s is DriftStatus => s !== 'NOT_AVAILABLE',
+  );
+  const overallStatus = availableStatuses.reduce<DriftStatus>(
+    (w, s) => (RANK[s] > RANK[w] ? s : w),
+    'STABLE',
+  );
 
   return { referenceId: reference.meta.referenceId, psi, csi, overallStatus, triggered, skipped };
 }

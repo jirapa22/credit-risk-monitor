@@ -9,7 +9,7 @@
  * shifted upload cannot "normalise" its own outliers.
  *
  * Features are taken from featureRegistry (numeric, monitoringEnabled,
- * excluding default_flag) — no feature names are hard-coded.
+ * excluding special columns) — no feature names are hard-coded.
  *
  * Per-feature `anomalyTransform` (default 'none'): right-skewed features
  * (income, loan amount) use 'log1p' so that IQR/MAD are computed on a roughly
@@ -20,17 +20,12 @@
 import type { AnomalyFlag, AnomalyTransform, FeatureDefinition } from '../types';
 import type { ReferenceProfile } from '../reference';
 import type { CleanRow } from '../validation';
-import modelConfig from '../../app/model-config.json';
-
-/**
- * FALLBACK ONLY: model-level rules from the bundled app/model-config.json.
- * Callers should pass `options.anomalyConfig` from getEffectiveModel() so that
- * edits saved via storage are honoured.
- */
-export function configCrossFieldRules(modelId: string): CrossFieldRule[] {
-  const m = (modelConfig as any).models?.[modelId];
-  return (m?.anomalyConfig?.crossFieldRules ?? []) as CrossFieldRule[];
-}
+import {
+  DEFAULT_DATE_COLUMN,
+  DEFAULT_ID_COLUMN,
+  DEFAULT_LABEL_COLUMN,
+  type ModelColumnConfig,
+} from '../defaults';
 
 export interface CrossFieldRule {
   id?: string;                 // defaults to "numerator/denominator"
@@ -45,15 +40,24 @@ export interface AnomalyConfig {
   crossFieldRules?: CrossFieldRule[];
 }
 
+export interface UnivariateColumnOptions {
+  idColumn?: string | null;
+  dateColumn?: string | null;
+  labelColumn?: string | null;
+  scoreColumn?: string | null;
+}
+
 export interface UnivariateOptions {
   iqrK?: number;               // default 1.5
   madThreshold?: number;       // |robust z| threshold, default 3.5
   methods?: ('iqr' | 'mad' | 'cross_field')[]; // default all
   crossFieldRules?: CrossFieldRule[];         // explicit override (highest precedence)
-  /** Model-level anomaly config, normally `effectiveModel.anomalyConfig`. Falls back to the bundled config when omitted. */
+  /** Model-level anomaly config passed by the caller (e.g. effectiveModel.anomalyConfig). */
   anomalyConfig?: AnomalyConfig;
-  /** Override registry transforms, e.g. { monthly_income: 'none' } (used for comparisons). */
+  /** Override registry transforms (used for comparisons). */
   transformOverride?: Record<string, AnomalyTransform>;
+  /** Baseline special columns (id, date, label, score) to exclude from univariate feature screening. */
+  columns?: UnivariateColumnOptions;
 }
 
 export interface FeatureStats {
@@ -91,21 +95,37 @@ export function median(values: number[]): number {
 const forward = (t: AnomalyTransform, x: number) => (t === 'log1p' ? Math.log1p(x) : x);
 const inverse = (t: AnomalyTransform, y: number) => (t === 'log1p' ? Math.expm1(y) : y);
 
+function buildExcludedSet(columns?: UnivariateColumnOptions | Partial<ModelColumnConfig>): Set<string> {
+  const excluded = new Set<string>([DEFAULT_ID_COLUMN, DEFAULT_DATE_COLUMN, DEFAULT_LABEL_COLUMN]);
+  if (columns?.idColumn) excluded.add(columns.idColumn);
+  if (columns?.dateColumn) excluded.add(columns.dateColumn);
+  if (columns?.labelColumn) excluded.add(columns.labelColumn);
+  if (columns?.scoreColumn) excluded.add(columns.scoreColumn);
+  return excluded;
+}
+
 /** Numeric features in the registry that layer 3 should check. */
-export function univariateFeatures(registry: Record<string, FeatureDefinition>): string[] {
+export function univariateFeatures(
+  registry: Record<string, FeatureDefinition>,
+  columns?: UnivariateColumnOptions,
+): string[] {
+  const excluded = buildExcludedSet(columns);
   return Object.entries(registry)
-    .filter(([k, d]) => d.dataType === 'numeric' && d.monitoringEnabled !== false && k !== 'default_flag')
+    .filter(([k, d]) => d.dataType === 'numeric' && d.monitoringEnabled !== false && !excluded.has(k))
     .map(([k]) => k);
 }
 
 /** Q1/Q3/IQR/median/MAD per feature — from the Reference dataset only. */
 export function computeReferenceStats(
-  reference: ReferenceProfile, registry: Record<string, FeatureDefinition>, iqrK = 1.5,
+  reference: ReferenceProfile,
+  registry: Record<string, FeatureDefinition>,
+  iqrK = 1.5,
   transformOverride: Record<string, AnomalyTransform> = {},
+  columns?: UnivariateColumnOptions,
 ): { stats: Record<string, FeatureStats>; warnings: string[] } {
   const stats: Record<string, FeatureStats> = {};
   const warnings: string[] = [];
-  for (const key of univariateFeatures(registry)) {
+  for (const key of univariateFeatures(registry, columns)) {
     const transform = transformOverride[key] ?? registry[key].anomalyTransform ?? 'none';
     const raw = (reference.features[key] ?? []).filter(Number.isFinite);
     if (raw.length === 0) { warnings.push(`ไม่มีตัวแปร "${key}" ใน Reference Dataset — ข้ามการตรวจค่าโดด`); continue; }
@@ -136,12 +156,12 @@ export function detectUnivariateAnomaliesDetailed(
   options: UnivariateOptions = {},
 ): UnivariateResult {
   const {
-    iqrK = 1.5, madThreshold = 3.5, methods = ['iqr', 'mad', 'cross_field'], transformOverride = {},
+    iqrK = 1.5, madThreshold = 3.5, methods = ['iqr', 'mad', 'cross_field'], transformOverride = {}, columns,
   } = options;
   const crossFieldRules = options.crossFieldRules
     ?? options.anomalyConfig?.crossFieldRules
-    ?? configCrossFieldRules(reference.meta.modelId);
-  const { stats, warnings } = computeReferenceStats(reference, registry, iqrK, transformOverride);
+    ?? [];
+  const { stats, warnings } = computeReferenceStats(reference, registry, iqrK, transformOverride, columns);
   const flags: AnomalyFlag[] = [];
   const name = (k: string) => registry[k]?.displayName || k;
   const scaleNote = (s: FeatureStats) => (s.transform === 'log1p' ? ' (คำนวณบน log scale)' : '');

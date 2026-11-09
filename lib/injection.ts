@@ -13,22 +13,126 @@
  * - EXPECTED_LAYER is the experiment's HYPOTHESIS, not a guarantee — Step 5 measures it.
  */
 import type { AnomalySeverity, AnomalyType, ExpectedLayer, FeatureDefinition } from './types';
+import { getSpecialColumnSet, resolveModelColumns } from './defaults';
 import { mulberry32 } from './random';
-import { getReferenceProfile, getReferenceRows } from './reference';
+import { getReferenceProfile, getReferenceRows, type ReferenceProfile } from './reference';
 import { quantile } from './anomaly/univariate';
 import { SEVERITY_TABLE, ANOMALY_KIND, expectedFor, type InjectionKind, type Sev } from './injection-meta';
 export { SEVERITY_TABLE, ANOMALY_KIND, EXPECTED_LAYER, expectedFor, type InjectionKind } from './injection-meta';
 
+/**
+ * Return numeric features from featureRegistry ordered by displayOrder (ascending),
+ * excluding special columns (id, date, label, score).
+ */
+export function orderedRegistryFeatures(
+  registry: Record<string, FeatureDefinition>,
+  specialCols: Set<string>,
+  fallbackColumns: string[] = [],
+): string[] {
+  const entries = Object.entries(registry)
+    .filter(([k, d]) => !specialCols.has(k) && (d.dataType === 'numeric' || !d.dataType) && d.monitoringEnabled !== false)
+    .map(([k, d], idx) => ({ key: k, order: typeof d.displayOrder === 'number' ? d.displayOrder : Infinity, idx }));
+  entries.sort((a, b) => a.order - b.order || a.idx - b.idx);
+  if (entries.length > 0) return entries.map(e => e.key);
+  return fallbackColumns.filter(c => !specialCols.has(c));
+}
 
-const DEFAULT_TARGETS: Record<AnomalyType, string[]> = {
-  none: [],
-  unit_error: ['monthly_income'], extreme_outlier: ['monthly_income'], negative_value: ['monthly_income'],
-  type_error: ['monthly_income'], missing_injection: ['monthly_income'],
-  swapped_columns: ['monthly_income', 'loan_amount'], duplicate_rows: [],
-  multivariate_inconsistent: ['monthly_income', 'loan_amount', 'dti_ratio'],
-  schema_break: ['monthly_income'],
-  mean_shift: ['monthly_income'], variance_change: ['monthly_income'],
-};
+function rankVector(values: number[]): number[] {
+  const indexed = values.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v);
+  const ranks = new Array<number>(values.length);
+  let i = 0;
+  while (i < indexed.length) {
+    let j = i;
+    while (j + 1 < indexed.length && indexed[j + 1].v === indexed[i].v) j++;
+    const avgRank = (i + j) / 2 + 1;
+    for (let k = i; k <= j; k++) ranks[indexed[k].i] = avgRank;
+    i = j + 1;
+  }
+  return ranks;
+}
+
+/** Spearman rank correlation between two numeric arrays on rows where both are finite. */
+export function spearmanCorrelation(a: number[], b: number[]): number {
+  const n = Math.min(a.length, b.length);
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (Number.isFinite(a[i]) && Number.isFinite(b[i])) {
+      xs.push(a[i]);
+      ys.push(b[i]);
+    }
+  }
+  if (xs.length < 3) return 0;
+  const rx = rankVector(xs);
+  const ry = rankVector(ys);
+  const meanX = rx.reduce((s, v) => s + v, 0) / rx.length;
+  const meanY = ry.reduce((s, v) => s + v, 0) / ry.length;
+  let num = 0;
+  let denX = 0;
+  let denY = 0;
+  for (let i = 0; i < rx.length; i++) {
+    const dx = rx[i] - meanX;
+    const dy = ry[i] - meanY;
+    num += dx * dy;
+    denX += dx * dx;
+    denY += dy * dy;
+  }
+  const den = Math.sqrt(denX * denY);
+  return den === 0 ? 0 : num / den;
+}
+
+/**
+ * Find the feature pair with the highest |Spearman correlation| in the Reference dataset,
+ * or use model.experimentConfig.multivariateTargets if configured.
+ */
+export function selectMultivariateTargets(
+  profile: ReferenceProfile,
+  orderedFeatures: string[],
+  model?: any,
+): { targets: string[]; correlation: number } {
+  const configured: string[] | undefined = model?.experimentConfig?.multivariateTargets;
+  if (Array.isArray(configured) && configured.length >= 2) {
+    const [f1, f2] = configured;
+    const corr = spearmanCorrelation(profile.features[f1] ?? [], profile.features[f2] ?? []);
+    return { targets: [...configured], correlation: corr };
+  }
+  const candidates = orderedFeatures.filter(f => (profile.features[f]?.length ?? 0) > 0);
+  if (candidates.length < 2) {
+    return { targets: candidates.slice(0, 2), correlation: 0 };
+  }
+  let bestPair: [string, string] = [candidates[0], candidates[1]];
+  let bestCorr = 0;
+  let bestAbs = -1;
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const f1 = candidates[i];
+      const f2 = candidates[j];
+      const c = spearmanCorrelation(profile.features[f1] ?? [], profile.features[f2] ?? []);
+      const abs = Math.abs(c);
+      if (abs > bestAbs) {
+        bestAbs = abs;
+        bestCorr = c;
+        bestPair = [f1, f2];
+      }
+    }
+  }
+  return { targets: bestPair, correlation: bestCorr };
+}
+
+/** Resolve default target features for an anomaly type from featureRegistry (sorted by displayOrder). */
+export function resolveDefaultTargets(
+  type: AnomalyType,
+  orderedFeatures: string[],
+  profile: ReferenceProfile,
+  model?: any,
+): string[] {
+  if (type === 'none' || type === 'duplicate_rows') return [];
+  if (type === 'swapped_columns') return orderedFeatures.slice(0, 2);
+  if (type === 'multivariate_inconsistent') {
+    return selectMultivariateTargets(profile, orderedFeatures, model).targets;
+  }
+  return orderedFeatures.slice(0, 1);
+}
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 export interface InjectionParams {
@@ -82,12 +186,45 @@ function pickIndices(n: number, k: number, rnd: () => number): number[] {
 const keepType = (orig: unknown, v: number) => (Number.isInteger(Number(orig)) ? Math.round(v) : +v.toFixed(4));
 const fmtThousands = (v: unknown) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 4 });
 
+/**
+ * Compute expected detection layer. For `unit_error`, checks whether the actual
+ * injected values exceed `validation.maxValue` of the target feature(s).
+ */
+function resolveExpectedLayer(
+  type: AnomalyType,
+  severity: AnomalySeverity,
+  rows: Record<string, unknown>[],
+  idx: number[],
+  targetFeatures: string[],
+  registry: Record<string, FeatureDefinition>,
+): { layer: ExpectedLayer; shouldAlarm: boolean } {
+  if (type !== 'unit_error') return expectedFor(type, severity);
+  if (idx.length === 0) return expectedFor(type, severity);
+  let exceededRows = 0;
+  for (const i of idx) {
+    const rowExceeded = targetFeatures.some(f => {
+      const maxVal = registry[f]?.validation?.maxValue;
+      const minVal = registry[f]?.validation?.minValue;
+      const v = Number(rows[i]?.[f]);
+      if (!Number.isFinite(v)) return false;
+      if (typeof maxVal === 'number' && v > maxVal) return true;
+      if (typeof minVal === 'number' && v < minVal) return true;
+      return false;
+    });
+    if (rowExceeded) exceededRows++;
+  }
+  const layer: ExpectedLayer = exceededRows >= Math.ceil(idx.length / 2) ? 'validation' : 'anomaly';
+  return { layer, shouldAlarm: true };
+}
+
 export function injectAnomaly(model: any, params: InjectionParams): InjectionResult {
   const referenceId: string = model.referenceDatasetId;
   const registry = (model.featureRegistry ?? {}) as Record<string, FeatureDefinition>;
-  const idColumn: string = model.columns?.idColumn ?? model.idColumn ?? 'customer_id';
-  const labelColumn: string = model.columns?.labelColumn ?? model.labelColumn ?? 'default_flag';
-  const scoreColumn: string | undefined = model.columns?.scoreColumn ?? model.scoreColumn ?? undefined;
+  const cols = resolveModelColumns(model);
+  const idColumn = cols.idColumn;
+  const labelColumn = cols.labelColumn ?? undefined;
+  const scoreColumn = cols.scoreColumn ?? undefined;
+  const specialCols = getSpecialColumnSet(model);
   const ref = getReferenceRows(referenceId);
   const profile = getReferenceProfile(referenceId, model.scoring, { labelColumn, scoreColumn });
 
@@ -98,11 +235,8 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
   if (!(rate >= 0 && rate <= 1)) throw new Error('rate ต้องอยู่ระหว่าง 0 ถึง 1');
   const n = params.n ?? ref.rows.length;
   const seed = params.seed ?? 42;
-  const regKeys = Object.keys(registry).filter(k => registry[k]?.dataType === 'numeric' || !registry[k]?.dataType);
-  const defaultTargets = DEFAULT_TARGETS[type];
-  const resolvedDefaults = defaultTargets.every(f => f in registry || ref.columns.includes(f))
-    ? defaultTargets
-    : regKeys.slice(0, Math.max(1, defaultTargets.length));
+  const orderedFeatures = orderedRegistryFeatures(registry, specialCols, ref.columns);
+  const resolvedDefaults = resolveDefaultTargets(type, orderedFeatures, profile, model);
   const targetFeatures = params.targetFeatures?.length ? params.targetFeatures : resolvedDefaults;
   const rnd = mulberry32(seed);
 
@@ -113,14 +247,20 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
     [idColumn]: `BS${String(i + 1).padStart(width, '0')}`,
   }));
   let columns = [...ref.columns];
-  const gt: GroundTruthRow[] = rows.map((r, i) => ({ row: i + 1, id: String(r[idColumn] ?? r.customer_id ?? `ROW_${i + 1}`), injected: false, kind: 'clean', type: 'none' }));
+  const gt: GroundTruthRow[] = rows.map((r, i) => ({
+    row: i + 1,
+    id: String(r[idColumn] ?? `ROW_${i + 1}`),
+    injected: false,
+    kind: 'clean',
+    type: 'none',
+  }));
 
   const k = Math.round(rate * n);
   const idx = type === 'none' ? [] : pickIndices(n, k, rnd);
   const sevKey = severity as Sev;
-  const sorted = (f: string) => [...(profile.features[f] ?? [])].sort((a, b) => a - b);
+  const sorted = (f: string) => [...(profile.features[f] ?? [])].filter(Number.isFinite).sort((a, b) => a - b);
   const mark = (i: number, original: Record<string, unknown>) => { gt[i] = { ...gt[i], injected: true, kind, type, original }; };
-  const snapshot = (r: Record<string, unknown>, cols: string[]) => Object.fromEntries(cols.map(c => [c, r[c]]));
+  const snapshot = (r: Record<string, unknown>, colsToSnap: string[]) => Object.fromEntries(colsToSnap.map(c => [c, r[c]]));
 
   switch (type) {
     case 'none': break;
@@ -155,21 +295,43 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
       for (const i of idx) {
         const copy = { ...rows[i] };
         rows.push(copy);
-        gt.push({ row: rows.length, id: String(copy[idColumn] ?? copy.customer_id ?? `ROW_${rows.length}`), injected: true, kind, type, original: { duplicateOfRow: i + 1 } });
+        gt.push({ row: rows.length, id: String(copy[idColumn] ?? `ROW_${rows.length}`), injected: true, kind, type, original: { duplicateOfRow: i + 1 } });
       }
       break;
     }
     case 'multivariate_inconsistent': {
       const q = SEVERITY_TABLE.multivariate_inconsistent[sevKey];
-      const [fi, fl, fd] = targetFeatures;
       const pool = (f: string, p: number, side: 'le' | 'ge') => {
         const s = sorted(f), cut = quantile(s, p);
         const out = s.filter(v => (side === 'le' ? v <= cut : v >= cut));
         return out.length ? out : [cut];
       };
-      const pi = pool(fi, q.income, 'le'), pl = pool(fl, q.loan, 'ge'), pd = pool(fd, q.dti, 'le');
       const draw = (p: number[]) => p[Math.floor(rnd() * p.length)];
-      for (const i of idx) { mark(i, snapshot(rows[i], [fi, fl, fd])); rows[i][fi] = draw(pi); rows[i][fl] = draw(pl); rows[i][fd] = draw(pd); }
+      if (targetFeatures.length >= 3) {
+        const [f1, f2, f3] = targetFeatures;
+        const p1 = pool(f1, q.income, 'le');
+        const p2 = pool(f2, q.loan, 'ge');
+        const p3 = pool(f3, q.dti, 'le');
+        for (const i of idx) {
+          mark(i, snapshot(rows[i], [f1, f2, f3]));
+          rows[i][f1] = draw(p1);
+          rows[i][f2] = draw(p2);
+          rows[i][f3] = draw(p3);
+        }
+      } else {
+        const [f1, f2] = targetFeatures;
+        const corr = spearmanCorrelation(profile.features[f1] ?? [], profile.features[f2] ?? []);
+        // Contradict the Reference correlation direction while keeping each marginal value inside Reference tails:
+        //  - Positive correlation (corr >= 0): f1 in upper tail (>= q.loan) and f2 in lower tail (<= q.dti)
+        //  - Negative correlation (corr < 0):  both f1 and f2 in upper tail (>= q.loan)
+        const p1 = pool(f1, q.loan, 'ge');
+        const p2 = corr >= 0 ? pool(f2, q.dti, 'le') : pool(f2, q.loan, 'ge');
+        for (const i of idx) {
+          mark(i, snapshot(rows[i], [f1, f2]));
+          rows[i][f1] = draw(p1);
+          rows[i][f2] = draw(p2);
+        }
+      }
       break;
     }
     case 'schema_break': {
@@ -216,12 +378,13 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
   }
 
   const injectedCount = gt.filter(g => g.injected).length;
+  const expected = resolveExpectedLayer(type, severity, rows, idx, targetFeatures, registry);
   return {
     columns,
     rows,
     csvText: toCsv(rows, columns),
     groundTruth: gt,
-    expected: expectedFor(type, severity),
+    expected,
     spec: { type, severity, rate, targetFeatures, n, seed, referenceId, kind, injectedCount },
   };
 }

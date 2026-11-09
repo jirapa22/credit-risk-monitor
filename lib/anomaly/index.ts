@@ -17,14 +17,14 @@ import type {
 import type { ReferenceProfile } from '../reference';
 import type { CleanRow } from '../validation';
 import { resolveModelColumns } from '../defaults';
-import { detectUnivariateAnomaliesDetailed, univariateFeatures, type CrossFieldRule } from './univariate';
+import { detectUnivariateAnomaliesDetailed, univariateFeatures, categoricalFeatures, type CrossFieldRule } from './univariate';
 import { detectMultivariateAnomaliesDetailed, fitMultivariate } from './multivariate';
 
 export const ANOMALY_DEFAULTS = {
   iqrK: 1.5, madThreshold: 3.5, contamination: 0.01, seed: 42, k: 20, nTrees: 100, sampleSize: 256, maxStoredRows: 500,
 };
 
-const METHOD_ORDER: AnomalyMethod[] = ['iqr', 'mad', 'cross_field', 'isolation_forest', 'lof'];
+const METHOD_ORDER: AnomalyMethod[] = ['iqr', 'mad', 'cross_field', 'unseen_category', 'isolation_forest', 'lof'];
 
 export function resolveAnomalyConfig(model: any, _reference?: ReferenceProfile): AnomalyConfigSnapshot & { maxStoredRows: number } {
   const cfg = model?.anomalyConfig ?? {};
@@ -35,11 +35,17 @@ export function resolveAnomalyConfig(model: any, _reference?: ReferenceProfile):
   const transforms: Record<string, AnomalyTransform> = {};
   for (const f of univariateFeatures(registry, cols)) transforms[f] = registry[f].anomalyTransform ?? 'none';
   const crossFieldRules: CrossFieldRule[] = Array.isArray(cfg.crossFieldRules) ? cfg.crossFieldRules : [];
+  const catFeats = categoricalFeatures(registry, cols);
+  const warnings: string[] = catFeats.length > 0
+    ? [`ชั้นหลายตัวแปร (IF/LOF) ไม่ใช้ตัวแปรแบบกลุ่ม (categorical) — ข้ามตัวแปร: ${catFeats.map(k => registry[k]?.displayName || k).join(', ')}`]
+    : [];
   return {
     iqrK: pick('iqrK'), madThreshold: pick('madThreshold'), contamination: pick('contamination'),
     seed: pick('seed'), k: pick('k'), nTrees: pick('nTrees'), sampleSize: pick('sampleSize'),
     maxStoredRows: pick('maxStoredRows'),
     transforms, crossFieldRules,
+    excludedCategoricalFeatures: catFeats,
+    warnings,
   };
 }
 
@@ -66,10 +72,16 @@ export function referenceFlaggedIndices(reference: ReferenceProfile, model: any)
   if (hit) return hit;
 
   const feats = univariateFeatures(registry, cols);
+  const catFeats = categoricalFeatures(registry, cols);
   const n = reference.labels.length;
   const refRows: CleanRow[] = Array.from({ length: n }, (_, i) => ({
     row: i + 1, id: `REF_${i + 1}`, date: null, label: null, imputed: [],
     values: Object.fromEntries(feats.filter(f => reference.features[f]).map(f => [f, reference.features[f][i]])),
+    categories: Object.fromEntries(
+      catFeats
+        .filter(f => reference.categoricalFeatures?.[f]?.[i] !== null && reference.categoricalFeatures?.[f]?.[i] !== undefined)
+        .map(f => [f, reference.categoricalFeatures[f][i] as string]),
+    ),
   }));
   const out = new Set<number>();
   for (const f of detectUnivariateAnomaliesDetailed(reference, refRows, registry, {
@@ -94,6 +106,10 @@ export function referenceWithout(reference: ReferenceProfile, drop: Set<number>)
   return {
     meta: reference.meta,
     features: Object.fromEntries(Object.entries(reference.features).map(([k, v]) => [k, v.filter(keep)])),
+    categoricalFeatures: Object.fromEntries(
+      Object.entries(reference.categoricalFeatures ?? {}).map(([k, v]) => [k, v.filter(keep)]),
+    ),
+    categorySpecs: reference.categorySpecs ?? {},
     labels,
     hasLabels: labels.some(l => l !== null),
     scores: reference.scores.filter(keep),

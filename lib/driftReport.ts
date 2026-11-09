@@ -14,6 +14,7 @@
  */
 import type {
   AnomalyTransform,
+  CategoryProportionEntry,
   ConceptBinBadRate,
   ConceptFeatureReport,
   ConceptPerformanceReport,
@@ -26,6 +27,7 @@ import type {
   DriftSectionStatus,
   DriftStatus,
   FeatureDefinition,
+  JensenShannonResult,
   KsTwoSampleResult,
   LabelDriftMetrics,
   MissingFeatureReport,
@@ -44,8 +46,12 @@ import {
   calculateAUC,
   calculateGini,
   calculateKS,
+  chiSquareTwoSample,
   defaultBinLabels,
+  formatCategoryDisplayLabel,
   getBinIndex,
+  jensenShannonDistance,
+  psiForCategories,
   type DataPoint,
   type ScoreDirection,
 } from './stats';
@@ -57,6 +63,8 @@ export const DEFAULT_DRIFT_CONFIG: Required<DriftConfig> = {
   ksCritical: 0.20,
   wassersteinWarning: 0.10,
   wassersteinCritical: 0.25,
+  jsWarning: 0.10,
+  jsCritical: 0.20,
   missingDeltaWarning: 0.02,     // +2 จุด%
   missingDeltaCritical: 0.05,    // +5 จุด%
   minLabeledRows: 100,
@@ -99,6 +107,8 @@ export function resolveDriftConfig(model: any): Required<DriftConfig> {
     ksCritical: dc.ksCritical ?? DEFAULT_DRIFT_CONFIG.ksCritical,
     wassersteinWarning: dc.wassersteinWarning ?? DEFAULT_DRIFT_CONFIG.wassersteinWarning,
     wassersteinCritical: dc.wassersteinCritical ?? DEFAULT_DRIFT_CONFIG.wassersteinCritical,
+    jsWarning: dc.jsWarning ?? DEFAULT_DRIFT_CONFIG.jsWarning,
+    jsCritical: dc.jsCritical ?? DEFAULT_DRIFT_CONFIG.jsCritical,
     missingDeltaWarning: dc.missingDeltaWarning ?? DEFAULT_DRIFT_CONFIG.missingDeltaWarning,
     missingDeltaCritical: dc.missingDeltaCritical ?? DEFAULT_DRIFT_CONFIG.missingDeltaCritical,
     minLabeledRows: dc.minLabeledRows ?? DEFAULT_DRIFT_CONFIG.minLabeledRows,
@@ -330,6 +340,7 @@ interface ResolvedModelSpec {
   registry: Record<string, FeatureDefinition>;
   scoringFeatures: string[];
   numericFeatures: string[];
+  categoricalFeatures: string[];
   thresholds: MonitoringThresholds;
   driftConfig: Required<DriftConfig>;
 }
@@ -361,13 +372,15 @@ function resolveModelSpec(model: any): ResolvedModelSpec {
   if (scoreColumn) specialCols.add(scoreColumn);
 
   const numericSet = new Set<string>();
+  const categoricalSet = new Set<string>();
   for (const [key, def] of Object.entries(registry)) {
     if (specialCols.has(key) || specialCols.has(def.columnName)) continue;
     if (def.monitoringEnabled === false) continue;
     if (def.dataType === 'numeric') numericSet.add(key);
+    else if (def.dataType === 'categorical') categoricalSet.add(key);
   }
   for (const f of scoringFeatures) {
-    if (!specialCols.has(f)) numericSet.add(f);
+    if (!specialCols.has(f) && !categoricalSet.has(f)) numericSet.add(f);
   }
 
   const thresholds: MonitoringThresholds = {
@@ -391,6 +404,7 @@ function resolveModelSpec(model: any): ResolvedModelSpec {
     registry,
     scoringFeatures,
     numericFeatures: [...numericSet],
+    categoricalFeatures: [...categoricalSet],
     thresholds,
     driftConfig: resolveDriftConfig(model),
   };
@@ -426,6 +440,14 @@ export function buildDriftReport(
       .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
   }
 
+  // Build per-feature actual categorical arrays from cleanRows
+  const actualCategories: Record<string, string[]> = {};
+  for (const f of spec.categoricalFeatures) {
+    actualCategories[f] = cleanRows
+      .map(r => r.categories?.[f])
+      .filter((v): v is string => typeof v === 'string' && v.length > 0);
+  }
+
   // Determine whether scores exist on both Reference and actual data
   let actualScores: number[] = [];
   let hasActualScores = false;
@@ -456,6 +478,7 @@ export function buildDriftReport(
     scoreColumn: spec.scoreColumn,
     idColumn: spec.idColumn,
     dateColumn: spec.dateColumn,
+    actualCategories,
   };
 
   // Reuse PSI/CSI from drift.ts (only call runDriftDetection if caller didn't pass driftResult)
@@ -527,6 +550,7 @@ export function buildDriftReport(
       key,
       displayName,
       kind: 'feature',
+      dataType: 'numeric',
       status: fStatus,
       reason:
         triggeredMetrics.length > 0
@@ -536,6 +560,119 @@ export function buildDriftReport(
       distributionProfile,
       ks,
       wasserstein,
+    };
+  }
+
+  for (const key of spec.categoricalFeatures) {
+    const def = spec.registry[key];
+    const displayName =
+      spec.thresholds.csi_features?.[key]?.label || def?.displayName || key;
+    const refCatVals = (reference.categoricalFeatures?.[key] ?? []).filter(
+      (v): v is string => typeof v === 'string' && v.length > 0,
+    );
+    const actCatVals = actualCategories[key] ?? [];
+    const baseCats = reference.categorySpecs?.[key]?.categories ?? [];
+    let csiEntry: StabilityResult | null = driftResult.csi[key] ?? null;
+
+    if (refCatVals.length === 0 || actCatVals.length === 0) {
+      covariateFeatures[key] = {
+        key,
+        displayName,
+        kind: 'feature',
+        dataType: 'categorical',
+        status: 'NOT_AVAILABLE',
+        reason:
+          refCatVals.length === 0
+            ? `ไม่มีตัวแปร "${displayName}" ใน Reference Dataset`
+            : `ไม่มีข้อมูลตัวแปร "${displayName}" ในชุดข้อมูลใหม่`,
+        psiOrCsi: null,
+        distributionProfile: null,
+        ks: null,
+        wasserstein: null,
+        chiSquare: null,
+        jensenShannon: null,
+      };
+      continue;
+    }
+
+    const catPsi = psiForCategories(refCatVals, actCatVals, baseCats);
+    if (!csiEntry) {
+      const warnThr = spec.thresholds.csi_features?.[key]?.threshold ?? def?.csiThreshold ?? 0.10;
+      const critThr = Math.max(spec.thresholds.psi_critical, warnThr);
+      csiEntry = {
+        value: catPsi.value,
+        status: classify(catPsi.value, warnThr, critThr),
+        threshold: { warning: warnThr, critical: critThr },
+        bins: catPsi.bins.map((b, i) => ({ label: catPsi.labels[i] ?? `Cat ${i + 1}`, ...b })),
+      };
+    }
+
+    const expectedCounts = catPsi.bins.map(b => b.expectedCount);
+    const actualCounts = catPsi.bins.map(b => b.actualCount);
+    const chiSquare = chiSquareTwoSample(expectedCounts, actualCounts);
+    const jsRaw = jensenShannonDistance(expectedCounts, actualCounts);
+    const jensenShannon: JensenShannonResult = {
+      distance: jsRaw.distance,
+      divergence: jsRaw.divergence,
+      status: classify(jsRaw.distance, dc.jsWarning, dc.jsCritical),
+      threshold: { warning: dc.jsWarning, critical: dc.jsCritical },
+    };
+
+    const categories: CategoryProportionEntry[] = catPsi.bins.map((b, idx) => ({
+      category: catPsi.categories[idx],
+      label: catPsi.labels[idx],
+      referenceCount: b.expectedCount,
+      referencePct: b.expectedPct,
+      actualCount: b.actualCount,
+      actualPct: b.actualPct,
+      deltaPct: b.actualPct - b.expectedPct,
+    }));
+
+    const zeroStats = computeDistributionStats([]);
+    const distributionProfile: DistributionProfile = {
+      reference: { ...zeroStats, n: refCatVals.length },
+      actual: { ...zeroStats, n: actCatVals.length },
+      pctChange: {
+        mean: null,
+        median: null,
+        sd: null,
+        iqr: null,
+        p5: null,
+        p95: null,
+        skewness: null,
+        excessKurtosis: null,
+      },
+      categories,
+    };
+
+    const statuses: DriftStatus[] = [jensenShannon.status];
+    if (csiEntry && csiEntry.status !== 'NOT_AVAILABLE') statuses.push(csiEntry.status);
+    const fStatus = worstStatus(statuses);
+
+    const triggeredMetrics: string[] = [];
+    if (csiEntry && csiEntry.status !== 'STABLE' && csiEntry.status !== 'NOT_AVAILABLE') {
+      triggeredMetrics.push(`CSI=${csiEntry.value.toFixed(4)} (${csiEntry.status})`);
+    }
+    if (jensenShannon.status !== 'STABLE') {
+      triggeredMetrics.push(`JS=${jensenShannon.distance.toFixed(4)} (${jensenShannon.status})`);
+    }
+
+    covariateFeatures[key] = {
+      key,
+      displayName,
+      kind: 'feature',
+      dataType: 'categorical',
+      status: fStatus,
+      reason:
+        triggeredMetrics.length > 0
+          ? `พบการเลื่อนของสัดส่วนหมวดใน "${displayName}": ${triggeredMetrics.join(', ')}, χ²=${chiSquare.statistic.toFixed(2)} (p=${chiSquare.pValue.toFixed(4)})`
+          : `สัดส่วนหมวดของ "${displayName}" ปกติ (CSI=${(csiEntry?.value ?? 0).toFixed(4)}, JS=${jensenShannon.distance.toFixed(4)}, χ²=${chiSquare.statistic.toFixed(2)})`,
+      psiOrCsi: csiEntry,
+      distributionProfile,
+      ks: null,
+      wasserstein: null,
+      chiSquare,
+      jensenShannon,
     };
   }
 
@@ -615,7 +752,7 @@ export function buildDriftReport(
   } else {
     const rawTotal = rawRows.length;
     const cleanTotal = cleanRows.length;
-    for (const key of spec.numericFeatures) {
+    for (const key of [...spec.numericFeatures, ...spec.categoricalFeatures]) {
       const def = spec.registry[key];
       const col = def?.columnName || key;
       const displayName = def?.displayName || key;
@@ -760,7 +897,111 @@ export function buildDriftReport(
     const conceptFeatures: Record<string, ConceptFeatureReport> = {};
 
     for (const f of csiFeatureSpecs) {
-      if (f.skipped || !reference.features[f.key]) continue;
+      if (f.skipped) continue;
+      if (f.dataType === 'categorical') {
+        const refCatVals = reference.categoricalFeatures?.[f.key] ?? [];
+        if (refCatVals.length === 0) continue;
+        const baseCats = f.categories ?? reference.categorySpecs?.[f.key]?.categories ?? [];
+        const orderedCats: string[] = [];
+        const seenCat = new Set<string>();
+        const addCat = (c: string) => {
+          if (!seenCat.has(c)) {
+            seenCat.add(c);
+            orderedCats.push(c);
+          }
+        };
+        for (const c of baseCats) {
+          if (c !== '__OTHER__' && c !== '__UNSEEN__') addCat(c);
+        }
+        for (const c of refCatVals) {
+          if (c && c !== '__OTHER__' && c !== '__UNSEEN__') addCat(c);
+        }
+        for (const r of actLabeledRows) {
+          const c = r.categories?.[f.key];
+          if (c && c !== '__OTHER__' && c !== '__UNSEEN__') addCat(c);
+        }
+        if (
+          baseCats.includes('__OTHER__') ||
+          refCatVals.includes('__OTHER__') ||
+          actLabeledRows.some(r => r.categories?.[f.key] === '__OTHER__')
+        ) {
+          addCat('__OTHER__');
+        }
+        if (
+          baseCats.includes('__UNSEEN__') ||
+          refCatVals.includes('__UNSEEN__') ||
+          actLabeledRows.some(r => r.categories?.[f.key] === '__UNSEEN__')
+        ) {
+          addCat('__UNSEEN__');
+        }
+
+        const catIdxMap = new Map<string, number>(orderedCats.map((c, i) => [c, i]));
+        const numBins = orderedCats.length;
+        const refTotalByBin = new Array<number>(numBins).fill(0);
+        const refBadsByBin = new Array<number>(numBins).fill(0);
+        for (let i = 0; i < refCatVals.length; i++) {
+          const cat = refCatVals[i];
+          const lbl = reference.labels[i];
+          if (!cat || (lbl !== 0 && lbl !== 1)) continue;
+          const bIdx = catIdxMap.get(cat);
+          if (bIdx === undefined) continue;
+          refTotalByBin[bIdx]++;
+          if (lbl === 1) refBadsByBin[bIdx]++;
+        }
+
+        const actTotalByBin = new Array<number>(numBins).fill(0);
+        const actBadsByBin = new Array<number>(numBins).fill(0);
+        for (const r of actLabeledRows) {
+          const cat = r.categories?.[f.key];
+          if (!cat) continue;
+          const bIdx = catIdxMap.get(cat);
+          if (bIdx === undefined) continue;
+          actTotalByBin[bIdx]++;
+          if (r.label === 1) actBadsByBin[bIdx]++;
+        }
+
+        const bins: ConceptBinBadRate[] = [];
+        let maxBinRatio: number | null = null;
+        for (let b = 0; b < numBins; b++) {
+          const rTot = refTotalByBin[b];
+          const rBad = refBadsByBin[b];
+          const aTot = actTotalByBin[b];
+          const aBad = actBadsByBin[b];
+          const rRate = rTot > 0 ? rBad / rTot : null;
+          const aRate = aTot > 0 ? aBad / aTot : null;
+          const ratio = rRate !== null && rRate > 0 && aRate !== null ? aRate / rRate : null;
+          const deltaBadRate = rRate !== null && aRate !== null ? aRate - rRate : null;
+          const lowSample = rBad < dc.minBadsPerBin || aBad < dc.minBadsPerBin;
+          if (!lowSample && ratio !== null) {
+            const deviation = Math.max(ratio, ratio > 0 ? 1 / ratio : 0);
+            if (maxBinRatio === null || deviation > maxBinRatio) maxBinRatio = deviation;
+          }
+          bins.push({
+            label: formatCategoryDisplayLabel(orderedCats[b]),
+            referenceTotal: rTot,
+            referenceBads: rBad,
+            referenceBadRate: rRate,
+            actualTotal: aTot,
+            actualBads: aBad,
+            actualBadRate: aRate,
+            ratio,
+            deltaBadRate,
+            lowSample,
+            ...(lowSample ? { note: 'ข้อมูลน้อย ไม่ใช้ตัดสินสถานะ' } : {}),
+          });
+        }
+
+        conceptFeatures[f.key] = {
+          key: f.key,
+          displayName: f.displayName,
+          bins,
+          maxBinRatio,
+          status: 'STABLE',
+          reason: `คำนวณ Bad Rate รายหมวดของ "${f.displayName}" เทียบกับ Reference เรียบร้อยแล้ว`,
+        };
+        continue;
+      }
+      if (!reference.features[f.key]) continue;
       const refVals = reference.features[f.key];
       const numBins = f.bins.length + 1;
       const labels = f.labels.length === numBins ? f.labels : defaultBinLabels(f.bins);

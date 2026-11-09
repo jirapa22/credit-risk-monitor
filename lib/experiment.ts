@@ -98,7 +98,10 @@ export function evaluateTrial(run: MonitoringRun, inj: ReturnType<typeof injectA
   if (blocked) all.forEach(r => validationHit.add(r));
   for (const is of run.validation.issues) {
     if (is.row === undefined) continue;
-    validationHit.add(is.row);
+    // UNSEEN_CATEGORY is mapped to __UNSEEN__ in Layer 2 and flagged as an anomaly in Layer 3 (unseen_category).
+    if (is.type !== 'UNSEEN_CATEGORY') {
+      validationHit.add(is.row);
+    }
     if (is.severity === 'error') rejected.add(is.row);
   }
   const passed = blocked ? [] : all.filter(r => !rejected.has(r));
@@ -107,7 +110,7 @@ export function evaluateTrial(run: MonitoringRun, inj: ReturnType<typeof injectA
   const anyAnomaly = new Set<number>();
   for (const f of run.anomaly?.flaggedRows ?? []) {
     anyAnomaly.add(f.row);
-    for (const m of f.methods) byMethod[m].add(f.row);
+    for (const m of f.methods) byMethod[m]?.add(f.row);
   }
   const allLayers = new Set([...validationHit, ...anyAnomaly]);
 

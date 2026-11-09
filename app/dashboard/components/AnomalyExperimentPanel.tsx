@@ -31,8 +31,10 @@ const TYPE_INFO: Record<AnomalyType, string> = {
   duplicate_rows: 'แถวซ้ำ (customer_id เดิม) ถูกแทรกต่อท้าย',
   multivariate_inconsistent: 'แต่ละค่าปกติ แต่รวมกันขัดแย้ง (รายได้ต่ำ + วงเงินสูง + DTI ต่ำ)',
   schema_break: 'โครงสร้างไฟล์เสีย — เปลี่ยนชื่อหรือลบคอลัมน์ (ทั้งไฟล์)',
+  unseen_category: 'หมวดใหม่ที่ไม่เคยพบใน Reference (เช่น สะกดผิด)',
   mean_shift: 'ลูกค้าจริงเปลี่ยน — รายได้เฉลี่ยลดลงทั้งพอร์ต',
   variance_change: 'ลูกค้าจริงเปลี่ยน — การกระจายของรายได้กว้างขึ้น',
+  category_shift: 'ลูกค้าจริงเปลี่ยน — สัดส่วนหมวดหมู่เลื่อนจากหมวดหนึ่งไปอีกหมวด',
   none: 'ไม่ฉีดอะไรเลย (bootstrap จาก Reference) — ใช้วัดการเตือนผิด',
 };
 const GROUPS: { label: string; types: AnomalyType[] }[] = [
@@ -61,6 +63,8 @@ function severityLabel(type: AnomalyType, sev: typeof SEVS[number]): string {
     case 'schema_break': return ({ rename_case: 'เปลี่ยนตัวพิมพ์', rename_typo: 'สะกดผิด', drop_column: 'ลบคอลัมน์' } as Record<string, string>)[String(v)] ?? String(v);
     case 'mean_shift': return `${Math.round(Number(v) * 100)}%`;
     case 'variance_change': return `×${v}`;
+    case 'category_shift': return `${Math.round(Number(v) * 100)} จุด%`;
+    case 'unseen_category': return 'หมวดใหม่';
   }
   return String(v);
 }

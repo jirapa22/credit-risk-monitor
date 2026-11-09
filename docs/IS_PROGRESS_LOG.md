@@ -26,6 +26,7 @@
 | 8 | fc23014 | Drift Report: covariate (PSI/CSI, distribution profile, KS, Wasserstein) / missing / label / concept |
 | 9 | 9a212a0 | Trigger แบบกฎใน config (R1–R9) + review workflow (human-in-the-loop, audit) |
 | 10a | 67d02b1 | Baseline Registry: lifecycle DRAFT→VALIDATED→ACTIVE→ARCHIVED, blob storage, auto validation, export/import |
+| 10b | 0a0b238 | โหมด score_column (โมเดลภายนอก), scoreDirection ทุกจุด, risk grade D1–D10 อัตโนมัติ, lib/defaults.ts, guard test no-hardcode (0 violations), ลบโค้ดเก่า (dataGenerator, utils/stats, api/risk-score); 109/109 tests |
 
 ## ข้อค้นพบ (ใช้ในบทที่ 4)
 1. Log1p แก้ปัญหาข้อมูลเบ้: MAD ติดธงบน Reference 7.25% → 1.3%, IQR 9.4% → 3.0%; ขอบล่าง IQR จากติดลบ → 7,781 บาท (จับรายได้กรอกผิดหน่วยได้)
@@ -40,13 +41,19 @@
 10. ผลรอบ quick: กลุ่มข้อมูลผิด routing ถูก 100%, none ไม่มี false alarm, อัตราธงพื้นฐาน ~4%; LOF > IF (extreme_outlier 1.00 vs 0.29; multivariate 1.00 vs 0.56)
 11. Registry: โมเดลปลอม (age/salary/utilization, is_bad) ลงทะเบียน→ใช้งานได้ครบโดยไม่แก้โค้ด; ascore_v1 AUC/Gini/KS บน Reference = 0.711 / 0.421 / 0.324
 
+12. score_column: โมเดลปลอม ext_gbm_v1 (x1–x3, higher_is_riskier) AUC บน Reference 0.822; ไม่มีคอลัมน์ score → ส่วนที่ใช้คะแนน NOT_AVAILABLE แต่ CSI ได้; สลับ label → CONSIDER_RETRAIN
+13. เปลี่ยน Baseline เวอร์ชัน: ผลของ v1 ยังอยู่และแยกจาก v2; persistence ของ trigger นับเฉพาะเวอร์ชันเดียวกัน (v2 รอบแรกได้ INVESTIGATE_DRIFT ไม่ใช่ CONSIDER_RETRAIN)
+14. multivariate_inconsistent แบบทั่วไป (เลือกคู่ |Spearman| สูงสุด): ascore_v1 เลือก loan_amount–dti_ratio (ρ=+0.39); LOF recall low 1.00→0.95, medium/high 1.00
+
+## หมายเหตุสำหรับผลการทดลอง
+- ผล grid เต็ม 926868a (3,895 trial) ใช้นิยาม multivariate_inconsistent แบบเดิม (3 ตัวแปรคงที่) → ต้องรัน grid ใหม่ใน Step 11 ก่อนใช้ตัวเลขในเล่ม
+
 ## ค่าสำคัญของระบบ
 - Reference: ascore_v1_dev855 (855 แถว, bad 80 = 9.36%, sha256 f7255c63…), scoreDirection = higher_is_safer
 - เกณฑ์: PSI 0.10/0.25, CSI 0.10, KS D 0.10/0.20, Wasserstein 0.10/0.25 (ชั่วคราว รอปรับใน Step 11), IQR k=1.5, MAD |z|>3.5, IF/LOF contamination 0.01, LOF k=20, IF 100 ต้น ψ=256 seed 42
 - Severity table: unit_error ×10/×100/×1000; extreme_outlier p99×1.5/3/10; mean_shift −10/−20/−40%; variance ×1.25/1.5/2
 
 ## คงค้าง / Step ถัดไป
-- 10b score_column mode + ล้าง hard-code + guard test (prompt ส่งแล้ว 9 พ.ย.)
 - 10b-2 รองรับตัวแปร categorical ทุกชั้น (พบช่องว่าง 9 พ.ย.: ทุกชั้นตรวจเฉพาะ numeric → ตัวแปรแบบกลุ่มถูกข้ามเงียบ ๆ) — CSI รายหมวด, chi-square, Jensen–Shannon, UNSEEN_CATEGORY, category_shift/unseen_category injection
 - 10c UI Baseline Registry (รวมล้าง hard-code ใน app/dashboard/page.tsx) + ลดงานกรอกของผู้ใช้ (บันทึก 9 พ.ย.):
   (1) auto-detect scoreDirection จาก label (AUC > 0.5)
@@ -65,5 +72,7 @@
 - 12 Lending Club เป็น Baseline ตัวที่สอง (score_column)
 - 13 UI Monitoring Report (Data Quality + Drift + Trigger + review) + AI สรุป/อธิบาย Drift Report และ Trigger สำหรับผู้บริหาร (ตัวเลขทั้งหมดมาจากระบบ)
 - "เรื่อง Upstash": production ยังเป็น storage memory (ไม่มี env vars) — ต้องตั้ง Upstash + Vercel Blob + API key ของ AI (สำหรับ 10d/13) ก่อน demo
+- 14 (ใหม่ 9 พ.ย.) ประเมินกับผู้ใช้: ผู้ทดสอบ 3–5 คน เทียบ Excel vs ระบบ (เวลา, จับความผิดปกติได้กี่จุด, สรุปถูกไหม) + SUS 10 ข้อ + จับเวลานำเข้า Baseline ใหม่ผ่านหน้าเว็บ (หลักฐานความยืดหยุ่นจากมุมผู้ใช้) — Claude เตรียมแบบฟอร์ม/โจทย์/แบบสอบถาม/ตารางคำนวณ
+- ผู้ใช้ยืนยัน 9 พ.ย.: ไม่ตัด Step ใด ๆ, คงหลักความยืดหยุ่น; ประมาณเวลาที่เหลือ ~2.5–3 สัปดาห์ (ระบบ 6–8 วัน + เล่ม/สไลด์ 7–10 วัน; ร่างบท 1–3 คู่ขนานได้)
 - ยังไม่ทราบวันนำเสนอ Final
 - เขียนเล่ม บทที่ 1–5 + สไลด์ Final

@@ -17,7 +17,8 @@ export const dynamic = 'force-dynamic';
 
 const ANOMALY_TYPES: AnomalyType[] = [
   'none', 'unit_error', 'extreme_outlier', 'negative_value', 'type_error', 'missing_injection',
-  'swapped_columns', 'duplicate_rows', 'multivariate_inconsistent', 'schema_break', 'mean_shift', 'variance_change',
+  'swapped_columns', 'duplicate_rows', 'multivariate_inconsistent', 'schema_break', 'unseen_category',
+  'mean_shift', 'variance_change', 'category_shift',
 ];
 /** Backward compatibility for older clients. */
 const TYPE_ALIASES: Record<string, AnomalyType> = { outlier_injection: 'extreme_outlier' };

@@ -66,12 +66,15 @@ export function inferColumnsFromRows(
     const missingCount = total - nonNullCount;
     const missingRate = total > 0 ? missingCount / total : 0;
     const uniqueSet = new Set(nonBlank.map(v => String(v).trim()));
+    const lowerUniqueSet = new Set(nonBlank.map(v => String(v).trim().toLowerCase()));
     const sampleValues = [...uniqueSet].slice(0, 5).map(v => {
       const n = parseNumber(v);
       return Number.isFinite(n) ? n : v;
     });
 
     let inferredType: FeatureDataType = 'string';
+    let monitoringEnabled = true;
+    let warning: string | undefined;
     if (nonNullCount > 0) {
       const numCount = nonBlank.filter(v => Number.isFinite(parseNumber(v))).length;
       const dateCount = nonBlank.filter(v => isValidDate(v)).length;
@@ -83,8 +86,14 @@ export function inferColumnsFromRows(
         inferredType = allBinary && uniqueSet.size <= 2 ? 'binary' : 'numeric';
       } else if (dateCount / nonNullCount >= 0.90) {
         inferredType = 'date';
-      } else if (uniqueSet.size <= Math.min(20, Math.max(2, Math.floor(nonNullCount * 0.1)))) {
+        monitoringEnabled = false;
+      } else if (lowerUniqueSet.size <= 50) {
         inferredType = 'categorical';
+        monitoringEnabled = true;
+      } else {
+        inferredType = 'string';
+        monitoringEnabled = false;
+        warning = `คอลัมน์ "${name}" มีหมวดหมู่ไม่ซ้ำกัน ${lowerUniqueSet.size} หมวด (> 50 หมวด) — แนะนำเป็น string และไม่เปิดการตรวจติดตาม (monitoringEnabled = false)`;
       }
     }
 
@@ -95,8 +104,10 @@ export function inferColumnsFromRows(
       nonNullCount,
       missingCount,
       missingRate,
-      uniqueCount: uniqueSet.size,
+      uniqueCount: lowerUniqueSet.size > 0 && inferredType === 'categorical' ? lowerUniqueSet.size : uniqueSet.size,
       sampleValues,
+      monitoringEnabled,
+      ...(warning ? { warning } : {}),
     };
   });
 }
@@ -413,6 +424,7 @@ export function validateBaseline(
       {
         labelColumn: labelCol,
         scoreColumn: spec.mode === 'score_column' ? (spec.scoreColumn ?? undefined) : undefined,
+        featureRegistry: spec.featureRegistry,
       },
     );
 

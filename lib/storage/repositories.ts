@@ -366,10 +366,12 @@ export async function loadReferenceProfile(
       : undefined;
   const scoring = mode === 'scorecard' ? baseline?.scoring : null;
 
+  const featureRegistry = baseline?.featureRegistry;
+
   if (blob) {
-    return buildReferenceProfileFromData(blob, scoring, { labelColumn, scoreColumn });
+    return buildReferenceProfileFromData(blob, scoring, { labelColumn, scoreColumn, featureRegistry });
   }
-  return getReferenceProfile(referenceId, scoring, { labelColumn, scoreColumn });
+  return getReferenceProfile(referenceId, scoring, { labelColumn, scoreColumn, featureRegistry });
 }
 
 /**

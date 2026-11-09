@@ -15,7 +15,7 @@
 import type { AnomalyFlag, AnomalyTransform, FeatureDefinition } from '../types';
 import type { ReferenceProfile } from '../reference';
 import type { CleanRow } from '../validation';
-import { quantile, median, univariateFeatures, type UnivariateColumnOptions } from './univariate';
+import { quantile, median, univariateFeatures, categoricalFeatures, type UnivariateColumnOptions } from './univariate';
 
 const MAD_CONST = 0.6745;
 const IQR_CONST = 1.349;
@@ -43,6 +43,12 @@ export function preprocess(
   columns?: UnivariateColumnOptions,
 ): Preprocessor {
   const warnings: string[] = [];
+  const catFeats = categoricalFeatures(registry, columns);
+  if (catFeats.length > 0) {
+    warnings.push(
+      `ชั้นหลายตัวแปร (IF/LOF) ไม่ใช้ตัวแปรแบบกลุ่ม (categorical) — ข้ามตัวแปร: ${catFeats.map(k => registry[k]?.displayName || k).join(', ')}`,
+    );
+  }
   const features: string[] = [], transforms: AnomalyTransform[] = [], center: number[] = [], scale: number[] = [];
   for (const key of univariateFeatures(registry, columns)) {
     const t = registry[key].anomalyTransform ?? 'none';

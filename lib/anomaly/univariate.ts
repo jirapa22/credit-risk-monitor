@@ -50,7 +50,7 @@ export interface UnivariateColumnOptions {
 export interface UnivariateOptions {
   iqrK?: number;               // default 1.5
   madThreshold?: number;       // |robust z| threshold, default 3.5
-  methods?: ('iqr' | 'mad' | 'cross_field')[]; // default all
+  methods?: ('iqr' | 'mad' | 'cross_field' | 'unseen_category')[]; // default all
   crossFieldRules?: CrossFieldRule[];         // explicit override (highest precedence)
   /** Model-level anomaly config passed by the caller (e.g. effectiveModel.anomalyConfig). */
   anomalyConfig?: AnomalyConfig;
@@ -115,6 +115,17 @@ export function univariateFeatures(
     .map(([k]) => k);
 }
 
+/** Categorical features in the registry that layer 3 should check for unseen categories. */
+export function categoricalFeatures(
+  registry: Record<string, FeatureDefinition>,
+  columns?: UnivariateColumnOptions,
+): string[] {
+  const excluded = buildExcludedSet(columns);
+  return Object.entries(registry)
+    .filter(([k, d]) => d.dataType === 'categorical' && d.monitoringEnabled !== false && !excluded.has(k))
+    .map(([k]) => k);
+}
+
 /** Q1/Q3/IQR/median/MAD per feature — from the Reference dataset only. */
 export function computeReferenceStats(
   reference: ReferenceProfile,
@@ -156,7 +167,11 @@ export function detectUnivariateAnomaliesDetailed(
   options: UnivariateOptions = {},
 ): UnivariateResult {
   const {
-    iqrK = 1.5, madThreshold = 3.5, methods = ['iqr', 'mad', 'cross_field'], transformOverride = {}, columns,
+    iqrK = 1.5,
+    madThreshold = 3.5,
+    methods = ['iqr', 'mad', 'cross_field', 'unseen_category'],
+    transformOverride = {},
+    columns,
   } = options;
   const crossFieldRules = options.crossFieldRules
     ?? options.anomalyConfig?.crossFieldRules
@@ -165,6 +180,8 @@ export function detectUnivariateAnomaliesDetailed(
   const flags: AnomalyFlag[] = [];
   const name = (k: string) => registry[k]?.displayName || k;
   const scaleNote = (s: FeatureStats) => (s.transform === 'log1p' ? ' (คำนวณบน log scale)' : '');
+  const catFeats = categoricalFeatures(registry, columns);
+  const unseenOn = methods.includes('unseen_category');
 
   const iqrOn = methods.includes('iqr');
   const madOn = methods.includes('mad');
@@ -226,6 +243,23 @@ export function detectUnivariateAnomaliesDetailed(
           flags.push({
             row: r.row, method: 'cross_field', feature: id, value: ratio, score: ratio / rule.threshold,
             reason: `${rule.label ?? `${name(rule.numerator)} / ${name(rule.denominator)}`} = ${ratio.toFixed(2)} ${rule.op === '>' ? 'เกิน' : 'ต่ำกว่า'}เกณฑ์ ${rule.threshold}`,
+          });
+        }
+      }
+    }
+
+    if (unseenOn && catFeats.length > 0) {
+      for (const catKey of catFeats) {
+        const catVal = r.categories?.[catKey];
+        if (catVal === '__UNSEEN__' || r.unseenCategories?.[catKey] !== undefined) {
+          const rawVal = r.unseenCategories?.[catKey] ?? catVal ?? '__UNSEEN__';
+          flags.push({
+            row: r.row,
+            method: 'unseen_category',
+            feature: catKey,
+            value: 1,
+            score: 1,
+            reason: `"${name(catKey)}" พบหมวดที่ไม่เคยพบใน Reference "${rawVal}"`,
           });
         }
       }

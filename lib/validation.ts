@@ -11,6 +11,7 @@ import type {
   FeatureDefinition, ValidationIssue, ValidationIssueGroup, ValidationResult, ValidationIssueType, ValidationSeverity,
 } from './types';
 import { DEFAULT_DATE_COLUMN, DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from './defaults';
+import { resolveCanonicalCategory, type ReferenceCategorySpec } from './reference';
 
 export interface ValidationOptions {
   /** Columns the scorecard needs — always treated as required. */
@@ -21,6 +22,8 @@ export interface ValidationOptions {
   scoreColumn?: string;
   /** Reference mean/median per feature (computed from Reference dataset; falls back to baselineDistribution when omitted). */
   referenceStats?: Record<string, { mean: number; median: number }>;
+  /** Reference categorical specs per categorical feature (for canonical/rare/unseen mapping and fillMode). */
+  referenceCategorySpecs?: Record<string, ReferenceCategorySpec>;
   /** Block the run when more than this % of rows is rejected. */
   maxRejectedPct?: number;
   /** Warn when fewer valid rows than this (PSI becomes unstable). */
@@ -36,6 +39,8 @@ export interface CleanRow {
   id: string;
   date: string | null;               // raw date if valid
   values: Record<string, number>;    // numeric/binary features (after imputation)
+  categories?: Record<string, string>; // categorical features (canonical category, __OTHER__, or __UNSEEN__)
+  unseenCategories?: Record<string, string>; // raw trimmed values of unseen categories per feature
   label: number | null;              // binary target label if present & valid
   imputed: string[];                 // features that were filled by a missing strategy
 }
@@ -81,7 +86,9 @@ export function validateDataset(
     dateColumn = DEFAULT_DATE_COLUMN,
     labelColumn = DEFAULT_LABEL_COLUMN,
     scoreColumn,
-    referenceStats, maxRejectedPct = 50, minRowsForDrift = 100, malformedRows = [], maxIssues = 200,
+    referenceStats,
+    referenceCategorySpecs,
+    maxRejectedPct = 50, minRowsForDrift = 100, malformedRows = [], maxIssues = 200,
   } = opts;
 
   const blockingErrors: ValidationIssue[] = [];
@@ -144,6 +151,8 @@ export function validateDataset(
     if (m) add('MALFORMED_ROW', 'error', undefined, undefined, `จำนวนช่องไม่ตรงกับ header (คาด ${m.expected} ได้ ${m.actual}) — มักเกิดจาก comma ในข้อมูลที่ไม่ได้ใส่ "..."`);
 
     const values: Record<string, number> = {};
+    const categories: Record<string, string> = {};
+    const unseenCategories: Record<string, string> = {};
     const imputed: string[] = [];
     let label: number | null = null;
 
@@ -156,6 +165,25 @@ export function validateDataset(
       const isLabel = def.dataType === 'binary' && (key === labelColumn || col === labelColumn);
 
       if (isBlank(v)) {
+        if (def.dataType === 'categorical') {
+          if (strategy === 'reject' || (required && strategy === 'ignore')) {
+            add('MISSING_VALUE', 'error', col, '', `"${def.displayName}" ว่าง — ตัวแปรนี้จำเป็น`);
+          } else if (strategy === 'fillMode' || strategy === 'fillDefault') {
+            const catSpec = referenceCategorySpecs?.[key];
+            const fillCat = strategy === 'fillMode'
+              ? catSpec?.modeCategory
+              : (def.validation?.defaultValue !== undefined ? String(def.validation.defaultValue).trim() : undefined);
+            if (fillCat && fillCat.length > 0) {
+              const resolved = resolveCanonicalCategory(fillCat, catSpec, def);
+              categories[key] = resolved.canonical ?? fillCat;
+              imputed.push(key);
+              add('MISSING_VALUE', 'warning', col, '', `"${def.displayName}" ว่าง — เติมค่า "${categories[key]}" (${strategy})`);
+            } else if (required) {
+              add('MISSING_VALUE', 'error', col, '', `"${def.displayName}" ว่าง และไม่มีค่าเริ่มต้นสำหรับเติม`);
+            }
+          }
+          continue;
+        }
         if (strategy === 'reject' || (required && strategy === 'ignore')) {
           add('MISSING_VALUE', 'error', col, '', `"${def.displayName}" ว่าง — ตัวแปรนี้จำเป็นต่อการคำนวณคะแนน`);
         } else if (strategy === 'fillMean' || strategy === 'fillMedian' || strategy === 'fillDefault') {
@@ -172,6 +200,26 @@ export function validateDataset(
             add('MISSING_VALUE', 'warning', col, '', `"${def.displayName}" ว่าง — เติมค่า ${fmt(fill)} (${strategy})`);
           } else if (required) {
             add('MISSING_VALUE', 'error', col, '', `"${def.displayName}" ว่าง และไม่มีค่าเริ่มต้นสำหรับเติม`);
+          }
+        }
+        continue;
+      }
+
+      if (def.dataType === 'categorical') {
+        const catSpec = referenceCategorySpecs?.[key];
+        const resolved = resolveCanonicalCategory(v, catSpec, def);
+        if (resolved.canonical !== null) {
+          categories[key] = resolved.canonical;
+          if (resolved.unseen) {
+            const rawTrimmed = String(v).trim();
+            unseenCategories[key] = rawTrimmed;
+            add(
+              'UNSEEN_CATEGORY',
+              'warning',
+              col,
+              rawTrimmed,
+              `"${def.displayName}" พบหมวดที่ไม่เคยพบใน Reference "${rawTrimmed}" — นับไว้ใน __UNSEEN__`,
+            );
           }
         }
         continue;
@@ -223,7 +271,16 @@ export function validateDataset(
 
     if (!rejected) {
       const date = !isBlank(raw[dateColumn]) && isValidDate(raw[dateColumn]) ? String(raw[dateColumn]).trim() : null;
-      clean.push({ row: rowNo, id, date, values, label, imputed });
+      clean.push({
+        row: rowNo,
+        id,
+        date,
+        values,
+        categories,
+        ...(Object.keys(unseenCategories).length > 0 ? { unseenCategories } : {}),
+        label,
+        imputed,
+      });
     }
   });
 

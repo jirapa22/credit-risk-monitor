@@ -7,7 +7,13 @@ import type {
 } from './types';
 import type { ReferenceProfile } from './reference';
 import { DEFAULT_LABEL_COLUMN } from './defaults';
-import { defaultBinLabels, psiWithBoundaries, quantileBoundaries } from './stats';
+import {
+  defaultBinLabels,
+  formatCategoryDisplayLabel,
+  psiForCategories,
+  psiWithBoundaries,
+  quantileBoundaries,
+} from './stats';
 
 export function classify(value: number, warning: number, critical: number): DriftStatus {
   if (value < warning) return 'STABLE';
@@ -32,6 +38,7 @@ export interface DriftDetectionOptions {
   scoreColumn?: string | null;
   idColumn?: string | null;
   dateColumn?: string | null;
+  actualCategories?: Record<string, string[]>;
 }
 
 /** Which features get a CSI, and with which bins/threshold. */
@@ -49,20 +56,66 @@ export function resolveCsiFeatures(
   );
   const keys = new Set<string>([
     ...Object.entries(registry)
-      .filter(([k, d]) => d.monitoringEnabled !== false && d.dataType === 'numeric' && !excluded.has(k))
+      .filter(([k, d]) => d.monitoringEnabled !== false && (d.dataType === 'numeric' || d.dataType === 'categorical') && !excluded.has(k))
       .map(([k]) => k),
     ...Object.keys(thresholds.csi_features ?? {}).filter(k => !excluded.has(k)),
   ]);
-  const out: { key: string; displayName: string; source?: string; bins: number[]; labels: string[]; threshold: number; skipped?: string }[] = [];
+  const out: {
+    key: string;
+    displayName: string;
+    dataType: 'numeric' | 'categorical';
+    source?: string;
+    bins: number[];
+    labels: string[];
+    categories?: string[];
+    threshold: number;
+    skipped?: string;
+  }[] = [];
   for (const key of keys) {
     const def = registry[key];
     const t = thresholds.csi_features?.[key];
+    if (def?.dataType === 'categorical') {
+      const refCatVals = reference.categoricalFeatures?.[key];
+      const baseCats = reference.categorySpecs?.[key]?.categories ?? [];
+      if (!refCatVals || refCatVals.length === 0) {
+        out.push({
+          key,
+          displayName: t?.label || def?.displayName || key,
+          dataType: 'categorical',
+          bins: [],
+          labels: [],
+          categories: [],
+          threshold: 0,
+          skipped: 'ไม่มีตัวแปรนี้ใน Reference Dataset',
+        });
+        continue;
+      }
+      out.push({
+        key,
+        displayName: t?.label || def?.displayName || key,
+        dataType: 'categorical',
+        source: t?.source || def?.source,
+        bins: [],
+        labels: baseCats.map(formatCategoryDisplayLabel),
+        categories: baseCats,
+        threshold: t?.threshold ?? def?.csiThreshold ?? 0.10,
+      });
+      continue;
+    }
     // User-editable thresholds.csi_features takes precedence over registry defaults.
     let bins = (t?.bins?.length ? t.bins : def?.binning?.boundaries) ?? [];
     let labels = (t?.bins?.length ? t.bin_labels : def?.binning?.binLabels) ?? [];
     const refVals = reference.features[key];
     if (!refVals) {
-      out.push({ key, displayName: t?.label || def?.displayName || key, bins: [], labels: [], threshold: 0, skipped: 'ไม่มีตัวแปรนี้ใน Reference Dataset' });
+      out.push({
+        key,
+        displayName: t?.label || def?.displayName || key,
+        dataType: 'numeric',
+        bins: [],
+        labels: [],
+        threshold: 0,
+        skipped: 'ไม่มีตัวแปรนี้ใน Reference Dataset',
+      });
       continue;
     }
     if (bins.length === 0) bins = quantileBoundaries(refVals, 10);
@@ -70,6 +123,7 @@ export function resolveCsiFeatures(
     out.push({
       key,
       displayName: t?.label || def?.displayName || key,
+      dataType: 'numeric',
       source: t?.source || def?.source,
       bins, labels,
       threshold: t?.threshold ?? def?.csiThreshold ?? 0.10,
@@ -103,9 +157,30 @@ export function runDriftDetection(
   const skipped: Record<string, string> = {};
   for (const f of resolveCsiFeatures(registry, thresholds, reference, options)) {
     if (f.skipped) { skipped[f.key] = f.skipped; continue; }
+    const critical = Math.max(thresholds.psi_critical, f.threshold);
+    if (f.dataType === 'categorical') {
+      const actualCats = options?.actualCategories?.[f.key];
+      if (!actualCats || actualCats.length === 0) {
+        skipped[f.key] = 'ไม่มีข้อมูลตัวแปรนี้ในไฟล์ที่อัปโหลด';
+        continue;
+      }
+      const catPsi = psiForCategories(
+        reference.categoricalFeatures?.[f.key] ?? [],
+        actualCats,
+        f.categories ?? [],
+      );
+      csi[f.key] = {
+        value: catPsi.value,
+        status: classify(catPsi.value, f.threshold, critical),
+        threshold: { warning: f.threshold, critical },
+        bins: catPsi.bins.map((b, i) => ({ label: catPsi.labels[i] ?? `Cat ${i + 1}`, ...b })),
+        displayName: f.displayName,
+        source: f.source,
+      };
+      continue;
+    }
     const actual = actualFeatures[f.key];
     if (!actual || actual.length === 0) { skipped[f.key] = 'ไม่มีข้อมูลตัวแปรนี้ในไฟล์ที่อัปโหลด'; continue; }
-    const critical = Math.max(thresholds.psi_critical, f.threshold);
     csi[f.key] = {
       ...stability(reference.features[f.key], actual, f.bins, f.labels, f.threshold, critical),
       displayName: f.displayName,

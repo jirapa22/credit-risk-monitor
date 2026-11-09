@@ -15,7 +15,7 @@
 import type { AnomalySeverity, AnomalyType, ExpectedLayer, FeatureDefinition } from './types';
 import { getSpecialColumnSet, resolveModelColumns } from './defaults';
 import { mulberry32 } from './random';
-import { getReferenceProfile, getReferenceRows, type ReferenceProfile } from './reference';
+import { getReferenceProfile, getReferenceRows, resolveCanonicalCategory, type ReferenceProfile } from './reference';
 import { quantile } from './anomaly/univariate';
 import { SEVERITY_TABLE, ANOMALY_KIND, expectedFor, type InjectionKind, type Sev } from './injection-meta';
 export { SEVERITY_TABLE, ANOMALY_KIND, EXPECTED_LAYER, expectedFor, type InjectionKind } from './injection-meta';
@@ -35,6 +35,21 @@ export function orderedRegistryFeatures(
   entries.sort((a, b) => a.order - b.order || a.idx - b.idx);
   if (entries.length > 0) return entries.map(e => e.key);
   return fallbackColumns.filter(c => !specialCols.has(c));
+}
+
+/**
+ * Return categorical features from featureRegistry ordered by displayOrder (ascending),
+ * excluding special columns (id, date, label, score).
+ */
+export function orderedCategoricalFeatures(
+  registry: Record<string, FeatureDefinition>,
+  specialCols: Set<string>,
+): string[] {
+  const entries = Object.entries(registry)
+    .filter(([k, d]) => !specialCols.has(k) && d.dataType === 'categorical' && d.monitoringEnabled !== false)
+    .map(([k, d], idx) => ({ key: k, order: typeof d.displayOrder === 'number' ? d.displayOrder : Infinity, idx }));
+  entries.sort((a, b) => a.order - b.order || a.idx - b.idx);
+  return entries.map(e => e.key);
 }
 
 function rankVector(values: number[]): number[] {
@@ -125,8 +140,10 @@ export function resolveDefaultTargets(
   orderedFeatures: string[],
   profile: ReferenceProfile,
   model?: any,
+  orderedCatFeatures: string[] = [],
 ): string[] {
   if (type === 'none' || type === 'duplicate_rows') return [];
+  if (type === 'category_shift' || type === 'unseen_category') return orderedCatFeatures.slice(0, 1);
   if (type === 'swapped_columns') return orderedFeatures.slice(0, 2);
   if (type === 'multivariate_inconsistent') {
     return selectMultivariateTargets(profile, orderedFeatures, model).targets;
@@ -148,6 +165,8 @@ export interface InjectionSpec extends Required<InjectionParams> {
   referenceId: string;
   kind: InjectionKind;
   injectedCount: number;
+  skipped?: boolean;
+  skipReason?: string;
 }
 
 export interface GroundTruthRow {
@@ -166,6 +185,8 @@ export interface InjectionResult {
   groundTruth: GroundTruthRow[];
   expected: { layer: ExpectedLayer; shouldAlarm: boolean };
   spec: InjectionSpec;
+  skipped?: boolean;
+  skipReason?: string;
 }
 
 export function toCsv(rows: Record<string, unknown>[], columns: string[]): string {
@@ -226,7 +247,11 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
   const scoreColumn = cols.scoreColumn ?? undefined;
   const specialCols = getSpecialColumnSet(model);
   const ref = getReferenceRows(referenceId);
-  const profile = getReferenceProfile(referenceId, model.scoring, { labelColumn, scoreColumn });
+  const profile = getReferenceProfile(referenceId, model.scoring, {
+    labelColumn,
+    scoreColumn,
+    featureRegistry: registry,
+  });
 
   const type = params.type;
   const kind = ANOMALY_KIND[type];
@@ -236,7 +261,8 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
   const n = params.n ?? ref.rows.length;
   const seed = params.seed ?? 42;
   const orderedFeatures = orderedRegistryFeatures(registry, specialCols, ref.columns);
-  const resolvedDefaults = resolveDefaultTargets(type, orderedFeatures, profile, model);
+  const orderedCatFeatures = orderedCategoricalFeatures(registry, specialCols);
+  const resolvedDefaults = resolveDefaultTargets(type, orderedFeatures, profile, model, orderedCatFeatures);
   const targetFeatures = params.targetFeatures?.length ? params.targetFeatures : resolvedDefaults;
   const rnd = mulberry32(seed);
 
@@ -375,7 +401,75 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
       }
       break;
     }
+    case 'unseen_category': {
+      const validCatTargets = targetFeatures.filter(
+        f => registry[f]?.dataType === 'categorical' || Boolean(profile.categorySpecs?.[f]),
+      );
+      if (validCatTargets.length === 0) break;
+      const suffix = SEVERITY_TABLE.unseen_category[sevKey];
+      for (const i of idx) {
+        mark(i, snapshot(rows[i], validCatTargets));
+        for (const f of validCatTargets) {
+          const col = registry[f]?.columnName || f;
+          const baseVal = String(rows[i][col] ?? 'Cat').trim();
+          rows[i][col] = `${baseVal}_UNSEEN_${suffix}`;
+        }
+      }
+      break;
+    }
+    case 'category_shift': {
+      const validCatTargets = targetFeatures.filter(
+        f => registry[f]?.dataType === 'categorical' || Boolean(profile.categorySpecs?.[f]),
+      );
+      if (validCatTargets.length === 0) break;
+      const shiftShare = SEVERITY_TABLE.category_shift[sevKey]; // 0.10 / 0.20 / 0.40
+      const targetShiftCount = Math.round(shiftShare * rate * n);
+      for (const f of validCatTargets) {
+        const col = registry[f]?.columnName || f;
+        const spec = profile.categorySpecs?.[f];
+        const cats = (spec?.categories ?? []).filter(c => c !== '__OTHER__' && c !== '__UNSEEN__');
+        if (cats.length < 2) continue;
+        // Shift from the most frequent category (and other non-target categories if needed) into the second category
+        const fromCat = cats[0];
+        const toCat = cats[1];
+        const primaryPool: number[] = [];
+        const secondaryPool: number[] = [];
+        for (let i = 0; i < rows.length; i++) {
+          const canon = resolveCanonicalCategory(rows[i][col], spec, registry[f]).canonical;
+          if (canon === fromCat) primaryPool.push(i);
+          else if (canon !== toCat) secondaryPool.push(i);
+        }
+        const pickFromPool = (pool: number[], count: number): number[] => {
+          if (count <= 0 || pool.length === 0) return [];
+          const copy = pool.slice();
+          const take = Math.min(count, copy.length);
+          for (let j = 0; j < take; j++) {
+            const swapIdx = j + Math.floor(rnd() * (copy.length - j));
+            [copy[j], copy[swapIdx]] = [copy[swapIdx], copy[j]];
+          }
+          return copy.slice(0, take);
+        };
+        const chosenPrimary = pickFromPool(primaryPool, targetShiftCount);
+        const remaining = targetShiftCount - chosenPrimary.length;
+        const chosenSecondary = pickFromPool(secondaryPool, remaining);
+        const chosen = [...chosenPrimary, ...chosenSecondary].sort((a, b) => a - b);
+        for (const i of chosen) {
+          mark(i, snapshot(rows[i], [col]));
+          rows[i][col] = toCat;
+        }
+      }
+      break;
+    }
   }
+
+  const isCategoricalType = type === 'unseen_category' || type === 'category_shift';
+  const hasValidCatTarget =
+    !isCategoricalType ||
+    targetFeatures.some(f => registry[f]?.dataType === 'categorical' || Boolean(profile.categorySpecs?.[f]));
+  const skipped = isCategoricalType && !hasValidCatTarget;
+  const skipReason = skipped
+    ? `โมเดล "${model.id ?? model.modelId ?? 'unknown'}" ไม่มีตัวแปรแบบกลุ่ม (categorical) — ข้ามการฉีด ${type}`
+    : undefined;
 
   const injectedCount = gt.filter(g => g.injected).length;
   const expected = resolveExpectedLayer(type, severity, rows, idx, targetFeatures, registry);
@@ -385,6 +479,18 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
     csvText: toCsv(rows, columns),
     groundTruth: gt,
     expected,
-    spec: { type, severity, rate, targetFeatures, n, seed, referenceId, kind, injectedCount },
+    ...(skipped ? { skipped: true, skipReason } : {}),
+    spec: {
+      type,
+      severity,
+      rate,
+      targetFeatures,
+      n,
+      seed,
+      referenceId,
+      kind,
+      injectedCount,
+      ...(skipped ? { skipped: true, skipReason } : {}),
+    },
   };
 }

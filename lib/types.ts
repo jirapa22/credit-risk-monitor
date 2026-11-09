@@ -17,7 +17,7 @@ export interface ModelVersionRef {
 }
 
 export type FeatureDataType = 'numeric' | 'binary' | 'date' | 'categorical' | 'string';
-export type MissingStrategy = 'reject' | 'fillMean' | 'fillMedian' | 'fillDefault' | 'ignore';
+export type MissingStrategy = 'reject' | 'fillMean' | 'fillMedian' | 'fillMode' | 'fillDefault' | 'ignore';
 
 export interface FeatureDefinition {
   featureId?: string;
@@ -29,11 +29,15 @@ export interface FeatureDefinition {
   required: boolean;
   monitoringEnabled: boolean;
   displayOrder?: number;
+  /** Allowed category labels for categorical features (if omitted, derived from Reference dataset). */
+  allowedCategories?: string[];
+  /** Categories occurring in < rareCategoryThreshold of Reference rows are grouped into '__OTHER__' (default 0.01). */
+  rareCategoryThreshold?: number;
   validation?: {
     minValue?: number | null;
     maxValue?: number | null;
     allowNull?: boolean;
-    defaultValue?: number | null;
+    defaultValue?: number | string | null;
     missingStrategy?: MissingStrategy;
   };
   binning?: { method?: string; numBins?: number; boundaries: number[]; binLabels?: string[] };
@@ -109,6 +113,7 @@ export type ValidationIssueType =
   | 'OUT_OF_RANGE'
   | 'INVALID_DATE'
   | 'INVALID_BINARY'
+  | 'UNSEEN_CATEGORY'
   | 'DUPLICATE_ID'
   | 'MALFORMED_ROW';
 
@@ -155,6 +160,9 @@ export interface DriftConfig {
   /** Wasserstein-1 (scaled by Reference MAD/0.6745) thresholds (ค่าเริ่มต้นชั่วคราว 0.10 / 0.25 — จะปรับให้แม่นขึ้นใน Step 11). */
   wassersteinWarning?: number;
   wassersteinCritical?: number;
+  /** Jensen–Shannon distance thresholds for categorical features (ค่าเริ่มต้นชั่วคราว 0.10 / 0.20). */
+  jsWarning?: number;
+  jsCritical?: number;
   /** Missing-rate increase thresholds in proportion (0.02 = 2 จุด%, 0.05 = 5 จุด%). */
   missingDeltaWarning?: number;
   missingDeltaCritical?: number;
@@ -210,6 +218,15 @@ export interface DistributionStats {
   excessKurtosis: number;
 }
 
+export interface CategoryProportionEntry {
+  category: string;
+  referenceCount: number;
+  referencePct: number;
+  actualCount: number;
+  actualPct: number;
+  deltaPct: number;
+}
+
 export interface DistributionProfile {
   reference: DistributionStats;
   actual: DistributionStats;
@@ -223,6 +240,8 @@ export interface DistributionProfile {
     skewness: number | null;
     excessKurtosis: number | null;
   };
+  /** Present for categorical features: per-category counts and proportions (0–1). */
+  categories?: CategoryProportionEntry[];
 }
 
 export interface KsTwoSampleResult {
@@ -243,16 +262,35 @@ export interface WassersteinResult {
   threshold: { warning: number; critical: number };
 }
 
+export interface ChiSquareResult {
+  statistic: number;
+  df: number;
+  /** Asymptotic p-value from chi-square distribution with df degrees of freedom. */
+  pValue: number;
+}
+
+export interface JensenShannonResult {
+  /** Jensen–Shannon distance = sqrt(JSD_base2) in [0, 1]. */
+  distance: number;
+  /** Jensen–Shannon divergence (base 2) in [0, 1]. */
+  divergence: number;
+  status: DriftStatus;
+  threshold: { warning: number; critical: number };
+}
+
 export interface CovariateFeatureReport {
   key: string;
   displayName: string;
   kind: 'feature' | 'score';
+  dataType?: FeatureDataType;
   status: DriftSectionStatus;
   reason: string;
   psiOrCsi: StabilityResult | null;
   distributionProfile: DistributionProfile | null;
   ks: KsTwoSampleResult | null;
   wasserstein: WassersteinResult | null;
+  chiSquare?: ChiSquareResult | null;
+  jensenShannon?: JensenShannonResult | null;
 }
 
 export interface MissingFeatureReport {
@@ -364,14 +402,14 @@ export interface DriftReport {
 
 // ─── Anomaly detection (layers 3–4) ─────────────────────────────────────────
 /** A warning-only flag: rows are never removed automatically; the user decides. */
-export type AnomalyMethod = 'iqr' | 'mad' | 'cross_field' | 'isolation_forest' | 'lof';
+export type AnomalyMethod = 'iqr' | 'mad' | 'cross_field' | 'unseen_category' | 'isolation_forest' | 'lof';
 
 export interface AnomalyFlag {
   row: number;            // CleanRow.row (1-based data row)
   method: AnomalyMethod;
   // feature key, or rule id for cross_field
   feature: string;
-  value: number;          // observed value (ratio for cross_field)
+  value: number;          // observed value (ratio for cross_field, 1 for unseen_category)
   score: number;          // iqr: distance beyond fence in IQR units; mad: robust z; cross_field: value / threshold
   reason: string;         // human-readable (Thai)
   extreme?: boolean;      // score was ±Infinity/NaN (e.g. negative value on a log feature)
@@ -398,6 +436,8 @@ export interface AnomalyConfigSnapshot {
   sampleSize: number;
   transforms: Record<string, AnomalyTransform>;
   crossFieldRules: { id?: string; numerator: string; denominator: string; op: '>' | '<'; threshold: number; label?: string }[];
+  excludedCategoricalFeatures?: string[];
+  warnings?: string[];
 }
 
 export interface AnomalyResult {
@@ -555,9 +595,11 @@ export type AnomalyType =
   | 'duplicate_rows'
   | 'multivariate_inconsistent'
   | 'schema_break'
+  | 'unseen_category'
   // B: real drift
   | 'mean_shift'
-  | 'variance_change';
+  | 'variance_change'
+  | 'category_shift';
 
 export type ExpectedLayer = 'validation' | 'anomaly' | 'drift' | 'none';
 
@@ -691,5 +733,7 @@ export interface DetectedColumnSchema {
   missingRate: number;
   uniqueCount: number;
   sampleValues: (string | number)[];
+  monitoringEnabled?: boolean;
+  warning?: string;
 }
 

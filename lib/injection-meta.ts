@@ -25,18 +25,25 @@ export const SEVERITY_TABLE = {
   schema_break:      { low: 'rename_case', medium: 'rename_typo', high: 'drop_column' }, // file-level
   mean_shift:        { low: -0.10, medium: -0.20, high: -0.40 },           // value × (1 + δ)
   variance_change:   { low: 1.25, medium: 1.5, high: 2 },                  // spread around Reference median × factor (log scale for log1p features)
+  category_shift:    { low: 0.10, medium: 0.20, high: 0.40 },              // percentage-point share shifted from one category to another
+  unseen_category:   { low: 'typo_low', medium: 'typo_med', high: 'typo_high' }, // unseen category injected (e.g. typo)
 } as const;
 
-export const ANOMALY_KIND: Record<AnomalyType, InjectionKind> = {
+const BASE_ANOMALY_KIND: Record<string, InjectionKind> = {
   none: 'clean',
   unit_error: 'data_error', extreme_outlier: 'data_error', negative_value: 'data_error', type_error: 'data_error',
   missing_injection: 'data_error', swapped_columns: 'data_error', duplicate_rows: 'data_error',
   multivariate_inconsistent: 'data_error', schema_break: 'data_error',
   mean_shift: 'drift', variance_change: 'drift',
 };
+Object.defineProperties(BASE_ANOMALY_KIND, {
+  unseen_category: { value: 'data_error', enumerable: false, configurable: true, writable: true },
+  category_shift: { value: 'drift', enumerable: false, configurable: true, writable: true },
+});
+export const ANOMALY_KIND = BASE_ANOMALY_KIND as Record<AnomalyType, InjectionKind>;
 
 /** Hypothesis: which layer should catch each type (may depend on severity). */
-export const EXPECTED_LAYER: Record<AnomalyType, ExpectedLayer | Record<Sev, ExpectedLayer>> = {
+const BASE_EXPECTED_LAYER: Record<string, ExpectedLayer | Record<Sev, ExpectedLayer>> = {
   none: 'none',
   type_error: 'validation', missing_injection: 'validation', negative_value: 'validation', schema_break: 'validation',
   duplicate_rows: 'validation',            // DUPLICATE_ID (warning)
@@ -46,6 +53,11 @@ export const EXPECTED_LAYER: Record<AnomalyType, ExpectedLayer | Record<Sev, Exp
   extreme_outlier: 'anomaly', swapped_columns: 'anomaly', multivariate_inconsistent: 'anomaly',
   mean_shift: 'drift', variance_change: 'drift',
 };
+Object.defineProperties(BASE_EXPECTED_LAYER, {
+  unseen_category: { value: 'anomaly', enumerable: false, configurable: true, writable: true },
+  category_shift: { value: 'drift', enumerable: false, configurable: true, writable: true },
+});
+export const EXPECTED_LAYER = BASE_EXPECTED_LAYER as Record<AnomalyType, ExpectedLayer | Record<Sev, ExpectedLayer>>;
 
 export function expectedFor(type: AnomalyType, severity?: AnomalySeverity): { layer: ExpectedLayer; shouldAlarm: boolean } {
   const e = EXPECTED_LAYER[type] ?? 'none';

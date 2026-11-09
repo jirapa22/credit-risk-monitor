@@ -173,7 +173,11 @@ export function runMonitoring(input: MonitoringInput) {
   const thresholds = model.thresholds as MonitoringThresholds;
   const referenceId: string = model.referenceDatasetId;
 
-  const reference = getReferenceProfile(referenceId, scoring, { labelColumn, scoreColumn });
+  const reference = getReferenceProfile(referenceId, scoring, {
+    labelColumn,
+    scoreColumn,
+    featureRegistry: registry,
+  });
   const referenceStats: Record<string, { mean: number; median: number }> = {};
   for (const [k, vals] of Object.entries(reference.features)) {
     const st = computeDistributionStats(vals);
@@ -198,6 +202,7 @@ export function runMonitoring(input: MonitoringInput) {
     labelColumn: labelColumn ?? '',
     scoreColumn,
     referenceStats,
+    referenceCategorySpecs: reference.categorySpecs,
     malformedRows,
     ...(input.maxValidationIssues !== undefined ? { maxIssues: input.maxValidationIssues } : {}),
   });
@@ -346,8 +351,23 @@ function driftFor(
   options?: DriftDetectionOptions,
 ) {
   const actualFeatures: Record<string, number[]> = {};
-  for (const r of rows) for (const [k, v] of Object.entries(r.values)) (actualFeatures[k] ??= []).push(v);
-  const { skipped, ...drift } = runDriftDetection(reference, scores, actualFeatures, registry, thresholds, options);
+  const actualCategories: Record<string, string[]> = {};
+  for (const r of rows) {
+    for (const [k, v] of Object.entries(r.values)) (actualFeatures[k] ??= []).push(v);
+    if (r.categories) {
+      for (const [k, v] of Object.entries(r.categories)) {
+        if (typeof v === 'string' && v.length > 0) (actualCategories[k] ??= []).push(v);
+      }
+    }
+  }
+  const { skipped, ...drift } = runDriftDetection(
+    reference,
+    scores,
+    actualFeatures,
+    registry,
+    thresholds,
+    { ...options, actualCategories },
+  );
   return { drift, skipped };
 }
 

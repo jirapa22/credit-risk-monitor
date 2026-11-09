@@ -9,9 +9,9 @@
  * Next phase: anomaly generator + detection-rate / false-positive-rate summary.
  */
 import { NextResponse } from 'next/server';
-import { getActiveModelId, getEffectiveModel, listRuns, saveRun, storageInfo } from '@/lib/storage/repositories';
-import type { AnomalySeverity, AnomalyType, ExperimentRun } from '@/lib/types';
-import { expectedFor } from '@/lib/injection';
+import { getDefaultModelId, getEffectiveModel, listRuns, saveRun, storageInfo } from '../../../../lib/storage/repositories';
+import type { AnomalySeverity, AnomalyType, ExperimentRun } from '../../../../lib/types';
+import { expectedFor } from '../../../../lib/injection';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +30,7 @@ function outcomeOf(shouldDetect: boolean, detected: boolean): ExperimentRun['out
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const modelId = searchParams.get('modelId') || getActiveModelId();
+  const modelId = searchParams.get('modelId') || (await getDefaultModelId());
   const experimentId = searchParams.get('experimentId');
   const runs = await listRuns<ExperimentRun>('sandbox', modelId, { configVersion: searchParams.get('configVersion') || undefined });
   return NextResponse.json({ storage: storageInfo(), runs: experimentId ? runs.filter(r => r.experimentId === experimentId) : runs });
@@ -38,6 +38,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const url = new URL(request.url);
     const b = await request.json();
     if (b.anomaly && typeof b.anomaly.type === 'string' && TYPE_ALIASES[b.anomaly.type]) b.anomaly.type = TYPE_ALIASES[b.anomaly.type];
     const errors: string[] = [];
@@ -47,7 +48,8 @@ export async function POST(request: Request) {
     if (typeof b.detected !== 'boolean') errors.push('detected ต้องเป็น boolean');
     if (errors.length) return NextResponse.json({ error: 'ข้อมูลไม่ครบ', errors }, { status: 400 });
 
-    const model = await getEffectiveModel(b.modelId || getActiveModelId());
+    const modelId = url.searchParams.get('modelId') || b.modelId || (await getDefaultModelId());
+    const model = await getEffectiveModel(modelId);
     const shouldDetect = b.expected?.shouldDetect ?? b.anomaly.type !== 'none';
     const run: ExperimentRun = {
       runId: `exp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,

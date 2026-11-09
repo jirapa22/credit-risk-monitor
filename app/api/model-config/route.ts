@@ -7,15 +7,18 @@
  * (with a new configVersion or model id) so that past results stay reproducible.
  */
 import { NextResponse } from 'next/server';
-import { getActiveModelId, getEffectiveConfig, getEffectiveModel, saveThresholds, storageInfo } from '@/lib/storage/repositories';
-import { parseThresholds } from '@/lib/thresholds';
+import { getDefaultModelId, getEffectiveConfig, getEffectiveModel, saveThresholds, storageInfo } from '../../../lib/storage/repositories';
+import { parseThresholds } from '../../../lib/thresholds';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request?: Request) {
   try {
+    const modelIdParam = request ? new URL(request.url).searchParams.get('modelId') : null;
     const config = await getEffectiveConfig();
-    return NextResponse.json({ config, model: config.models[config.activeModelId], activeModelId: config.activeModelId, storage: storageInfo() });
+    const activeModelId = modelIdParam || config.activeModelId;
+    const model = config.models[activeModelId] ?? (await getEffectiveModel(activeModelId));
+    return NextResponse.json({ config, model, activeModelId, storage: storageInfo() });
   } catch (error) {
     console.error('GET /api/model-config error:', error);
     return NextResponse.json({ error: 'Failed to read config' }, { status: 500 });
@@ -24,13 +27,14 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const url = new URL(request.url);
     const body = await request.json();
     if (body.featureRegistry || body.scoring) {
       return NextResponse.json({
-        error: 'แก้ไข featureRegistry/scorecard ผ่าน API ไม่ได้ — ให้สร้างเวอร์ชันใหม่ใน app/model-config.json เพื่อให้ผลย้อนหลังตรวจสอบซ้ำได้',
+        error: 'แก้ไข featureRegistry/scorecard ผ่าน API ไม่ได้ — ให้สร้างเวอร์ชันใหม่ใน Baseline Registry เพื่อให้ผลย้อนหลังตรวจสอบซ้ำได้',
       }, { status: 400 });
     }
-    const modelId = body.modelId || getActiveModelId();
+    const modelId = url.searchParams.get('modelId') || body.modelId || (await getDefaultModelId());
     const current = await getEffectiveModel(modelId);
     const { value, errors } = parseThresholds(body.thresholds ?? {}, current.thresholds);
     if (!value) return NextResponse.json({ error: 'ค่า Threshold ไม่ถูกต้อง', errors }, { status: 400 });

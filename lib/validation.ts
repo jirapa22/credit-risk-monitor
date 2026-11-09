@@ -17,6 +17,7 @@ export interface ValidationOptions {
   idColumn?: string;
   dateColumn?: string;
   labelColumn?: string;
+  scoreColumn?: string;
   /** Reference mean/median per feature (computed from Reference dataset; falls back to baselineDistribution when omitted). */
   referenceStats?: Record<string, { mean: number; median: number }>;
   /** Block the run when more than this % of rows is rejected. */
@@ -74,7 +75,7 @@ export function validateDataset(
   opts: ValidationOptions,
 ): ValidationOutput {
   const {
-    scoringFeatures, idColumn = 'customer_id', dateColumn = 'application_date', labelColumn = 'default_flag',
+    scoringFeatures, idColumn = 'customer_id', dateColumn = 'application_date', labelColumn = 'default_flag', scoreColumn,
     referenceStats, maxRejectedPct = 50, minRowsForDrift = 100, malformedRows = [], maxIssues = 200,
   } = opts;
 
@@ -200,6 +201,12 @@ export function validateDataset(
     if (label === null && labelColumn && headerSet.has(labelColumn) && !isBlank(raw[labelColumn])) {
       const n = parseNumber(raw[labelColumn]);
       if (n === 0 || n === 1) label = n;
+    }
+
+    // If scoreColumn is present in raw data (for score_column models), parse it when numeric.
+    if (scoreColumn && values[scoreColumn] === undefined && headerSet.has(scoreColumn) && !isBlank(raw[scoreColumn])) {
+      const n = parseNumber(raw[scoreColumn]);
+      if (Number.isFinite(n)) values[scoreColumn] = n;
     }
 
     const id = isBlank(raw[idColumn]) ? `ROW_${rowNo}` : String(raw[idColumn]).trim();

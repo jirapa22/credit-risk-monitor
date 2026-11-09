@@ -72,30 +72,52 @@ export function buildUploadSummary(
   return { totalRows: rows.length, periods, missingData };
 }
 
-/** Risk grades from the KS decile score bounds of the model report. */
-const RISK_GRADES = [
+/** Default risk grades from the KS decile score bounds of the model report (overridable by model.riskGrades). */
+const DEFAULT_RISK_GRADES = [
   { grade: 'AAA', minScore: 586.5 }, { grade: 'AA+', minScore: 578 }, { grade: 'AA', minScore: 572 },
   { grade: 'AA-', minScore: 565.7 }, { grade: 'A+', minScore: 562 }, { grade: 'A', minScore: 551.7 },
   { grade: 'A-', minScore: 547.9 }, { grade: 'BBB+', minScore: 539.5 }, { grade: 'BBB', minScore: 533.2 },
   { grade: 'BBB-', minScore: -Infinity },
 ];
-function riskGradeDistribution(scores: number[]) {
-  const counts: Record<string, number> = Object.fromEntries(RISK_GRADES.map(g => [g.grade, 0]));
-  for (const s of scores) counts[RISK_GRADES.find(g => s >= g.minScore)!.grade]++;
+function riskGradeDistribution(scores: number[], customGrades?: { grade: string; minScore: number }[]) {
+  if (scores.length === 0 && !customGrades) return [];
+  const grades = customGrades && customGrades.length > 0 ? customGrades : DEFAULT_RISK_GRADES;
+  const counts: Record<string, number> = Object.fromEntries(grades.map(g => [g.grade, 0]));
+  for (const s of scores) {
+    const match = grades.find(g => s >= g.minScore) ?? grades[grades.length - 1];
+    if (match) counts[match.grade]++;
+  }
   const n = scores.length || 1;
-  return RISK_GRADES.map(g => ({ grade: g.grade, count: counts[g.grade], pct: +((counts[g.grade] / n) * 100).toFixed(1) }));
+  return grades.map(g => ({ grade: g.grade, count: counts[g.grade], pct: +((counts[g.grade] / n) * 100).toFixed(1) }));
 }
 
 export function runMonitoring(input: MonitoringInput) {
-  const { model, fileName, anomalyScreening = true } = input;
+  const { model: rawModel, fileName, anomalyScreening = true } = input;
+  const modelId: string = rawModel.modelId ?? rawModel.id ?? 'unknown_model';
+  const configVersion: string = rawModel.version ?? rawModel.configVersion ?? '1.0.0';
+  const idColumn: string = rawModel.columns?.idColumn ?? rawModel.idColumn ?? 'customer_id';
+  const rawDateCol = rawModel.columns !== undefined ? rawModel.columns.dateColumn : rawModel.dateColumn;
+  const dateColumn: string | null =
+    rawDateCol === null || rawDateCol === '' || (rawModel.columns !== undefined && !rawModel.columns.dateColumn)
+      ? null
+      : (rawDateCol ?? 'application_date');
+  const labelColumn: string = rawModel.columns?.labelColumn ?? rawModel.labelColumn ?? 'default_flag';
+  const scoreColumn: string | undefined = rawModel.columns?.scoreColumn ?? rawModel.scoreColumn ?? undefined;
+  const model = {
+    ...rawModel,
+    id: modelId,
+    modelId,
+    configVersion,
+    version: configVersion,
+    idColumn,
+    dateColumn,
+    labelColumn,
+    scoreColumn,
+  };
   const scoring = (model.scoring ?? { base_points: 0, factor: 1, offset: 0, features: [], scorecard: {} }) as ScoringConfig;
   const registry = (model.featureRegistry ?? {}) as Record<string, FeatureDefinition>;
   const thresholds = model.thresholds as MonitoringThresholds;
   const referenceId: string = model.referenceDatasetId;
-  const idColumn: string = model.idColumn ?? 'customer_id';
-  const dateColumn: string | null = model.dateColumn === null || model.dateColumn === '' ? null : (model.dateColumn ?? 'application_date');
-  const labelColumn: string = model.labelColumn ?? 'default_flag';
-  const scoreColumn: string | undefined = model.scoreColumn ?? undefined;
 
   const reference = getReferenceProfile(referenceId, scoring, { labelColumn, scoreColumn });
   const referenceStats: Record<string, { mean: number; median: number }> = {};
@@ -120,6 +142,7 @@ export function runMonitoring(input: MonitoringInput) {
     idColumn,
     dateColumn: dateColumn ?? '',
     labelColumn,
+    scoreColumn,
     referenceStats,
     malformedRows,
     ...(input.maxValidationIssues !== undefined ? { maxIssues: input.maxValidationIssues } : {}),
@@ -168,9 +191,10 @@ export function runMonitoring(input: MonitoringInput) {
 
   // ── [3] Scoring ──
   const hasScorecard = Boolean(
+    model.mode !== 'score_column' &&
     scoring.scorecard && Object.keys(scoring.scorecard).length > 0 && (scoring.features?.length ?? 0) > 0,
   );
-  const scored = scoreRows(official, scoring);
+  const scored = scoreRows(official, scoring, scoreColumn);
   const officialScores = hasScorecard
     ? scored.map(s => s.aScore)
     : scoreColumn
@@ -198,7 +222,11 @@ export function runMonitoring(input: MonitoringInput) {
       run.anomaly.warnings.push('ทุกแถวโดนธง — คำนวณ drift แบบตัดแถวที่โดนธงไม่ได้');
     } else {
       if (kept.length < minRows) run.anomaly.warnings.push(`หลังตัดแถวที่โดนธงเหลือ ${kept.length} แถว (< ${minRows}) — ค่า PSI/CSI แบบตัดแถวอาจแกว่งสูง`);
-      const keptScores = kept.map(r => calculateAScore(scoring, r.values));
+      const keptScores = hasScorecard
+        ? kept.map(r => calculateAScore(scoring, r.values))
+        : scoreColumn
+          ? kept.map(r => r.values[scoreColumn]).filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+          : [];
       // Symmetric: drop reference rows flagged by the same rules, keep the ORIGINAL bins.
       const refKept = referenceWithout(reference, referenceFlaggedIndices(reference, model));
       const frozen = freezeCsiBins(registry, thresholds, reference);
@@ -212,7 +240,7 @@ export function runMonitoring(input: MonitoringInput) {
   run.trigger = evaluateTrigger(run, model, history);
   if (shouldRecordEvent) recordTriggerEventSync(run);
 
-  return { run, scored, riskGradeDist: riskGradeDistribution(scored.map(s => s.aScore)), skipped };
+  return { run, scored, riskGradeDist: riskGradeDistribution(officialScores, model.riskGrades), skipped };
 }
 
 const ValidationDefaults = { minRowsForDrift: 100 };   // keep in sync with validateDataset default
@@ -236,10 +264,14 @@ function driftFor(
   const { skipped, ...drift } = runDriftDetection(reference, scores, actualFeatures, registry, thresholds);
   return { drift, skipped };
 }
-function scoreRows(clean: CleanRow[], scoring: ScoringConfig) {
+function scoreRows(clean: CleanRow[], scoring: ScoringConfig, scoreColumn?: string) {
   const hasCard = Boolean(scoring?.scorecard && Object.keys(scoring.scorecard).length > 0 && scoring.features?.length);
   return clean.map(r => {
-    const aScore = hasCard ? calculateAScore(scoring, r.values) : 0;
+    const aScore = hasCard
+      ? calculateAScore(scoring, r.values)
+      : scoreColumn && typeof r.values[scoreColumn] === 'number'
+        ? r.values[scoreColumn]
+        : 0;
     const bins: Record<string, number> = {};
     if (hasCard) {
       for (const f of scoring.features) {

@@ -525,3 +525,4 @@ export function evaluateTrigger(
     ...(configWarnings.length > 0 ? { configWarnings } : {}),
   };
 }
+

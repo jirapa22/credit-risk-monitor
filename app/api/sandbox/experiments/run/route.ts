@@ -8,10 +8,10 @@
  * `npm run experiments`.
  */
 import { NextResponse } from 'next/server';
-import { getActiveModelId, getEffectiveModel, saveRun, storageInfo } from '@/lib/storage/repositories';
-import { runTrial, trialDetected, DETECTORS, stat, rate as rateStat, type TrialResult } from '@/lib/experiment';
-import { ANOMALY_KIND } from '@/lib/injection';
-import type { AnomalySeverity, AnomalyType, DriftStatus, ExperimentRun } from '@/lib/types';
+import { getDefaultModelId, getEffectiveModel, loadReferenceProfile, saveRun, storageInfo } from '../../../../../lib/storage/repositories';
+import { runTrial, trialDetected, DETECTORS, stat, rate as rateStat, type TrialResult } from '../../../../../lib/experiment';
+import { ANOMALY_KIND } from '../../../../../lib/injection';
+import type { AnomalySeverity, AnomalyType, DriftStatus, ExperimentRun } from '../../../../../lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +21,7 @@ const MAX_SEEDS = 10;
 
 export async function POST(request: Request) {
   try {
+    const url = new URL(request.url);
     const b = await request.json();
     const type: AnomalyType = TYPE_ALIASES[b.type] ?? b.type;
     const errors: string[] = [];
@@ -33,7 +34,9 @@ export async function POST(request: Request) {
     if (seeds.some(s => !Number.isInteger(s))) errors.push('seeds ต้องเป็นจำนวนเต็ม');
     if (errors.length) return NextResponse.json({ error: 'ข้อมูลไม่ถูกต้อง', errors }, { status: 400 });
 
-    const model = await getEffectiveModel(b.modelId || getActiveModelId());
+    const modelId = url.searchParams.get('modelId') || b.modelId || (await getDefaultModelId());
+    const model = await getEffectiveModel(modelId);
+    await loadReferenceProfile(model.referenceDatasetId, model);
     const experimentId = String(b.experimentId || `ui_${type}_${severity}_${Date.now()}`);
     const trials: TrialResult[] = [];
     const runs: ExperimentRun[] = [];

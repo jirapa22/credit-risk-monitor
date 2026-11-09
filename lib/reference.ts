@@ -73,19 +73,19 @@ export function getReferenceRows(referenceId: string): { columns: string[]; rows
 }
 
 /**
- * Profile is cached per (referenceId, scoring fingerprint, label/score column) —
- * if the scorecard changes, scores are recomputed, but the underlying rows never change.
+ * Profile is cached per (referenceId, sha256, scoring fingerprint, label/score column) —
+ * if the scorecard or reference sha256 changes, scores and profiles are recomputed.
  */
-export function getReferenceProfile(
-  referenceId: string,
+export function buildReferenceProfileFromData(
+  file: { meta: ReferenceDatasetMeta; rows: Record<string, string | number | null | undefined>[] },
   scoring?: ScoringConfig | null,
   options: ReferenceProfileOptions = {},
 ): ReferenceProfile {
-  const file = REGISTRY[referenceId];
-  if (!file) throw new Error(`Unknown reference dataset "${referenceId}"`);
+  const referenceId = file.meta.referenceId;
+  const sha256 = file.meta.sha256 || 'no_sha';
   const labelColumn = options.labelColumn || 'default_flag';
   const scoreColumn = options.scoreColumn || '';
-  const key = `${referenceId}|${labelColumn}|${scoreColumn}|${JSON.stringify([
+  const key = `${referenceId}|${sha256}|${labelColumn}|${scoreColumn}|${JSON.stringify([
     scoring?.base_points, scoring?.features, scoring?.scorecard,
   ])}`;
   const hit = cache.get(key);
@@ -101,7 +101,7 @@ export function getReferenceProfile(
   }
 
   const numericCols = file.meta.columns.filter(c =>
-    file.rows.some(r => typeof r[c] === 'number' && Number.isFinite(r[c])),
+    file.rows.some(r => !isBlank(r[c]) && typeof r[c] !== 'boolean' && Number.isFinite(Number(r[c]))),
   );
   const features: Record<string, number[]> = {};
   for (const c of numericCols) {
@@ -145,4 +145,14 @@ export function getReferenceProfile(
   };
   cache.set(key, profile);
   return profile;
+}
+
+export function getReferenceProfile(
+  referenceId: string,
+  scoring?: ScoringConfig | null,
+  options: ReferenceProfileOptions = {},
+): ReferenceProfile {
+  const file = REGISTRY[referenceId];
+  if (!file) throw new Error(`Unknown reference dataset "${referenceId}"`);
+  return buildReferenceProfileFromData(file, scoring, options);
 }

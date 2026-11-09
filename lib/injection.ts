@@ -85,8 +85,11 @@ const fmtThousands = (v: unknown) => Number(v).toLocaleString('en-US', { maximum
 export function injectAnomaly(model: any, params: InjectionParams): InjectionResult {
   const referenceId: string = model.referenceDatasetId;
   const registry = (model.featureRegistry ?? {}) as Record<string, FeatureDefinition>;
+  const idColumn: string = model.columns?.idColumn ?? model.idColumn ?? 'customer_id';
+  const labelColumn: string = model.columns?.labelColumn ?? model.labelColumn ?? 'default_flag';
+  const scoreColumn: string | undefined = model.columns?.scoreColumn ?? model.scoreColumn ?? undefined;
   const ref = getReferenceRows(referenceId);
-  const profile = getReferenceProfile(referenceId, model.scoring);
+  const profile = getReferenceProfile(referenceId, model.scoring, { labelColumn, scoreColumn });
 
   const type = params.type;
   const kind = ANOMALY_KIND[type];
@@ -95,17 +98,22 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
   if (!(rate >= 0 && rate <= 1)) throw new Error('rate ต้องอยู่ระหว่าง 0 ถึง 1');
   const n = params.n ?? ref.rows.length;
   const seed = params.seed ?? 42;
-  const targetFeatures = params.targetFeatures?.length ? params.targetFeatures : DEFAULT_TARGETS[type];
+  const regKeys = Object.keys(registry).filter(k => registry[k]?.dataType === 'numeric' || !registry[k]?.dataType);
+  const defaultTargets = DEFAULT_TARGETS[type];
+  const resolvedDefaults = defaultTargets.every(f => f in registry || ref.columns.includes(f))
+    ? defaultTargets
+    : regKeys.slice(0, Math.max(1, defaultTargets.length));
+  const targetFeatures = params.targetFeatures?.length ? params.targetFeatures : resolvedDefaults;
   const rnd = mulberry32(seed);
 
   // ── Bootstrap base file (unique ids so clean files never trigger DUPLICATE_ID) ──
   const width = String(n).length;
   const rows: Record<string, unknown>[] = Array.from({ length: n }, (_, i) => ({
     ...ref.rows[Math.floor(rnd() * ref.rows.length)],
-    customer_id: `BS${String(i + 1).padStart(width, '0')}`,
+    [idColumn]: `BS${String(i + 1).padStart(width, '0')}`,
   }));
   let columns = [...ref.columns];
-  const gt: GroundTruthRow[] = rows.map((r, i) => ({ row: i + 1, id: String(r.customer_id), injected: false, kind: 'clean', type: 'none' }));
+  const gt: GroundTruthRow[] = rows.map((r, i) => ({ row: i + 1, id: String(r[idColumn] ?? r.customer_id ?? `ROW_${i + 1}`), injected: false, kind: 'clean', type: 'none' }));
 
   const k = Math.round(rate * n);
   const idx = type === 'none' ? [] : pickIndices(n, k, rnd);
@@ -147,7 +155,7 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
       for (const i of idx) {
         const copy = { ...rows[i] };
         rows.push(copy);
-        gt.push({ row: rows.length, id: String(copy.customer_id), injected: true, kind, type, original: { duplicateOfRow: i + 1 } });
+        gt.push({ row: rows.length, id: String(copy[idColumn] ?? copy.customer_id ?? `ROW_${rows.length}`), injected: true, kind, type, original: { duplicateOfRow: i + 1 } });
       }
       break;
     }

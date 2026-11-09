@@ -3,8 +3,8 @@
  * Stored ExperimentRun records as CSV (one row per run × detector; runs without
  * detector metrics produce a single row).
  */
-import { getActiveModelId, listRuns } from '@/lib/storage/repositories';
-import type { ExperimentRun } from '@/lib/types';
+import { getDefaultModelId, listRuns } from '../../../../../lib/storage/repositories';
+import type { ExperimentRun } from '../../../../../lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +16,7 @@ const cell = (v: unknown) => {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const modelId = searchParams.get('modelId') || getActiveModelId();
+  const modelId = searchParams.get('modelId') || (await getDefaultModelId());
   const experimentId = searchParams.get('experimentId');
   let runs = await listRuns<ExperimentRun>('sandbox', modelId);
   if (experimentId) runs = runs.filter(r => r.experimentId === experimentId);

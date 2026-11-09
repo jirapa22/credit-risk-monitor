@@ -13,16 +13,17 @@
  * The resulting MonitoringRun is persisted (lib/storage) and returned.
  */
 import { NextResponse } from 'next/server';
-import { runMonitoring } from '@/lib/monitoring';
-import { getEffectiveModel, listRuns, saveRun, storageInfo } from '@/lib/storage/repositories';
-import type { MonitoringRun } from '@/lib/types';
-import { getReferenceMeta } from '@/lib/reference';
-import { toLegacyLog } from '@/lib/legacy';
+import { runMonitoring } from '../../../lib/monitoring';
+import { getDefaultModelId, getEffectiveModel, listRuns, loadReferenceProfile, saveRun, storageInfo } from '../../../lib/storage/repositories';
+import type { MonitoringRun } from '../../../lib/types';
+import { getReferenceMeta } from '../../../lib/reference';
+import { toLegacyLog } from '../../../lib/legacy';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
+    const url = new URL(request.url);
     const body = await request.json();
     const fileName: string = body.fileName || 'unknown.csv';
     if (typeof body.csvText !== 'string' && !Array.isArray(body.customers)) {
@@ -32,7 +33,9 @@ export async function POST(request: Request) {
     const excludeRows = Array.isArray(body.excludeRows)
       ? body.excludeRows.map(Number).filter((n: number) => Number.isInteger(n) && n > 0)
       : undefined;
-    const model = await getEffectiveModel();
+    const requestedModelId = url.searchParams.get('modelId') || body.modelId || (await getDefaultModelId());
+    const model = await getEffectiveModel(requestedModelId);
+    await loadReferenceProfile(model.referenceDatasetId, model);
     const history = await listRuns<MonitoringRun>('monitoring', model.id);
     const { run, scored, riskGradeDist, skipped } = runMonitoring({
       model, fileName, csvText: body.csvText, rows: body.customers,

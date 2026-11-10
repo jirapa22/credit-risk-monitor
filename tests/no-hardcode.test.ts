@@ -14,7 +14,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = join(__dirname, '..');
-const SCAN_DIRS = ['lib', join('app', 'api')];
+const SCAN_DIRS = ['lib', join('app', 'api'), join('app', 'dashboard')];
 const ALLOWED_FILES = new Set(['lib/defaults.ts']);
 const FORBIDDEN_TOKENS = [
   'monthly_income',
@@ -34,7 +34,7 @@ function collectTsFiles(dir: string): string[] {
     const st = statSync(full);
     if (st.isDirectory()) {
       out.push(...collectTsFiles(full));
-    } else if (entry.endsWith('.ts')) {
+    } else if (entry.endsWith('.ts') || entry.endsWith('.tsx')) {
       out.push(full);
     }
   }
@@ -45,7 +45,7 @@ function isCommentLine(trimmed: string): boolean {
   return trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*');
 }
 
-describe('Step 10b.3 — No hard-coded feature/column names in lib/ and app/api/', () => {
+describe('Step 10c — No hard-coded feature/column names in lib/, app/api/, and app/dashboard/', () => {
   it('contains zero forbidden tokens outside lib/defaults.ts and comments', () => {
     const files = SCAN_DIRS.flatMap(d => collectTsFiles(join(ROOT, d)));
     expect(files.length).toBeGreaterThan(0);

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import AnomalyExperimentPanel from './components/AnomalyExperimentPanel';
+import BaselineRegistryPanel from './components/BaselineRegistryPanel';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -16,6 +17,9 @@ interface ModelEntry {
   type: string;
   createdAt: string;
   status: string;
+  referenceDatasetId?: string;
+  columns?: { idColumn?: string; dateColumn?: string | null; labelColumn?: string | null; scoreColumn?: string | null; };
+  featureRegistry?: Record<string, any>;
   scoring: {
     base_points: number;
     features: string[];
@@ -78,7 +82,7 @@ const ISSUE_LABEL: Record<string, string> = {
   DUPLICATE_ID: 'รหัสลูกค้าซ้ำ', MALFORMED_ROW: 'แถวผิดรูปแบบ',
 };
 
-type ActiveTab = 'sandbox' | 'monitor';
+type ActiveTab = 'registry' | 'sandbox' | 'monitor';
 type CsiFeatureItem = { key: string; label: string; source: string; threshold: string; bins: string[] };
 
 // CSV is parsed and validated on the server (lib/csv.ts + lib/validation.ts).
@@ -119,17 +123,15 @@ export default function Dashboard() {
   const [config, setConfig] = useState<ModelConfig | null>(null);
   const [monitorLogs, setMonitorLogs] = useState<MonitorLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedModelId, setSelectedModelId] = useState<string>('');
+  const [registeredModels, setRegisteredModels] = useState<any[]>([]);
 
   // Sandbox state
   const [thresholds, setThresholds] = useState({
     psi_warning: '0.10', psi_critical: '0.25',
     gini_min: '0.10', auc_min: '0.55', ks_min: '0.10',
   });
-  const defaultCsiFeatures: CsiFeatureItem[] = [
-    { key: 'monthly_income', label: 'Monthly Income', source: 'WOE-transformed — รายได้ต่อเดือนจากใบสมัคร (salary/wage)', threshold: '0.10', bins: ['17800', '22300', '27520', '36360'] },
-    { key: 'loan_amount',    label: 'Loan Amount',    source: 'WOE-transformed — วงเงินกู้ที่ขอจากใบสมัคร', threshold: '0.10', bins: ['46000', '63000', '81000', '112000'] },
-    { key: 'dti_ratio',      label: 'DTI Ratio',      source: 'WOE-transformed — อัตราส่วนหนี้ต่อรายได้ (existing_monthly_debt / monthly_income)', threshold: '0.10', bins: ['0.264', '0.36', '0.47', '0.606'] },
-  ];
+  const defaultCsiFeatures: CsiFeatureItem[] = [];
   const [csiFeatures, setCsiFeatures] = useState<CsiFeatureItem[]>(defaultCsiFeatures);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
@@ -150,30 +152,44 @@ export default function Dashboard() {
   const [onlyCurrentVersion, setOnlyCurrentVersion] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadLogs = useCallback(async () => {
+  const loadLogs = useCallback(async (targetModelId?: string) => {
     try {
-      const res = await fetch('/api/monitor-log', { cache: 'no-store' });
+      const mId = targetModelId || selectedModelId;
+      const url = mId ? `/api/monitor-log?modelId=${encodeURIComponent(mId)}` : '/api/monitor-log';
+      const res = await fetch(url, { cache: 'no-store' });
       const data = await res.json();
       setMonitorLogs(Array.isArray(data.log) ? data.log : []);
       if (data.storage) setStorage(data.storage);
     } catch (err) {
       console.error('loadLogs error:', err);
     }
-  }, []);
+  }, [selectedModelId]);
 
   // ── Load data: effective config + reference + persisted monitoring runs ──
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (targetModelId?: string) => {
     try {
       setIsLoading(true);
-      const psiRes = await fetch('/api/get-latest-psi', { cache: 'no-store' });
+      const mId = targetModelId || selectedModelId;
+      const url = mId ? `/api/get-latest-psi?modelId=${encodeURIComponent(mId)}` : '/api/get-latest-psi';
+      const [psiRes, modelsRes] = await Promise.all([
+        fetch(url, { cache: 'no-store' }),
+        fetch('/api/registry/models', { cache: 'no-store' }),
+      ]);
       const psiData = await psiRes.json();
+      const modelsData = await modelsRes.json();
+      if (modelsRes.ok && Array.isArray(modelsData.models)) {
+        setRegisteredModels(modelsData.models);
+      }
       if (psiData.reference) setReference(psiData.reference);
       if (psiData.storage) setStorage(psiData.storage);
-      await loadLogs();
+      await loadLogs(mId);
 
       if (psiData.config) {
         setConfig(psiData.config);
         const activeId = psiData.config.activeModelId;
+        if (!selectedModelId && !targetModelId) {
+          setSelectedModelId(activeId);
+        }
         const model = psiData.config.models[activeId];
         if (model?.thresholds) {
           const t = model.thresholds;
@@ -184,8 +200,8 @@ export default function Dashboard() {
             auc_min:      String(t.auc_min      ?? 0.55),
             ks_min:       String(t.ks_min       ?? 0.10),
           });
+          const loaded: CsiFeatureItem[] = [];
           if (t.csi_features) {
-            const loaded: CsiFeatureItem[] = [];
             for (const [feat, cfg] of Object.entries(t.csi_features as Record<string, any>)) {
               loaded.push({
                 key: feat, label: cfg.label || feat, source: cfg.source || '',
@@ -193,8 +209,18 @@ export default function Dashboard() {
                 bins: Array.isArray(cfg.bins) ? cfg.bins.map(String) : [],
               });
             }
-            if (loaded.length > 0) setCsiFeatures(loaded);
+          } else if (model.featureRegistry) {
+            for (const [feat, def] of Object.entries(model.featureRegistry as Record<string, any>)) {
+              loaded.push({
+                key: feat,
+                label: def.displayName || feat,
+                source: def.dataType || '',
+                threshold: '0.10',
+                bins: [],
+              });
+            }
           }
+          setCsiFeatures(loaded);
         }
       }
     } catch (err) {
@@ -202,7 +228,7 @@ export default function Dashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, [loadLogs]);
+  }, [loadLogs, selectedModelId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -226,6 +252,7 @@ export default function Dashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          modelId: selectedModelId,
           thresholds: {
             psi_warning: thresholds.psi_warning,
             psi_critical: thresholds.psi_critical,
@@ -302,7 +329,7 @@ export default function Dashboard() {
         const res = await fetch('/api/monitor-upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ csvText: text, fileName: file.name }),
+          body: JSON.stringify({ csvText: text, fileName: file.name, modelId: selectedModelId }),
         });
         const data = await res.json();
         if (data.validation) {
@@ -354,25 +381,74 @@ export default function Dashboard() {
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* Header */}
       <div className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-screen-2xl mx-auto px-6 py-3 flex items-center justify-between">
+        <div className="max-w-screen-2xl mx-auto px-6 py-3 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-sm font-bold">A</div>
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-sm font-bold">M</div>
             <div>
-              <p className="text-sm font-bold text-slate-100">A-Score Monitor</p>
-              <p className="text-[10px] text-slate-500">Personal Loan — {model?.name || 'Loading...'}</p>
+              <p className="text-sm font-bold text-slate-100">Credit Risk Monitor</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <select
+                  value={selectedModelId || config?.activeModelId || ''}
+                  onChange={e => {
+                    const newId = e.target.value;
+                    setSelectedModelId(newId);
+                    loadData(newId);
+                    loadLogs(newId);
+                  }}
+                  className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-[11px] font-mono text-slate-200 outline-none focus:border-indigo-500"
+                >
+                  {(registeredModels.length > 0
+                    ? registeredModels
+                    : [{ modelId: config?.activeModelId || 'default', name: model?.name || 'Active Model' }]
+                  ).map((m: any) => (
+                    <option key={m.modelId} value={m.modelId}>
+                      {m.modelId} — {m.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-500/40 text-emerald-300 bg-emerald-500/10">
+                  {selectedModelId || config?.activeModelId}@{currentVersion || '1.0.0'} · {model?.referenceDatasetId || 'ref'} · ACTIVE
+                </span>
+                <button
+                  onClick={async () => {
+                    const target = selectedModelId || config?.activeModelId;
+                    if (!target) return;
+                    await fetch('/api/registry/default', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ modelId: target }),
+                    });
+                    alert(`✅ ตั้งโมเดล "${target}" เป็นค่าเริ่มต้นเรียบร้อย`);
+                  }}
+                  title="ตั้งโมเดลนี้เป็นค่าเริ่มต้นเมื่อเปิดระบบ"
+                  className="px-2 py-0.5 text-[10px] bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded transition"
+                >
+                  ⭐ ตั้งเป็นค่าเริ่มต้น
+                </button>
+              </div>
             </div>
           </div>
+
           <div className="flex items-center gap-2 bg-slate-800/60 rounded-xl p-1">
-            {(['sandbox', 'monitor'] as ActiveTab[]).map(tab => (
+            {([
+              ['registry', '🗂 Baseline Registry'],
+              ['sandbox', '🔬 Model Sandbox'],
+              ['monitor', '📊 Monitoring'],
+            ] as const).map(([tab, label]) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === tab ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === tab
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
               >
-                {tab === 'sandbox' ? '📋 Model Reference' : '📊 Monitoring'}
+                {label}
               </button>
             ))}
           </div>
+
           <div className="flex items-center gap-3 text-[11px] text-slate-400">
             {storage && (
               <span
@@ -394,6 +470,25 @@ export default function Dashboard() {
             <div className="text-slate-400 text-sm animate-pulse">Loading model data...</div>
           </div>
         ) : (
+          /* ════════════════════════════════════════════════════════
+             TAB: REGISTRY
+          ════════════════════════════════════════════════════════ */
+          activeTab === 'registry' ? (
+            <BaselineRegistryPanel
+              selectedModelId={selectedModelId || config?.activeModelId || ''}
+              onSelectModel={mId => {
+                setSelectedModelId(mId);
+                loadData(mId);
+                loadLogs(mId);
+              }}
+              onModelActivated={(mId, ver, openMon) => {
+                setSelectedModelId(mId);
+                loadData(mId);
+                loadLogs(mId);
+                if (openMon) setActiveTab('monitor');
+              }}
+            />
+          ) :
 
           /* ════════════════════════════════════════════════════════
              TAB: SANDBOX
@@ -519,7 +614,7 @@ export default function Dashboard() {
                                   type="text"
                                   value={feat.key}
                                   onChange={e => updateCsiFeature(idx, 'key', e.target.value)}
-                                  placeholder="e.g. dti_ratio"
+                                  placeholder="e.g. debt_ratio"
                                   className="w-full bg-slate-900 border border-slate-700 px-2 py-1 rounded text-[10px] font-mono text-emerald-400 outline-none focus:border-indigo-500 placeholder-slate-700"
                                 />
                               </div>
@@ -610,7 +705,7 @@ export default function Dashboard() {
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
                   <h2 className="text-sm font-bold text-slate-200 mb-4">📋 Scorecard Reference</h2>
                   <div className="space-y-5">
-                    {(['monthly_income', 'loan_amount', 'dti_ratio'] as const).map(feat => {
+                    {Object.keys(scorecard).map(feat => {
                       const sc = scorecard[feat];
                       const ivEntry = (model as any)?.ivSummary?.[feat];
                       if (!sc) return null;
@@ -727,7 +822,7 @@ export default function Dashboard() {
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
                   <h2 className="text-sm font-bold text-slate-200 mb-4">📊 Baseline Feature Distribution</h2>
                   <div className="grid grid-cols-3 gap-4">
-                    {(['monthly_income', 'loan_amount', 'dti_ratio'] as const).map(feat => {
+                    {Object.keys(model?.baseline?.feature_stats || model?.featureRegistry || scorecard).map(feat => {
                       const fs = model?.baseline?.feature_stats?.[feat];
                       if (!fs) return null;
                       return (
@@ -874,7 +969,7 @@ export default function Dashboard() {
                         <p className="text-3xl mb-2 group-hover:scale-110 transition-transform">📂</p>
                         <p className="text-sm text-slate-300 font-medium">คลิกเพื่อเลือก CSV</p>
                         <p className="text-[10px] text-slate-500 mt-1">
-                          ต้องการคอลัมน์: {csiFeatures.map(f => f.key || '?').join(', ')} (default_flag, application_date ถ้ามี — application_date ใช้สรุปช่วงเวลา)
+                          ต้องการคอลัมน์: {csiFeatures.map(f => f.key || '?').join(', ')}{model?.columns?.labelColumn ? ` (${model.columns.labelColumn} ถ้ามีสำหรับวัด Performance)` : ''}
                         </p>
                       </div>
                     )}
@@ -1099,22 +1194,29 @@ export default function Dashboard() {
                         <table className="w-full text-[10px]">
                           <thead>
                             <tr className="border-b border-slate-800">
-                              {['#', 'Customer', 'Monthly Income', 'Loan Amount', 'DTI Ratio', 'A-Score', 'PD', 'Default'].map(h => (
-                                <th key={h} className="text-left pb-2 px-2 text-slate-500 font-medium">{h}</th>
+                              <th className="text-left pb-2 px-2 text-slate-500 font-medium">#</th>
+                              <th className="text-left pb-2 px-2 text-slate-500 font-medium">ID</th>
+                              {csiFeatures.slice(0, 4).map(f => (
+                                <th key={f.key} className="text-left pb-2 px-2 text-slate-500 font-medium">{f.label || f.key}</th>
                               ))}
+                              <th className="text-left pb-2 px-2 text-slate-500 font-medium">Score</th>
+                              <th className="text-left pb-2 px-2 text-slate-500 font-medium">PD</th>
+                              <th className="text-left pb-2 px-2 text-slate-500 font-medium">Label</th>
                             </tr>
                           </thead>
                           <tbody>
                             {previewCustomers.slice(0, 20).map((c, i) => (
                               <tr key={i} className="border-b border-slate-800/30 hover:bg-slate-800/20">
-                                <td className="py-1.5 px-2 text-slate-500">{c.id}</td>
-                                <td className="py-1.5 px-2 text-slate-300">{c.customer_id}</td>
-                                <td className="py-1.5 px-2 font-mono text-slate-300">{c.monthly_income?.toLocaleString()}</td>
-                                <td className="py-1.5 px-2 font-mono text-slate-300">{c.loan_amount?.toLocaleString()}</td>
-                                <td className="py-1.5 px-2 font-mono text-slate-300">{c.dti_ratio?.toFixed(3)}</td>
-                                <td className="py-1.5 px-2 font-mono font-bold text-indigo-400">{c.aScore}</td>
-                                <td className="py-1.5 px-2 font-mono text-rose-400">{(c.pd * 100).toFixed(2)}%</td>
-                                <td className="py-1.5 px-2">{c.defaultLabel === 1 ? <span className="text-rose-400 font-bold">BAD</span> : <span className="text-emerald-400">good</span>}</td>
+                                <td className="py-1.5 px-2 text-slate-500">{c.row ?? i + 1}</td>
+                                <td className="py-1.5 px-2 text-slate-300 font-mono">{c.id ?? '—'}</td>
+                                {csiFeatures.slice(0, 4).map(f => (
+                                  <td key={f.key} className="py-1.5 px-2 font-mono text-slate-300">
+                                    {typeof c[f.key] === 'number' ? c[f.key]?.toLocaleString() : (c[f.key] ?? '—')}
+                                  </td>
+                                ))}
+                                <td className="py-1.5 px-2 font-mono font-bold text-indigo-400">{c.score !== null && c.score !== undefined ? Number(c.score).toFixed(2) : '—'}</td>
+                                <td className="py-1.5 px-2 font-mono text-rose-400">{typeof c.pd === 'number' && c.pd > 0 ? (c.pd * 100).toFixed(2) + '%' : '—'}</td>
+                                <td className="py-1.5 px-2">{c.defaultLabel === 1 ? <span className="text-rose-400 font-bold">BAD</span> : c.defaultLabel === 0 ? <span className="text-emerald-400">good</span> : '—'}</td>
                               </tr>
                             ))}
                           </tbody>

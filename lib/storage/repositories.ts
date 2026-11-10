@@ -31,9 +31,16 @@ import {
   saveReferenceDatasetBlob,
   type ReferenceDatasetBlob,
 } from './blob';
-import { buildReferenceProfileFromData, getReferenceProfile, type ReferenceProfile } from '../reference';
+import {
+  buildReferenceProfileFromData,
+  getReferenceProfile,
+  registerReferenceDataset,
+  type ReferenceProfile,
+} from '../reference';
 import { DEFAULT_DATE_COLUMN, DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from '../defaults';
 import { validateBaseline } from '../baselineValidation';
+import { computeDistributionStats } from '../driftReport';
+import { calculateAUC, calculateGini, calculateKS, type DataPoint } from '../stats';
 
 const MAX_RUNS = 500;
 const MAX_EVENTS = 500;
@@ -174,8 +181,82 @@ export function baselineToModelObject(baseline: BaselineVersion): any {
           scorecard: {},
         };
 
+  let dynamicBaseline = rawBuiltIn.baseline;
+  if (!dynamicBaseline && baseline.referenceDatasetId) {
+    try {
+      const prof = getReferenceProfile(
+        baseline.referenceDatasetId,
+        baseline.mode === 'scorecard' ? baseline.scoring : null,
+        {
+          labelColumn: baseline.columns.labelColumn ?? DEFAULT_LABEL_COLUMN,
+          scoreColumn:
+            baseline.mode === 'score_column'
+              ? (baseline.columns.scoreColumn ?? undefined)
+              : undefined,
+          featureRegistry: baseline.featureRegistry,
+        },
+      );
+      const feature_stats: Record<string, any> = {};
+      for (const [k, vals] of Object.entries(prof.features)) {
+        const finite = vals.filter(Number.isFinite);
+        if (finite.length === 0) continue;
+        const sorted = [...finite].sort((a, b) => a - b);
+        const st = computeDistributionStats(finite);
+        const q = (p: number) => sorted[Math.min(Math.floor(sorted.length * p), sorted.length - 1)];
+        feature_stats[k] = {
+          mean: +st.mean.toFixed(2),
+          std: +st.sd.toFixed(2),
+          p25: +q(0.25).toFixed(2),
+          p50: +st.median.toFixed(2),
+          p75: +q(0.75).toFixed(2),
+        };
+      }
+      let score_distribution: any = null;
+      if (prof.hasScores && prof.scores.length > 0) {
+        const sortedS = [...prof.scores].sort((a, b) => a - b);
+        const meanS = sortedS.reduce((a, b) => a + b, 0) / sortedS.length;
+        score_distribution = {
+          mean: +meanS.toFixed(2),
+          min: +sortedS[0].toFixed(2),
+          max: +sortedS[sortedS.length - 1].toFixed(2),
+          decile_bounds: prof.scoreBoundaries,
+        };
+      }
+      let performance: any = null;
+      if (prof.hasLabels && prof.hasScores) {
+        const pts: DataPoint[] = prof.scores.map((s, i) => ({ score: s, label: prof.labels[i] }));
+        const dir = baseline.scoreDirection ?? 'higher_is_safer';
+        const auc = calculateAUC(pts, dir);
+        const gini = calculateGini(pts, dir);
+        const ks = calculateKS(pts);
+        performance = {
+          test: {
+            auc,
+            gini,
+            ks,
+            period:
+              prof.meta.periodStart && prof.meta.periodEnd
+                ? `${prof.meta.periodStart} – ${prof.meta.periodEnd}`
+                : 'Reference',
+          },
+          train: { auc, gini, ks },
+        };
+      }
+      dynamicBaseline = {
+        sample_size: prof.meta.rowCount,
+        bad_rate: prof.meta.badRate,
+        feature_stats,
+        score_distribution,
+        performance,
+      };
+    } catch {
+      // Reference profile not registered in memory yet
+    }
+  }
+
   return {
     ...rawBuiltIn,
+    ...(dynamicBaseline ? { baseline: dynamicBaseline } : {}),
     id: baseline.modelId,
     modelId: baseline.modelId,
     name: baseline.name,
@@ -369,6 +450,7 @@ export async function loadReferenceProfile(
   const featureRegistry = baseline?.featureRegistry;
 
   if (blob) {
+    registerReferenceDataset(blob.meta, blob.rows);
     return buildReferenceProfileFromData(blob, scoring, { labelColumn, scoreColumn, featureRegistry });
   }
   return getReferenceProfile(referenceId, scoring, { labelColumn, scoreColumn, featureRegistry });
@@ -384,15 +466,24 @@ export async function getEffectiveModel(modelId?: string) {
   return baselineToModelObject(active);
 }
 
-export async function getEffectiveConfig() {
+export async function getEffectiveConfig(requestedModelId?: string) {
   const { defaultModelId, models: regModels } = await listRegistryModels();
   const models: Record<string, any> = {};
   for (const m of regModels) {
     if (m.activeVersion) {
+      try {
+        await loadReferenceProfile(m.activeVersion.referenceDatasetId, m.activeVersion);
+      } catch {
+        // Ignore if reference is not yet uploaded
+      }
       models[m.modelId] = baselineToModelObject(m.activeVersion);
     }
   }
-  return { activeModelId: defaultModelId, models };
+  const activeModelId =
+    requestedModelId && models[requestedModelId]
+      ? requestedModelId
+      : defaultModelId;
+  return { activeModelId, defaultModelId, models };
 }
 
 export async function saveThresholds(
@@ -508,7 +599,8 @@ export async function createDraftBaselineVersion(
     ...(input.triggerConfig ? { triggerConfig: input.triggerConfig } : {}),
     ...(input.riskGrades ? { riskGrades: input.riskGrades } : {}),
     ...(input.experimentConfig ? { experimentConfig: input.experimentConfig } : {}),
-    referenceDatasetId: String(input.referenceDatasetId ?? ''),
+    ...(input.onboardingLog ? { onboardingLog: input.onboardingLog } : {}),
+    referenceDatasetId: String(input.referenceDatasetId ?? (input as any).referenceId ?? ''),
     validationReport: null,
     createdAt: existingIdx !== -1 ? stored[existingIdx].createdAt : now,
     createdBy: by,

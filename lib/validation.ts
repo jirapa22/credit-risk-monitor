@@ -160,8 +160,8 @@ export function validateDataset(
       const def = defs[key];
       const col = def.columnName || key;
       const v = raw[col];
-      const required = def.required || scoringFeatures.includes(key);
-      const strategy = def.validation?.missingStrategy ?? (required ? 'reject' : 'ignore');
+      const required = def.required || scoringFeatures.includes(key) || (def as any).missingStrategy === 'reject' || def.validation?.missingStrategy === 'reject';
+      const strategy = def.validation?.missingStrategy || (def as any).missingStrategy || (required ? 'reject' : 'ignore');
       const isLabel = def.dataType === 'binary' && (key === labelColumn || col === labelColumn);
 
       if (isBlank(v)) {
@@ -240,9 +240,10 @@ export function validateDataset(
           add('INVALID_BINARY', required ? 'error' : 'warning', col, v, `"${def.displayName}" ต้องเป็น 0 หรือ 1 แต่พบ "${v}"`);
           continue;
         }
-        const min = def.validation?.minValue, max = def.validation?.maxValue;
+        const min = def.validation?.minValue !== undefined ? def.validation.minValue : (def as any).minValue;
+        const max = def.validation?.maxValue !== undefined ? def.validation.maxValue : (def as any).maxValue;
         if ((typeof min === 'number' && n < min) || (typeof max === 'number' && n > max)) {
-          add('OUT_OF_RANGE', required ? 'error' : 'warning', col, v,
+          add('OUT_OF_RANGE', 'error', col, v,
             `"${def.displayName}" = ${fmt(n)} อยู่นอกช่วงที่ยอมรับ [${typeof min === 'number' ? fmt(min) : '−∞'}, ${typeof max === 'number' ? fmt(max) : '∞'}]`);
           continue;
         }

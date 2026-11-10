@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import { parseCsv } from '../../../../lib/csv';
 import { DEFAULT_DATE_COLUMN, DEFAULT_LABEL_COLUMN } from '../../../../lib/defaults';
 import { inferColumnsFromRows } from '../../../../lib/baselineValidation';
+import { parseXlsxBufferToRows } from '../../../../lib/scorecardImport';
 import {
   computeRowsSha256,
   isBuiltInReferenceId,
@@ -20,6 +21,15 @@ export const dynamic = 'force-dynamic';
 
 const MAX_CSV_BYTES = 4 * 1024 * 1024; // 4 MB
 const isBlank = (v: unknown) => v === null || v === undefined || String(v).trim() === '';
+
+function escapeCsvCell(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  const s = String(val);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
 
 export async function POST(request: Request) {
   try {
@@ -44,7 +54,21 @@ export async function POST(request: Request) {
       dateColumn = String(form.get('dateColumn') || dateColumn).trim();
       const file = form.get('file');
       if (file && typeof (file as Blob).text === 'function') {
-        csvText = await (file as Blob).text();
+        const fileName = typeof (file as File).name === 'string' ? (file as File).name : '';
+        if (fileName.toLowerCase().endsWith('.xlsx') && typeof (file as File).arrayBuffer === 'function') {
+          const ab = await (file as File).arrayBuffer();
+          const rows = parseXlsxBufferToRows(Buffer.from(ab));
+          if (rows.length > 0) {
+            const headers = Object.keys(rows[0]);
+            const lines = [headers.join(',')];
+            for (const r of rows) {
+              lines.push(headers.map(h => escapeCsvCell(r[h])).join(','));
+            }
+            csvText = lines.join('\n');
+          }
+        } else {
+          csvText = await (file as Blob).text();
+        }
       } else {
         csvText = String(form.get('csvText') || '');
       }

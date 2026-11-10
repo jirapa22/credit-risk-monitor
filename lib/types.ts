@@ -17,6 +17,7 @@ export interface ModelVersionRef {
 }
 
 export type FeatureDataType = 'numeric' | 'binary' | 'date' | 'categorical' | 'string';
+export type ScoreDirection = 'higher_is_safer' | 'higher_is_riskier';
 export type MissingStrategy = 'reject' | 'fillMean' | 'fillMedian' | 'fillMode' | 'fillDefault' | 'ignore';
 
 export interface FeatureDefinition {
@@ -685,6 +686,13 @@ export interface BaselineValidationReport {
   };
 }
 
+export interface OnboardingLogEntry {
+  field: string;
+  suggested: unknown;
+  chosen: unknown;
+  provider: string;
+}
+
 export interface BaselineVersion {
   modelId: string;
   version: string; // semver, e.g. "1.1.0"
@@ -709,6 +717,7 @@ export interface BaselineVersion {
   experimentConfig?: { multivariateTargets?: string[] };
   referenceDatasetId: string;
   validationReport?: BaselineValidationReport | null;
+  onboardingLog?: OnboardingLogEntry[];
   createdAt: string;
   createdBy: string;
   statusHistory: BaselineStatusHistoryEntry[];

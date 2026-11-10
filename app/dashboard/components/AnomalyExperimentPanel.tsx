@@ -28,7 +28,7 @@ const TYPE_INFO: Record<AnomalyType, string> = {
   type_error: 'ชนิดข้อมูลผิด — ตัวเลขกลายเป็นข้อความ',
   missing_injection: 'ค่าว่างในคอลัมน์ที่จำเป็น',
   swapped_columns: 'สลับค่ารายได้กับวงเงินกู้ในแถวเดียวกัน',
-  duplicate_rows: 'แถวซ้ำ (customer_id เดิม) ถูกแทรกต่อท้าย',
+  duplicate_rows: 'แถวซ้ำ (รหัสลูกค้าเดิม) ถูกแทรกต่อท้าย',
   multivariate_inconsistent: 'แต่ละค่าปกติ แต่รวมกันขัดแย้ง (รายได้ต่ำ + วงเงินสูง + DTI ต่ำ)',
   schema_break: 'โครงสร้างไฟล์เสีย — เปลี่ยนชื่อหรือลบคอลัมน์ (ทั้งไฟล์)',
   unseen_category: 'หมวดใหม่ที่ไม่เคยพบใน Reference (เช่น สะกดผิด)',

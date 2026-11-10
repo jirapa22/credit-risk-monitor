@@ -27,6 +27,7 @@
 | 9 | 9a212a0 | Trigger แบบกฎใน config (R1–R9) + review workflow (human-in-the-loop, audit) |
 | 10a | 67d02b1 | Baseline Registry: lifecycle DRAFT→VALIDATED→ACTIVE→ARCHIVED, blob storage, auto validation, export/import |
 | 10b | 0a0b238 | โหมด score_column (โมเดลภายนอก), scoreDirection ทุกจุด, risk grade D1–D10 อัตโนมัติ, lib/defaults.ts, guard test no-hardcode (0 violations), ลบโค้ดเก่า (dataGenerator, utils/stats, api/risk-score); 109/109 tests |
+| 10b-2 | 302e84a | ตัวแปร categorical ทุกชั้น: UNSEEN_CATEGORY, fillMode, __OTHER__/__UNSEEN__, CSI รายหมวด, chi-square, Jensen–Shannon, category_shift / unseen_category injection; 115/115 tests |
 
 ## ข้อค้นพบ (ใช้ในบทที่ 4)
 1. Log1p แก้ปัญหาข้อมูลเบ้: MAD ติดธงบน Reference 7.25% → 1.3%, IQR 9.4% → 3.0%; ขอบล่าง IQR จากติดลบ → 7,781 บาท (จับรายได้กรอกผิดหน่วยได้)
@@ -44,6 +45,7 @@
 12. score_column: โมเดลปลอม ext_gbm_v1 (x1–x3, higher_is_riskier) AUC บน Reference 0.822; ไม่มีคอลัมน์ score → ส่วนที่ใช้คะแนน NOT_AVAILABLE แต่ CSI ได้; สลับ label → CONSIDER_RETRAIN
 13. เปลี่ยน Baseline เวอร์ชัน: ผลของ v1 ยังอยู่และแยกจาก v2; persistence ของ trigger นับเฉพาะเวอร์ชันเดียวกัน (v2 รอบแรกได้ INVESTIGATE_DRIFT ไม่ใช่ CONSIDER_RETRAIN)
 14. multivariate_inconsistent แบบทั่วไป (เลือกคู่ |Spearman| สูงสุด): ascore_v1 เลือก loan_amount–dti_ratio (ρ=+0.39); LOF recall low 1.00→0.95, medium/high 1.00
+15. Categorical (โมเดลปลอม cat_credit_v1: occupation 5 หมวด, region 4 หมวด): category_shift 40 จุด% → CSI 2.73, JS distance 0.478, χ² 258.4 (df 4, p≈1e-54) ทั้งหมด CRITICAL; unseen_category 5% จับได้ 25/25 และ trigger = INVESTIGATE_DATA (drift ทางการ CRITICAL จาก __UNSEEN__ แต่ตัดแถวโดนธงแล้ว STABLE); 'Engineer'/' engineer '/'ENGINEER' = หมวดเดียวกัน
 
 ## หมายเหตุสำหรับผลการทดลอง
 - ผล grid เต็ม 926868a (3,895 trial) ใช้นิยาม multivariate_inconsistent แบบเดิม (3 ตัวแปรคงที่) → ต้องรัน grid ใหม่ใน Step 11 ก่อนใช้ตัวเลขในเล่ม
@@ -53,14 +55,19 @@
 - เกณฑ์: PSI 0.10/0.25, CSI 0.10, KS D 0.10/0.20, Wasserstein 0.10/0.25 (ชั่วคราว รอปรับใน Step 11), IQR k=1.5, MAD |z|>3.5, IF/LOF contamination 0.01, LOF k=20, IF 100 ต้น ψ=256 seed 42
 - Severity table: unit_error ×10/×100/×1000; extreme_outlier p99×1.5/3/10; mean_shift −10/−20/−40%; variance ×1.25/1.5/2
 
+## ผลงานล่าสุด (Step 10c — เสร็จสมบูรณ์)
+- หน้าเว็บ Baseline Registry + Onboarding Wizard 5 ขั้นตอน (app/dashboard/components/BaselineOnboardingWizard.tsx, BaselineRegistryPanel.tsx)
+- ระบบวิเคราะห์และแนะนำอัตโนมัติ (Heuristic Suggestion Provider):
+  - auto-detect scoreDirection จาก label (AUC > 0.5)
+  - เดาบทบาทคอลัมน์จากชื่อและรูปแบบข้อมูล (id, date, label, score, feature, ignore)
+  - แนะนำ min/max ปัดเศษสวยงาม และกลยุทธ์ missing value
+- นำเข้า/ส่งออก Scorecard ในรูปแบบ CSV และ .xlsx (ใช้ Node built-in zlib ปลอดภัย ไม่พึ่งพาไลบรารีภายนอก xlsx) พร้อมตรวจคะแนนเทียบ Reference >= 99%
+- แถบเลือกโมเดลที่หัวหน้าเว็บ + สลับโมเดล dynamic + ป้ายสถานะ + ปุ่ม "ตั้งเป็นค่าเริ่มต้น" (GET/POST /api/registry/default)
+- ล้างจุด hard-code ชื่อคอลัมน์ A-Score ทั้งหมดใน app/dashboard/ และขยาย tests/no-hardcode.test.ts ครอบคลุมทั้งโปรเจกต์
+- ชุดข้อมูลทดสอบตัวอย่าง (samples/): baseline_ext_model.csv, monitor_ext_clean.csv, monitor_ext_drift.csv, monitor_ext_dirty.csv, ascore_scorecard.csv
+- ชุดทดสอบ tests/step10c.test.ts ผ่านครบทุกข้อ รวม 14 test suites (124 tests)
+
 ## คงค้าง / Step ถัดไป
-- 10b-2 รองรับตัวแปร categorical ทุกชั้น (พบช่องว่าง 9 พ.ย.: ทุกชั้นตรวจเฉพาะ numeric → ตัวแปรแบบกลุ่มถูกข้ามเงียบ ๆ) — CSI รายหมวด, chi-square, Jensen–Shannon, UNSEEN_CATEGORY, category_shift/unseen_category injection
-- 10c UI Baseline Registry (รวมล้าง hard-code ใน app/dashboard/page.tsx) + ลดงานกรอกของผู้ใช้ (บันทึก 9 พ.ย.):
-  (1) auto-detect scoreDirection จาก label (AUC > 0.5)
-  (2) เดาบทบาทคอลัมน์จากชื่อ (id / flag,bad,default / score / date)
-  (3) แนะนำ min/max จาก Reference ให้ผู้ใช้ยืนยัน
-  (4) นำเข้า scorecard จาก CSV/Excel แทน JSON
-  หลักการ: ผู้ใช้เตรียมไฟล์เดียว (ข้อมูลพัฒนาโมเดล + label + คอลัมน์ score) → ยืนยันบทบาทคอลัมน์ → Validate → Activate
 - 10d (ใหม่ 9 พ.ย.) AI-assisted Baseline onboarding — ต่อยอดฟีเจอร์ 'AI Recommendation' ในสไลด์เค้าโครงเดิม:
   (1) AI จับคู่บทบาท/ชนิดคอลัมน์จากชื่อ+ค่าตัวอย่าง (เข้าใจชื่อไทย/ชื่อเฉพาะองค์กร)
   (2) AI ร่าง data dictionary ภาษาไทย + เสนอ min/max ทางธุรกิจพร้อมเหตุผล

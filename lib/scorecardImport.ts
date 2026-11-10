@@ -98,7 +98,32 @@ export function exportScorecardToCsv(scoring: ScoringConfig): string {
  * Minimal pure-Node OpenXML (.xlsx) first-sheet reader using built-in `zlib`.
  * Avoids any dependency on the vulnerable `xlsx` npm package.
  */
-export function parseXlsxBufferToRows(buffer: Uint8Array | Buffer): Record<string, string>[] {
+export interface XlsxWorksheet {
+  name: string;
+  target: string;
+  matrix: string[][];
+  rows: Record<string, string>[];
+  rowCount: number;
+}
+
+function decodeXml(s: string): string {
+  if (!s) return '';
+  return s
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * Minimal pure-Node OpenXML (.xlsx) multi-sheet reader using built-in `zlib`.
+ * Parses every worksheet with its sheet name and rows without any external dependencies.
+ * Avoids any dependency on the vulnerable `xlsx` npm package.
+ */
+export function parseXlsxAllSheets(buffer: Uint8Array | Buffer): XlsxWorksheet[] {
   const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
   const entries = new Map<string, string>();
 
@@ -122,7 +147,9 @@ export function parseXlsxBufferToRows(buffer: Uint8Array | Buffer): Record<strin
     const rawData = buf.subarray(dataStart, dataStart + compressedSize);
     if (
       name === 'xl/sharedStrings.xml' ||
-      name.startsWith('xl/worksheets/sheet')
+      name === 'xl/workbook.xml' ||
+      name === 'xl/_rels/workbook.xml.rels' ||
+      name.startsWith('xl/worksheets/')
     ) {
       try {
         const content =
@@ -133,19 +160,11 @@ export function parseXlsxBufferToRows(buffer: Uint8Array | Buffer): Record<strin
               : '';
         if (content) entries.set(name, content);
       } catch {
-        // Ignore non-critical zip entry errors
+        // Ignore non-critical zip entry decompression errors
       }
     }
     offset = dataStart + compressedSize;
   }
-
-  const decodeXml = (s: string) =>
-    s
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/&amp;/g, '&');
 
   const sharedStrings: string[] = [];
   const ssXml = entries.get('xl/sharedStrings.xml') || '';
@@ -157,12 +176,49 @@ export function parseXlsxBufferToRows(buffer: Uint8Array | Buffer): Record<strin
     }
   }
 
-  const sheetXml =
-    entries.get('xl/worksheets/sheet1.xml') ||
-    [...entries.entries()].find(([k]) => k.startsWith('xl/worksheets/sheet'))?.[1] ||
-    '';
-  if (!sheetXml) {
-    throw new Error('ไม่พบแผ่นงาน (worksheet) ในไฟล์ .xlsx');
+  // Parse workbook relationships (rId -> target worksheet)
+  const relMap = new Map<string, string>();
+  const relsXml = entries.get('xl/_rels/workbook.xml.rels') || '';
+  for (const m of relsXml.matchAll(/<Relationship\b([^>]*)\/>/g)) {
+    const idM = m[1].match(/\bId="([^"]+)"/);
+    const targetM = m[1].match(/\bTarget="([^"]+)"/);
+    if (idM && targetM) {
+      let t = targetM[1];
+      if (t.startsWith('/')) t = t.slice(1);
+      else if (!t.startsWith('xl/')) t = `xl/${t}`;
+      relMap.set(idM[1], t);
+    }
+  }
+
+  // Parse sheets metadata from workbook.xml
+  const sheetMetaList: { name: string; target: string }[] = [];
+  const wbXml = entries.get('xl/workbook.xml') || '';
+  if (wbXml) {
+    for (const m of wbXml.matchAll(/<sheet\b([^>]*)\/>/g)) {
+      const nameM = m[1].match(/\bname="([^"]+)"/);
+      const ridM = m[1].match(/\br:id="([^"]+)"/);
+      const sheetIdM = m[1].match(/\bsheetId="([^"]+)"/);
+      if (nameM) {
+        const sheetName = decodeXml(nameM[1]);
+        const rId = ridM ? ridM[1] : '';
+        const target = relMap.get(rId) || `xl/worksheets/sheet${sheetIdM ? sheetIdM[1] : sheetMetaList.length + 1}.xml`;
+        sheetMetaList.push({ name: sheetName, target });
+      }
+    }
+  }
+
+  // Fallback if workbook.xml is not present (e.g. minimal test buffers)
+  if (sheetMetaList.length === 0) {
+    const worksheetKeys = [...entries.keys()]
+      .filter(k => k.startsWith('xl/worksheets/sheet') && k.endsWith('.xml'))
+      .sort((a, b) => {
+        const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+        const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+        return numA - numB;
+      });
+    for (let i = 0; i < worksheetKeys.length; i++) {
+      sheetMetaList.push({ name: `Sheet${i + 1}`, target: worksheetKeys[i] });
+    }
   }
 
   const colLettersToIndex = (letters: string): number => {
@@ -173,50 +229,131 @@ export function parseXlsxBufferToRows(buffer: Uint8Array | Buffer): Record<strin
     return idx - 1;
   };
 
-  const matrix: string[][] = [];
-  const rowMatches = sheetXml.match(/<row[\s\S]*?<\/row>/g) || [];
-  for (const rowXml of rowMatches) {
-    const rowCells: string[] = [];
-    const cellMatches = [...rowXml.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)];
-    for (const cm of cellMatches) {
-      const attrs = cm[1];
-      const inner = cm[2];
-      const refMatch = attrs.match(/\br="([A-Z]+)\d+"/);
-      const colIdx = refMatch ? colLettersToIndex(refMatch[1]) : rowCells.length;
-      const typeMatch = attrs.match(/\bt="([^"]+)"/);
-      const cellType = typeMatch ? typeMatch[1] : '';
+  const sheets: XlsxWorksheet[] = [];
 
-      let val = '';
-      if (cellType === 'inlineStr') {
-        const tMatch = inner.match(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/);
-        val = tMatch ? decodeXml(tMatch[1]) : '';
-      } else {
-        const vMatch = inner.match(/<v>([\s\S]*?)<\/v>/);
-        const rawV = vMatch ? decodeXml(vMatch[1]) : '';
-        if (cellType === 's') {
-          const sIdx = parseInt(rawV, 10);
-          val = Number.isFinite(sIdx) && sharedStrings[sIdx] !== undefined ? sharedStrings[sIdx] : rawV;
+  for (const meta of sheetMetaList) {
+    const sheetXml = entries.get(meta.target) || '';
+    if (!sheetXml) continue;
+
+    const matrix: string[][] = [];
+    const rowMatches = sheetXml.match(/<row[\s\S]*?<\/row>/g) || [];
+    for (const rowXml of rowMatches) {
+      const rowCells: string[] = [];
+      const cellMatches = [...rowXml.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)];
+      for (const cm of cellMatches) {
+        const attrs = cm[1];
+        const inner = cm[2];
+        const refMatch = attrs.match(/\br="([A-Z]+)\d+"/);
+        const colIdx = refMatch ? colLettersToIndex(refMatch[1]) : rowCells.length;
+        const typeMatch = attrs.match(/\bt="([^"]+)"/);
+        const cellType = typeMatch ? typeMatch[1] : '';
+
+        let val = '';
+        if (cellType === 'inlineStr') {
+          const tMatch = inner.match(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/);
+          val = tMatch ? decodeXml(tMatch[1]) : '';
         } else {
-          val = rawV;
+          const vMatch = inner.match(/<v>([\s\S]*?)<\/v>/);
+          const rawV = vMatch ? decodeXml(vMatch[1]) : '';
+          if (cellType === 's') {
+            const sIdx = parseInt(rawV, 10);
+            val = Number.isFinite(sIdx) && sharedStrings[sIdx] !== undefined ? sharedStrings[sIdx] : rawV;
+          } else {
+            val = rawV;
+          }
+        }
+        while (rowCells.length <= colIdx) rowCells.push('');
+        rowCells[colIdx] = val;
+      }
+      if (rowCells.some(c => c.trim() !== '')) {
+        matrix.push(rowCells);
+      }
+    }
+
+    if (matrix.length === 0) {
+      sheets.push({
+        name: meta.name,
+        target: meta.target,
+        matrix: [],
+        rows: [],
+        rowCount: 0,
+      });
+      continue;
+    }
+
+    // Determine header row: find row within the first 10 rows having the maximum number of non-empty columns
+    let headerRowIdx = 0;
+    let maxCols = 0;
+    const checkLimit = Math.min(matrix.length, 10);
+    for (let i = 0; i < checkLimit; i++) {
+      const cnt = matrix[i].filter(c => c && c.trim() !== '').length;
+      if (cnt > maxCols) {
+        maxCols = cnt;
+        headerRowIdx = i;
+      }
+    }
+
+    const headers = matrix[headerRowIdx] ? matrix[headerRowIdx].map(h => h.trim()) : [];
+    const rows: Record<string, string>[] = [];
+    for (let r = headerRowIdx + 1; r < matrix.length; r++) {
+      const row = matrix[r];
+      const obj: Record<string, string> = {};
+      let hasData = false;
+      for (let c = 0; c < headers.length; c++) {
+        const h = headers[c];
+        if (h) {
+          const val = row[c] ?? '';
+          obj[h] = val;
+          if (val.trim() !== '') hasData = true;
         }
       }
-      while (rowCells.length <= colIdx) rowCells.push('');
-      rowCells[colIdx] = val;
+      if (hasData) rows.push(obj);
     }
-    if (rowCells.some(c => c.trim() !== '')) {
-      matrix.push(rowCells);
-    }
+
+    sheets.push({
+      name: meta.name,
+      target: meta.target,
+      matrix,
+      rows,
+      rowCount: matrix.length,
+    });
   }
 
-  if (matrix.length < 2) return [];
-  const headers = matrix[0].map(h => h.trim());
-  return matrix.slice(1).map(r => {
-    const obj: Record<string, string> = {};
-    for (let i = 0; i < headers.length; i++) {
-      if (headers[i]) obj[headers[i]] = r[i] ?? '';
-    }
-    return obj;
-  });
+  return sheets;
+}
+
+/**
+ * Reads a single sheet's rows from a `.xlsx` buffer.
+ * If sheetNameOrIndex is omitted, automatically selects the scorecard sheet
+ * (matching name "Scorecard" or containing scorecard headers) if available,
+ * or the first sheet otherwise.
+ */
+export function parseXlsxBufferToRows(
+  buffer: Uint8Array | Buffer,
+  sheetNameOrIndex?: string | number,
+): Record<string, string>[] {
+  const sheets = parseXlsxAllSheets(buffer);
+  if (sheets.length === 0) return [];
+
+  if (typeof sheetNameOrIndex === 'number') {
+    return sheets[sheetNameOrIndex]?.rows ?? [];
+  }
+
+  if (typeof sheetNameOrIndex === 'string' && sheetNameOrIndex.trim() !== '') {
+    const target = sheetNameOrIndex.trim().toLowerCase();
+    const found = sheets.find(s => s.name.toLowerCase() === target);
+    if (found) return found.rows;
+  }
+
+  // Auto-detect scorecard sheet if available
+  const scorecardSheet =
+    sheets.find(s => s.name.trim().toLowerCase() === 'scorecard') ||
+    sheets.find(s => {
+      const sample = s.rows[0] ? Object.keys(s.rows[0]).map(k => k.toLowerCase().trim()) : [];
+      return sample.includes('variable') && sample.includes('points');
+    });
+
+  return scorecardSheet ? scorecardSheet.rows : sheets[0].rows;
 }
 
 /**

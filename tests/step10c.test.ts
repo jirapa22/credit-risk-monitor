@@ -13,10 +13,12 @@ import {
   exportScorecardToCsv,
   importScorecardFromCsv,
   importScorecardFromBuffer,
+  parseXlsxAllSheets,
 } from '../lib/scorecardImport';
 import {
   saveReferenceDatasetBlob,
   loadReferenceDatasetBlob,
+  computeRowsSha256,
 } from '../lib/storage/blob';
 import { calculateAScore } from '../lib/scoring';
 import {
@@ -103,6 +105,27 @@ describe('Step 10c — Baseline Registry & Suggestions & Scorecard Import/Export
       expect(detected!.auc).toBeGreaterThan(0.60);
     });
 
+    it('classifies numeric columns with "เดือน" in name as features without referencing date when no date column exists', async () => {
+      const mockRows: Record<string, unknown>[] = [
+        { cust_id: 'C001', 'รายได้ต่อเดือน': 25000, 'ยอดผ่อนต่อเดือน': 5000, target: 0 },
+        { cust_id: 'C002', 'รายได้ต่อเดือน': 45000, 'ยอดผ่อนต่อเดือน': 9000, target: 1 },
+        { cust_id: 'C003', 'รายได้ต่อเดือน': 32000, 'ยอดผ่อนต่อเดือน': 7000, target: 0 },
+      ];
+      const profile = buildDatasetProfile('ref_no_date_test', mockRows, ['cust_id', 'รายได้ต่อเดือน', 'ยอดผ่อนต่อเดือน', 'target']);
+      const suggestions = await heuristicProvider.suggestColumns(profile);
+      const sugMap = Object.fromEntries(suggestions.map(s => [s.column, s]));
+
+      expect(sugMap['รายได้ต่อเดือน']?.role).toBe('feature');
+      expect(sugMap['รายได้ต่อเดือน']?.type).toBe('numeric');
+      expect(sugMap['รายได้ต่อเดือน']?.confidence).toBeGreaterThanOrEqual(0.85);
+      expect(sugMap['รายได้ต่อเดือน']?.reason).not.toMatch(/date|วันที่|เดือน|งวด/i);
+
+      expect(sugMap['ยอดผ่อนต่อเดือน']?.role).toBe('feature');
+      expect(sugMap['ยอดผ่อนต่อเดือน']?.type).toBe('numeric');
+      expect(sugMap['ยอดผ่อนต่อเดือน']?.confidence).toBeGreaterThanOrEqual(0.85);
+      expect(sugMap['ยอดผ่อนต่อเดือน']?.reason).not.toMatch(/date|วันที่|เดือน|งวด/i);
+    });
+
     it('proposes clean rounded numbers for feature min/max', async () => {
       const profile = buildDatasetProfile('ref_step10c_test', parsedBaseline.rows, parsedBaseline.headers);
       const cols = await heuristicProvider.suggestColumns(profile);
@@ -173,6 +196,67 @@ describe('Step 10c — Baseline Registry & Suggestions & Scorecard Import/Export
       expect(res.scoring.scorecard.feature_x.points).toEqual([25, -15]);
       expect(res.scoring.scorecard.feature_x.bins).toEqual([50]);
     });
+
+    it('emits warning when imported scorecard has tampered points matching < 99% of reference scores', async () => {
+      const effective = await getEffectiveConfig();
+      const ascoreModel = effective.models.ascore_v1;
+      expect(ascoreModel?.scoring?.scorecard).toBeDefined();
+
+      const csvOutput = exportScorecardToCsv(ascoreModel.scoring);
+      // Tamper 1 bin point: modify points of first feature by +20
+      const lines = csvOutput.split('\n');
+      let tampered = false;
+      for (let i = 0; i < lines.length; i++) {
+        const parts = lines[i].split(',');
+        if (parts[0] && parts[0] !== 'variable' && parts[0] !== 'base_points' && parts[2]) {
+          const originalPts = parseFloat(parts[2]);
+          if (Number.isFinite(originalPts)) {
+            parts[2] = String(originalPts + 20);
+            lines[i] = parts.join(',');
+            tampered = true;
+            break;
+          }
+        }
+      }
+      expect(tampered).toBe(true);
+      const tamperedCsv = lines.join('\n');
+
+      const blob = await loadReferenceDatasetBlob(ascoreModel.referenceDatasetId);
+      expect(blob).not.toBeNull();
+      const expectedScores = blob!.rows.map(r => calculateAScore(ascoreModel.scoring, r as any));
+
+      const importResult = importScorecardFromCsv(tamperedCsv, {
+        referenceRows: blob!.rows,
+        referenceScores: expectedScores,
+      });
+
+      expect(importResult.ok).toBe(true);
+      expect(importResult.scoreComparison).not.toBeNull();
+      expect(importResult.scoreComparison!.matchWithinHalfPointPct).toBeLessThan(99.0);
+      expect(importResult.warnings.length).toBeGreaterThan(0);
+      const mismatchWarning = importResult.warnings.find(w => w.includes('< 99%'));
+      expect(mismatchWarning).toBeDefined();
+    });
+
+    it('reads all 5 sheets and row counts from ascore_model_report.xlsx using parseXlsxAllSheets', () => {
+      const xlsxPath = join(ROOT, 'ascore_model_report.xlsx');
+      expect(existsSync(xlsxPath)).toBe(true);
+      const buf = readFileSync(xlsxPath);
+      const sheets = parseXlsxAllSheets(buf);
+
+      expect(sheets).toHaveLength(5);
+      const sheetNames = sheets.map(s => s.name);
+      expect(sheetNames).toContain('Model Summary');
+      expect(sheetNames).toContain('IV Summary');
+      expect(sheetNames).toContain('Scorecard');
+      expect(sheetNames).toContain('PSI & CSI Baseline');
+      expect(sheetNames).toContain('KS Table (Test)');
+
+      for (const s of sheets) {
+        expect(s.rowCount).toBeGreaterThan(0);
+        expect(s.matrix.length).toBe(s.rowCount);
+      }
+    });
   });
 
   describe('3. Onboarding via Wizard Flow Simulation', () => {
@@ -190,12 +274,12 @@ describe('Step 10c — Baseline Registry & Suggestions & Scorecard Import/Export
           source: 'test',
           description: 'Step 10c test baseline',
           rowCount: parsedBaseline.rows.length,
+          badCount: 35,
+          badRate: 35 / parsedBaseline.rows.length,
+          periodStart: '2024-01-01',
+          periodEnd: '2025-12-22',
           columns: parsedBaseline.headers,
-          numericColumns: ['รายได้ต่อเดือน', 'วงเงินสินเชื่อ', 'สัดส่วนภาระหนี้', 'pd_score'],
-          categoricalColumns: ['กลุ่มอาชีพ'],
-          labelColumn: 'flag_npl_90',
-          idColumn: 'cust_no',
-          dateColumn: 'app_date',
+          sha256: computeRowsSha256(parsedBaseline.rows),
         },
         rows: parsedBaseline.rows,
       });
@@ -207,7 +291,7 @@ describe('Step 10c — Baseline Registry & Suggestions & Scorecard Import/Export
         columns: parsedBaseline.headers,
       });
       expect(suggestions.columns.length).toBeGreaterThan(0);
-      expect(suggestions.scoreDirection.direction).toBe('higher_is_riskier');
+      expect(suggestions.scoreDirection?.direction).toBe('higher_is_riskier');
 
       // Step 4: Create draft
       const draft = await createDraftBaselineVersion(testModelId, {
@@ -216,7 +300,7 @@ describe('Step 10c — Baseline Registry & Suggestions & Scorecard Import/Export
         description: 'Onboarded via Step 10c wizard flow',
         mode: 'score_column',
         scoreDirection: 'higher_is_riskier',
-        referenceId: testRefId,
+        referenceDatasetId: testRefId,
         columns: {
           idColumn: 'cust_no',
           dateColumn: 'app_date',
@@ -225,36 +309,52 @@ describe('Step 10c — Baseline Registry & Suggestions & Scorecard Import/Export
         },
         featureRegistry: {
           'รายได้ต่อเดือน': {
-            name: 'รายได้ต่อเดือน',
+            columnName: 'รายได้ต่อเดือน',
             displayName: 'รายได้ต่อเดือน (บาท)',
             dataType: 'numeric',
-            minValue: 5000,
-            maxValue: 500000,
-            missingStrategy: 'reject',
+            required: true,
+            monitoringEnabled: true,
+            validation: {
+              minValue: 5000,
+              maxValue: 500000,
+              missingStrategy: 'reject',
+            },
           },
           'วงเงินสินเชื่อ': {
-            name: 'วงเงินสินเชื่อ',
+            columnName: 'วงเงินสินเชื่อ',
             displayName: 'วงเงินสินเชื่อ',
             dataType: 'numeric',
-            minValue: 10000,
-            maxValue: 1000000,
-            missingStrategy: 'reject',
+            required: true,
+            monitoringEnabled: true,
+            validation: {
+              minValue: 10000,
+              maxValue: 1000000,
+              missingStrategy: 'reject',
+            },
           },
           'สัดส่วนภาระหนี้': {
-            name: 'สัดส่วนภาระหนี้',
+            columnName: 'สัดส่วนภาระหนี้',
             displayName: 'สัดส่วนภาระหนี้ (DTI)',
             dataType: 'numeric',
-            minValue: 0,
-            maxValue: 1.5,
-            missingStrategy: 'reject',
+            required: true,
+            monitoringEnabled: true,
+            validation: {
+              minValue: 0,
+              maxValue: 1.5,
+              missingStrategy: 'reject',
+            },
           },
           'กลุ่มอาชีพ': {
-            name: 'กลุ่มอาชีพ',
+            columnName: 'กลุ่มอาชีพ',
             displayName: 'กลุ่มอาชีพ',
             dataType: 'categorical',
-            missingStrategy: 'reject',
+            required: true,
+            monitoringEnabled: true,
             allowedCategories: ['พนักงานบริษัท', 'ข้าราชการ', 'ค้าขาย', 'อาชีพอิสระ'],
             rareCategoryThreshold: 0.01,
+            validation: {
+              missingStrategy: 'reject',
+            },
           },
         },
       });

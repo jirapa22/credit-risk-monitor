@@ -156,16 +156,15 @@ function scoreColumnCandidates(col: ColumnProfileSummary): {
     col.inferredType === 'binary' || Boolean(col.numericStats?.isBinaryZeroOne);
   const isNumeric = col.inferredType === 'numeric' || col.inferredType === 'binary';
 
-  // 1. Check Date first (so columns like `app_month` match date, not `app_` id)
-  if (col.inferredType === 'date' || (DATE_NAME_RE.test(name) && !isBinary01 && col.uniqueRatio < 0.85)) {
-    const byType = col.inferredType === 'date';
+  // 1. Check Date (strictly requires inferredType === 'date', meaning >= 90% parseable as dates; column name alone is never enough)
+  if (col.inferredType === 'date') {
     const byName = DATE_NAME_RE.test(name);
     return {
       role: 'date',
-      confidence: byType && byName ? 0.96 : byType ? 0.90 : 0.85,
-      reason: byType
+      confidence: byName ? 0.96 : 0.90,
+      reason: byName
         ? `รูปแบบข้อมูลเป็นวันที่และชื่อคอลัมน์ "${name}" สื่อถึงเวลา/งวดข้อมูล`
-        : `ชื่อคอลัมน์ "${name}" มีคำสำคัญเกี่ยวกับวันที่/เดือน (date/dt/month/วันที่)`,
+        : `รูปแบบข้อมูลเป็นวันที่ (แปลงเป็นวันที่ได้ >= 90% ของแถว)`,
     };
   }
 

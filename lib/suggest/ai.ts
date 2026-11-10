@@ -26,6 +26,234 @@ export const DEFAULT_AI_MODEL = 'claude-sonnet-5-5';
 export const DEFAULT_TIMEOUT_MS = 30_000;
 export const DEFAULT_MAX_RETRIES = 1;
 
+/**
+ * Extracts the first valid JSON object or array from a text string.
+ * Supports raw JSON, markdown ```json code blocks, and balanced braces/brackets.
+ */
+export function extractFirstJson<T = unknown>(text: string): T | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  // 1. Direct JSON parse
+  try {
+    const res = JSON.parse(trimmed);
+    if (res && typeof res === 'object') return res as T;
+  } catch {}
+
+  // 2. Markdown fenced code block ```(?:json)? ... ```
+  const fenceRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
+  let fenceMatch: RegExpExecArray | null;
+  while ((fenceMatch = fenceRegex.exec(trimmed)) !== null) {
+    try {
+      const parsed = JSON.parse(fenceMatch[1].trim());
+      if (parsed && typeof parsed === 'object') return parsed as T;
+    } catch {}
+  }
+
+  // 3. Balanced scanner starting at first '{' or '['
+  const firstBrace = trimmed.indexOf('{');
+  const firstBracket = trimmed.indexOf('[');
+
+  let startIdx = -1;
+  let openChar = '{';
+  let closeChar = '}';
+
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    startIdx = firstBrace;
+    openChar = '{';
+    closeChar = '}';
+  } else if (firstBracket !== -1) {
+    startIdx = firstBracket;
+    openChar = '[';
+    closeChar = ']';
+  }
+
+  if (startIdx !== -1) {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = startIdx; i < trimmed.length; i++) {
+      const c = trimmed[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (c === '\\') {
+        escape = true;
+        continue;
+      }
+      if (c === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (c === openChar) depth++;
+        else if (c === closeChar) {
+          depth--;
+          if (depth === 0) {
+            const candidate = trimmed.slice(startIdx, i + 1);
+            try {
+              const parsed = JSON.parse(candidate);
+              if (parsed && typeof parsed === 'object') return parsed as T;
+            } catch {
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Greedy search between first '{' and last '}', or first '[' and last ']'
+  if (firstBrace !== -1) {
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (lastBrace > firstBrace) {
+      try {
+        const parsed = JSON.parse(trimmed.slice(firstBrace, lastBrace + 1));
+        if (parsed && typeof parsed === 'object') return parsed as T;
+      } catch {}
+    }
+  }
+
+  if (firstBracket !== -1) {
+    const lastBracket = trimmed.lastIndexOf(']');
+    if (lastBracket > firstBracket) {
+      try {
+        const parsed = JSON.parse(trimmed.slice(firstBracket, lastBracket + 1));
+        if (parsed && typeof parsed === 'object') return parsed as T;
+      } catch {}
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extracts payload either from a `tool_use` content block or by parsing JSON in a `text` block.
+ */
+export function extractToolOrTextJson<T = unknown>(
+  content: Array<{ type: string; [key: string]: unknown }> | undefined | null,
+  toolName?: string,
+): T | null {
+  if (!Array.isArray(content) || content.length === 0) return null;
+
+  // 1. Look for matching tool_use block
+  const toolBlock = content.find(
+    b => b.type === 'tool_use' && (!toolName || b.name === toolName) && b.input && typeof b.input === 'object',
+  );
+  if (toolBlock && toolBlock.input) {
+    return toolBlock.input as T;
+  }
+
+  // Look for any tool_use block
+  const anyToolBlock = content.find(
+    b => b.type === 'tool_use' && b.input && typeof b.input === 'object',
+  );
+  if (anyToolBlock && anyToolBlock.input) {
+    return anyToolBlock.input as T;
+  }
+
+  // 2. Look for JSON in text content blocks
+  for (const block of content) {
+    if (block.type === 'text' && typeof block.text === 'string') {
+      const parsed = extractFirstJson<T>(block.text);
+      if (parsed !== null) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Accurately determines if the error is due to an unrecognized model.
+ * Only returns true for 404/not_found_error or explicit "model not found / does not exist".
+ * Does NOT treat 400 invalid_request_error mentioning "...for this model" as unrecognized model.
+ */
+export function isModelNotFoundError(err: unknown): boolean {
+  if (!err) return false;
+
+  const anyErr = err as any;
+  const status = anyErr?.status ?? anyErr?.statusCode;
+  const errorObj = anyErr?.error;
+  const errorType =
+    (typeof errorObj === 'object' && errorObj?.type) ||
+    anyErr?.type ||
+    anyErr?.name ||
+    '';
+  const errStr = anyErr instanceof Error ? anyErr.message : String(err);
+  const lowerErrStr = errStr.toLowerCase();
+  const lowerType = String(errorType).toLowerCase();
+
+  // 1. HTTP 404
+  if (status === 404) return true;
+
+  // 2. API error type is not_found_error
+  if (lowerType === 'not_found_error' || lowerType === 'notfounderror') return true;
+
+  // 3. Clear message phrasing: model not found / model does not exist
+  if (
+    lowerErrStr.includes('model not found') ||
+    lowerErrStr.includes('model does not exist') ||
+    lowerErrStr.includes('model_not_found') ||
+    (lowerErrStr.includes('model') && lowerErrStr.includes('not found'))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Formats API errors for logging/rejection, preserving true error type and message while preventing API key leakage.
+ */
+export function formatApiError(err: unknown, model: string): string {
+  const isModel = isModelNotFoundError(err);
+  const anyErr = err as any;
+  const status = anyErr?.status ?? anyErr?.statusCode;
+  const errorObj = anyErr?.error;
+
+  let errorType =
+    (typeof errorObj === 'object' && errorObj?.type) ||
+    anyErr?.type ||
+    anyErr?.name ||
+    '';
+
+  let rawMessage = '';
+  if (typeof errorObj === 'object' && typeof errorObj?.message === 'string') {
+    rawMessage = errorObj.message;
+  } else if (anyErr instanceof Error) {
+    rawMessage = anyErr.message;
+  } else {
+    rawMessage = String(err);
+  }
+
+  if (!errorType || errorType === 'Error') {
+    const typeMatch = rawMessage.match(/\b(invalid_request_error|authentication_error|permission_error|not_found_error|rate_limit_error|api_error|overloaded_error)\b/i);
+    if (typeMatch) {
+      errorType = typeMatch[1];
+    } else if (status) {
+      errorType = `HTTP ${status}`;
+    } else {
+      errorType = 'APIError';
+    }
+  }
+
+  // Sanitize: NEVER leak API key or bearer tokens
+  const sanitizedMsg = rawMessage
+    .replace(/sk-ant-[a-zA-Z0-9_\-]+/g, 'sk-ant-***')
+    .replace(/Bearer\s+[a-zA-Z0-9_\-]+/gi, 'Bearer ***')
+    .trim();
+
+  if (isModel) {
+    return `Anthropic API does not recognize model "${model}" (ไม่รู้จักโมเดล): [${errorType}] ${sanitizedMsg}`;
+  }
+
+  return `Anthropic API error [${errorType}] with model "${model}": ${sanitizedMsg}`;
+}
+
 const SENSITIVE_NAME_RE =
   /(?:^|[_\s-]|\b)(id|no|cust|acct|account|phone|tel|email|card|citizen|pid|nid|ssn|name)(?:$|[_\s-]|\b)|รหัส|เลข|บัตร|เบอร์|โทร|อีเมล|ชื่อ/i;
 
@@ -314,7 +542,7 @@ export class AiSuggestionProvider implements SuggestionProvider {
 - feature: Model input variable (numeric or categorical)
 - ignore: Irrelevant text / high-cardinality metadata
 Provide a clear, concise explanation in Thai for each column.
-Return JSON strictly according to the provide_column_suggestions tool.`;
+ตอบโดยเรียกเครื่องมือ provide_column_suggestions เพียงครั้งเดียวเท่านั้น`;
 
     const startTime = Date.now();
     try {
@@ -360,7 +588,7 @@ Return JSON strictly according to the provide_column_suggestions tool.`;
             },
           },
         ],
-        tool_choice: { type: 'tool', name: 'provide_column_suggestions' },
+        tool_choice: { type: 'auto' },
       });
 
       const durationMs = Date.now() - startTime;
@@ -375,12 +603,20 @@ Return JSON strictly according to the provide_column_suggestions tool.`;
         model: this.model,
       };
 
-      // Extract tool call
-      const toolUse = response.content.find(c => c.type === 'tool_use');
-      const rawSuggestions =
-        toolUse && typeof toolUse === 'object' && 'input' in toolUse && toolUse.input
-          ? (toolUse.input as { suggestions?: ColumnSuggestion[] }).suggestions || []
-          : [];
+      // Extract suggestions from tool_use or text JSON
+      const extracted = extractToolOrTextJson<{ suggestions?: ColumnSuggestion[] } | ColumnSuggestion[]>(
+        response.content as any,
+        'provide_column_suggestions',
+      );
+
+      if (!extracted) {
+        throw new Error('AI response did not contain valid tool_use or JSON in text content');
+      }
+
+      const rawSuggestions = Array.isArray(extracted) ? extracted : extracted.suggestions;
+      if (!Array.isArray(rawSuggestions) || rawSuggestions.length === 0) {
+        throw new Error('AI response contained no suggestions array');
+      }
 
       const aiMap = new Map<string, ColumnSuggestion>();
       for (const item of rawSuggestions) {
@@ -446,14 +682,7 @@ Return JSON strictly according to the provide_column_suggestions tool.`;
         };
       });
     } catch (err: unknown) {
-      const errStr = err instanceof Error ? err.message : String(err);
-      const isModelError =
-        (err as any)?.status === 404 ||
-        errStr.toLowerCase().includes('not_found_error') ||
-        errStr.toLowerCase().includes('model');
-      const contextualMsg = isModelError
-        ? `Anthropic API does not recognize model "${this.model}": ${errStr}`
-        : `Anthropic API call failed with model "${this.model}": ${errStr}`;
+      const contextualMsg = formatApiError(err, this.model);
 
       if (this.throwOnError) {
         throw new Error(contextualMsg);
@@ -490,7 +719,7 @@ Return JSON strictly according to the provide_column_suggestions tool.`;
     const systemPrompt = `You are a credit risk modeling expert. For each feature, provide:
 1. A concise 1-line business description in Thai (data dictionary).
 2. Proposed reasonable business min and max limits with rationale.
-Return JSON strictly according to provide_feature_settings tool.`;
+ตอบโดยเรียกเครื่องมือ provide_feature_settings เพียงครั้งเดียวเท่านั้น`;
 
     const startTime = Date.now();
     try {
@@ -530,7 +759,7 @@ Return JSON strictly according to provide_feature_settings tool.`;
             },
           },
         ],
-        tool_choice: { type: 'tool', name: 'provide_feature_settings' },
+        tool_choice: { type: 'auto' },
       });
 
       const durationMs = Date.now() - startTime;
@@ -545,11 +774,19 @@ Return JSON strictly according to provide_feature_settings tool.`;
         model: this.model,
       };
 
-      const toolUse = response.content.find(c => c.type === 'tool_use');
-      const rawSettings =
-        toolUse && typeof toolUse === 'object' && 'input' in toolUse && toolUse.input
-          ? (toolUse.input as { settings?: FeatureSettingSuggestion[] }).settings || []
-          : [];
+      const extracted = extractToolOrTextJson<{ settings?: FeatureSettingSuggestion[] } | FeatureSettingSuggestion[]>(
+        response.content as any,
+        'provide_feature_settings',
+      );
+
+      if (!extracted) {
+        throw new Error('AI response did not contain valid tool_use or JSON in text content');
+      }
+
+      const rawSettings = Array.isArray(extracted) ? extracted : extracted.settings;
+      if (!Array.isArray(rawSettings)) {
+        throw new Error('AI response contained no settings array');
+      }
 
       const aiMap = new Map<string, FeatureSettingSuggestion>();
       for (const item of rawSettings) {
@@ -600,14 +837,7 @@ Return JSON strictly according to provide_feature_settings tool.`;
         };
       });
     } catch (err: unknown) {
-      const errStr = err instanceof Error ? err.message : String(err);
-      const isModelError =
-        (err as any)?.status === 404 ||
-        errStr.toLowerCase().includes('not_found_error') ||
-        errStr.toLowerCase().includes('model');
-      const contextualMsg = isModelError
-        ? `Anthropic API does not recognize model "${this.model}": ${errStr}`
-        : `Anthropic API call failed with model "${this.model}": ${errStr}`;
+      const contextualMsg = formatApiError(err, this.model);
 
       if (this.throwOnError) {
         throw new Error(contextualMsg);

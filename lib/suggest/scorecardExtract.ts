@@ -21,6 +21,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   DEFAULT_MAX_RETRIES,
   buildAiScorecardPayload,
+  extractToolOrTextJson,
 } from './ai';
 
 export interface ScorecardExtractionOptions {
@@ -101,7 +102,7 @@ export async function extractScorecardWithAi(
    - Interpret text bin labels into numerical upper_bounds (e.g. '<= 17800' or '(14999, 17800]' -> upper_bound 17800; '> 36360' -> upper_bound null for final bin).
    - Each variable MUST have exactly one final open-ended bin with upper_bound = null.
    - Points must be numeric.
-Return JSON strictly according to submit_extracted_scorecard tool.`;
+ตอบโดยเรียกเครื่องมือ submit_extracted_scorecard เพียงครั้งเดียวเท่านั้น`;
 
   try {
     const response = await client.messages.create({
@@ -143,25 +144,21 @@ Return JSON strictly according to submit_extracted_scorecard tool.`;
           },
         },
       ],
-      tool_choice: { type: 'tool', name: 'submit_extracted_scorecard' },
+      tool_choice: { type: 'auto' },
     });
 
-    const toolUse = response.content.find(c => c.type === 'tool_use');
-    const input =
-      toolUse && typeof toolUse === 'object' && 'input' in toolUse && toolUse.input
-        ? (toolUse.input as {
-            base_points?: number;
-            rows?: {
-              variable: string;
-              upper_bound: number | null;
-              points: number;
-              bin_label?: string;
-              woe?: number | null;
-              bad_rate?: number | null;
-              count?: number | null;
-            }[];
-          })
-        : null;
+    const input = extractToolOrTextJson<{
+      base_points?: number;
+      rows?: {
+        variable: string;
+        upper_bound: number | null;
+        points: number;
+        bin_label?: string;
+        woe?: number | null;
+        bad_rate?: number | null;
+        count?: number | null;
+      }[];
+    }>(response.content as any, 'submit_extracted_scorecard');
 
     if (!input || !Array.isArray(input.rows)) {
       throw new Error('AI ส่งผลการดึงสกอร์การ์ดในรูปแบบที่ไม่ถูกต้อง');

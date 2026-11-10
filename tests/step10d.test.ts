@@ -464,4 +464,154 @@ describe('Step 10d — AI-assisted Baseline Onboarding Guardrails', () => {
     expect(scoreSug.aiProposal?.role).toBe('feature');
     expect(scoreSug.heuristicProposal?.role).toBe('score');
   });
+
+  // ── Claude API Response Parsing and Error Classification ──────────────────
+  describe('Claude API Response Parsing and Error Classification', () => {
+    const mockSuggestionsPayload = {
+      suggestions: [
+        {
+          column: 'cust_no',
+          role: 'id',
+          type: 'string',
+          confidence: 0.95,
+          reason: 'รหัสลูกค้าจาก AI',
+        },
+        {
+          column: 'app_date',
+          role: 'date',
+          type: 'date',
+          confidence: 0.92,
+          reason: 'วันที่ยื่นกู้',
+        },
+        {
+          column: 'flag_npl_90',
+          role: 'label',
+          type: 'binary',
+          confidence: 0.99,
+          reason: 'สถานะผิดนัดชำระหนี้',
+        },
+      ],
+    };
+
+    // (a) API ตอบ tool_use → สำเร็จ
+    it('(a) API response with tool_use succeeds', async () => {
+      const profile = buildDatasetProfile('test_ref', baselineRows, baselineHeaders);
+      const mockClient = {
+        messages: {
+          create: async () => ({
+            content: [
+              {
+                type: 'tool_use',
+                name: 'provide_column_suggestions',
+                input: mockSuggestionsPayload,
+              },
+            ],
+            usage: { input_tokens: 100, output_tokens: 50 },
+          }),
+        },
+      };
+
+      const aiProvider = new AiSuggestionProvider({ client: mockClient as any });
+      const suggestions = await aiProvider.suggestColumns(profile);
+      const custSug = suggestions.find(s => s.column === 'cust_no');
+      expect(custSug).toBeDefined();
+      expect(custSug!.role).toBe('id');
+      expect(custSug!.reason).toBe('รหัสลูกค้าจาก AI');
+    });
+
+    // (b) API ตอบ text ที่มี JSON → สำเร็จ
+    it('(b) API response with text containing JSON succeeds', async () => {
+      const profile = buildDatasetProfile('test_ref', baselineRows, baselineHeaders);
+      const jsonText = '```json\n' + JSON.stringify(mockSuggestionsPayload) + '\n```';
+      const mockClient = {
+        messages: {
+          create: async () => ({
+            content: [
+              {
+                type: 'text',
+                text: `Here is my analysis:\n${jsonText}`,
+              },
+            ],
+            usage: { input_tokens: 100, output_tokens: 50 },
+          }),
+        },
+      };
+
+      const aiProvider = new AiSuggestionProvider({ client: mockClient as any });
+      const suggestions = await aiProvider.suggestColumns(profile);
+      const custSug = suggestions.find(s => s.column === 'cust_no');
+      expect(custSug).toBeDefined();
+      expect(custSug!.role).toBe('id');
+      expect(custSug!.reason).toBe('รหัสลูกค้าจาก AI');
+    });
+
+    // (c) API ตอบ text ที่ไม่มี JSON → ล้มเหลว (fallback ไป heuristic ในโหมดปกติ / throw ในโหมด eval)
+    it('(c) API response with text without JSON falls back in standard mode and throws in eval mode', async () => {
+      const profile = buildDatasetProfile('test_ref', baselineRows, baselineHeaders);
+      const mockClient = {
+        messages: {
+          create: async () => ({
+            content: [
+              {
+                type: 'text',
+                text: 'I apologize, but I cannot categorize these columns based on the provided data.',
+              },
+            ],
+            usage: { input_tokens: 100, output_tokens: 20 },
+          }),
+        },
+      };
+
+      // Standard mode: falls back seamlessly to heuristic
+      const standardProvider = new AiSuggestionProvider({ client: mockClient as any, throwOnError: false });
+      const suggestions = await standardProvider.suggestColumns(profile);
+      expect(suggestions.length).toBe(baselineHeaders.length);
+      const custSug = suggestions.find(s => s.column === 'cust_no');
+      expect(custSug).toBeDefined();
+      expect(custSug!.role).toBe('id');
+
+      // Eval mode (throwOnError: true): throws clear error
+      const evalProvider = new AiSuggestionProvider({ client: mockClient as any, throwOnError: true });
+      await expect(evalProvider.suggestColumns(profile)).rejects.toThrow(
+        /AI response did not contain valid tool_use or JSON in text content/,
+      );
+    });
+
+    // (d) API ตอบ error 400 ข้อความข้างบน → error message ต้องไม่บอกว่า "ไม่รู้จักโมเดล" แต่บอก error จริง
+    it('(d) API error 400 on tool_choice reports actual error and does NOT report unrecognized model', async () => {
+      const profile = buildDatasetProfile('test_ref', baselineRows, baselineHeaders);
+      const error400 = new Error(
+        '400 invalid_request_error: tool_choice: type "tool" and "any" are not supported for this model.',
+      );
+      (error400 as any).status = 400;
+      (error400 as any).error = {
+        type: 'invalid_request_error',
+        message: 'tool_choice: type "tool" and "any" are not supported for this model.',
+      };
+
+      const mockClient = {
+        messages: {
+          create: async () => {
+            throw error400;
+          },
+        },
+      };
+
+      const evalProvider = new AiSuggestionProvider({ client: mockClient as any, throwOnError: true });
+      let thrownError: Error | null = null;
+      try {
+        await evalProvider.suggestColumns(profile);
+      } catch (err) {
+        thrownError = err as Error;
+      }
+
+      expect(thrownError).not.toBeNull();
+      // Must NOT report "ไม่รู้จักโมเดล" or "does not recognize model"
+      expect(thrownError!.message).not.toContain('does not recognize model');
+      expect(thrownError!.message).not.toContain('ไม่รู้จักโมเดล');
+      // Must report true error type and actual API message
+      expect(thrownError!.message).toContain('invalid_request_error');
+      expect(thrownError!.message).toContain('tool_choice: type "tool" and "any" are not supported for this model.');
+    });
+  });
 });

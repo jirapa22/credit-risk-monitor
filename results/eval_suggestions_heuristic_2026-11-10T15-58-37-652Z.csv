@@ -1,0 +1,12 @@
+provider,suite_group,suite_id,suite_name,actual_provider,total_columns,correct_columns,accuracy_pct,corrections_needed,duration_ms,prompt_tokens,completion_tokens,tokens_used
+heuristic,development,ascore_v1,A-Score v1 Reference,heuristic,6,6,100,0,1,0,0,0
+heuristic,development,ext_model,External PD Model,heuristic,8,8,100,0,1,0,0,0
+heuristic,development,fake_model_1,Fake Model #1 (Standard Scorecard),heuristic,5,5,100,0,0,0,0,0
+heuristic,development,fake_model_2,Fake Model #2 (With Categorical City),heuristic,5,5,100,0,0,0,0,0
+heuristic,development,fake_model_3,Fake Model #3 (External Score),heuristic,7,7,100,0,0,0,0,0
+heuristic,development,tricky_a,Tricky Suite A (Bank Acronyms),heuristic,7,5,71.4,2,0,0,0,0
+heuristic,development,tricky_b,Tricky Suite B (Trap Thai Words),heuristic,7,7,100,0,0,0,0,0
+heuristic,development,tricky_c,Tricky Suite C (Blind Names),heuristic,7,7,100,0,0,0,0,0
+heuristic,heldout,heldout_d1,"Held-out D1 (Numeric ID, Score 300-900, 2+ [0,1] features)",heuristic,7,7,100,0,0,0,0,0
+heuristic,heldout,heldout_d2,"Held-out D2 (Two dates: apply/birth, Thai status_90)",heuristic,7,6,85.7,1,0,0,0,0
+heuristic,heldout,heldout_d3,"Held-out D3 (Blind names v1..v9, 3 binary variables)",heuristic,9,7,77.8,2,0,0,0,0

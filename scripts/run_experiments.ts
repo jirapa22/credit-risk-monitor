@@ -11,6 +11,10 @@
  *   batch_summary.csv  file-level rates by type × severity × rate
  *   run_meta.json      config, commit, timing, trial count
  */
+import { loadEnvConfig } from '@next/env';
+
+loadEnvConfig(process.cwd());
+
 import { execSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

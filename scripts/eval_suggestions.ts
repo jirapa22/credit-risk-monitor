@@ -5,13 +5,17 @@
  * tricky naming variants (acronyms, trap words, blind column names).
  * Measures role accuracy, user corrections needed, latency, and tokens.
  */
+import { loadEnvConfig } from '@next/env';
+
+loadEnvConfig(process.cwd());
+
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseCsv } from '../lib/csv';
 import { toCsv } from '../lib/injection';
 import { buildDatasetProfile, heuristicProvider } from '../lib/suggest/heuristic';
-import { AiSuggestionProvider } from '../lib/suggest/ai';
+import { AiSuggestionProvider, DEFAULT_AI_MODEL } from '../lib/suggest/ai';
 import { CombinedSuggestionProvider } from '../lib/suggest/combined';
 import { mulberry32 } from '../lib/random';
 import { loadReferenceDatasetBlob } from '../lib/storage/blob';
@@ -398,11 +402,14 @@ export function verifyHeldoutIntegrity(): FrozenIntegrityCheck {
 export interface SuiteEvalResult {
   suiteId: string;
   suiteName: string;
+  actualProvider: string;
   totalColumns: number;
   correctColumns: number;
   accuracyPct: number;
   correctionsNeeded: number;
   durationMs: number;
+  promptTokens: number;
+  completionTokens: number;
   tokensUsed: number;
   perRoleAccuracy: Record<string, { total: number; correct: number; pct: number }>;
 }
@@ -416,7 +423,11 @@ export interface SuiteGroupEvalResult {
   overallAccuracyPct: number;
   totalCorrectionsNeeded: number;
   totalDurationMs: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
   totalTokensUsed: number;
+  totalApiCalls: number;
+  totalApiFailures: number;
 }
 
 export async function evaluateSuiteGroup(
@@ -428,7 +439,11 @@ export async function evaluateSuiteGroup(
   let totalColsAll = 0;
   let correctColsAll = 0;
   let totalDurationAll = 0;
+  let totalPromptTokensAll = 0;
+  let totalCompletionTokensAll = 0;
   let totalTokensAll = 0;
+  let totalApiCalls = 0;
+  let totalApiFailures = 0;
 
   for (const s of suitesMeta) {
     const filePath = join(EVAL_DIR, s.csvFileName);
@@ -436,13 +451,35 @@ export async function evaluateSuiteGroup(
     const parsed = parseCsv(csvContent);
     const profile = buildDatasetProfile(s.id, parsed.rows, parsed.headers);
 
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let tokens = 0;
+    const isApiProvider = provider.name === 'ai' || provider.name === 'combined';
+    if (isApiProvider) {
+      totalApiCalls++;
+    }
+
     const startTime = Date.now();
-    const suggestions = await provider.suggestColumns(profile);
+    let suggestions: any[] = [];
+    try {
+      suggestions = await provider.suggestColumns(profile);
+      const usage = provider.getLastUsage ? provider.getLastUsage() : null;
+      promptTokens = usage?.promptTokens ?? 0;
+      completionTokens = usage?.completionTokens ?? 0;
+      tokens = usage?.totalTokens ?? (promptTokens + completionTokens);
+    } catch (err: unknown) {
+      if (isApiProvider) {
+        totalApiFailures++;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`\n❌ Error during evaluation of suite "${s.name}":\n${msg}\n`);
+      process.exit(1);
+    }
+
     const durationMs = Date.now() - startTime;
     totalDurationAll += durationMs;
-
-    const usage = provider.getLastUsage ? provider.getLastUsage() : null;
-    const tokens = usage?.totalTokens ?? 0;
+    totalPromptTokensAll += promptTokens;
+    totalCompletionTokensAll += completionTokens;
     totalTokensAll += tokens;
 
     let correctCount = 0;
@@ -472,11 +509,14 @@ export async function evaluateSuiteGroup(
     results.push({
       suiteId: s.id,
       suiteName: s.name,
+      actualProvider: provider.name,
       totalColumns: totalCols,
       correctColumns: correctCount,
       accuracyPct: +((correctCount / totalCols) * 100).toFixed(1),
       correctionsNeeded: totalCols - correctCount,
       durationMs,
+      promptTokens,
+      completionTokens,
       tokensUsed: tokens,
       perRoleAccuracy: perRole,
     });
@@ -512,7 +552,11 @@ export async function evaluateSuiteGroup(
     overallAccuracyPct,
     totalCorrectionsNeeded,
     totalDurationMs: totalDurationAll,
+    totalPromptTokens: totalPromptTokensAll,
+    totalCompletionTokens: totalCompletionTokensAll,
     totalTokensUsed: totalTokensAll,
+    totalApiCalls,
+    totalApiFailures,
   };
 }
 
@@ -524,7 +568,12 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
   overallAccuracyPct: number;
   totalCorrectionsNeeded: number;
   totalDurationMs: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
   totalTokensUsed: number;
+  totalApiCalls: number;
+  totalApiFailures: number;
+  csvOutPath: string;
 }> {
   const devSuites = await ensureEvalDatasets();
   const heldoutSuites = getHeldoutSuites();
@@ -532,14 +581,19 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
 
   let provider: SuggestionProvider;
   if (providerName === 'ai') {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      console.warn('⚠️ ไม่พบ ANTHROPIC_API_KEY ในสภาพแวดล้อม — สลับเป็น heuristic อัตโนมัติ');
-      provider = heuristicProvider;
-    } else {
-      provider = new AiSuggestionProvider();
+    if (!process.env.ANTHROPIC_API_KEY || !process.env.ANTHROPIC_API_KEY.trim()) {
+      console.error('\n❌ Error: ไม่พบ ANTHROPIC_API_KEY ในสภาพแวดล้อมหรือ .env.local');
+      console.error('ไม่สามารถรันการประเมินด้วย --provider ai ได้ (หยุดการทำงานทันที)');
+      process.exit(1);
     }
+    provider = new AiSuggestionProvider({ throwOnError: true });
   } else if (providerName === 'combined') {
-    provider = new CombinedSuggestionProvider();
+    if (!process.env.ANTHROPIC_API_KEY || !process.env.ANTHROPIC_API_KEY.trim()) {
+      console.error('\n❌ Error: ไม่พบ ANTHROPIC_API_KEY ในสภาพแวดล้อมหรือ .env.local');
+      console.error('ไม่สามารถรันการประเมินด้วย --provider combined ได้ (หยุดการทำงานทันที)');
+      process.exit(1);
+    }
+    provider = new CombinedSuggestionProvider(new AiSuggestionProvider({ throwOnError: true }));
   } else {
     provider = heuristicProvider;
   }
@@ -552,9 +606,13 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
   const overallAccuracyPct = totalColsAll > 0 ? +((correctColsAll / totalColsAll) * 100).toFixed(2) : 0;
   const totalCorrectionsNeeded = totalColsAll - correctColsAll;
   const totalDurationMs = development.totalDurationMs + heldout.totalDurationMs;
+  const totalPromptTokens = development.totalPromptTokens + heldout.totalPromptTokens;
+  const totalCompletionTokens = development.totalCompletionTokens + heldout.totalCompletionTokens;
   const totalTokensUsed = development.totalTokensUsed + heldout.totalTokensUsed;
+  const totalApiCalls = development.totalApiCalls + heldout.totalApiCalls;
+  const totalApiFailures = development.totalApiFailures + heldout.totalApiFailures;
 
-  // Write CSV result
+  // Write CSV result with real timestamp
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const csvOutPath = join(RESULTS_DIR, `eval_suggestions_${providerName}_${timestamp}.csv`);
   const csvRows = [
@@ -563,11 +621,14 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
       suite_group: 'development',
       suite_id: r.suiteId,
       suite_name: r.suiteName,
+      actual_provider: r.actualProvider,
       total_columns: r.totalColumns,
       correct_columns: r.correctColumns,
       accuracy_pct: r.accuracyPct,
       corrections_needed: r.correctionsNeeded,
       duration_ms: r.durationMs,
+      prompt_tokens: r.promptTokens,
+      completion_tokens: r.completionTokens,
       tokens_used: r.tokensUsed,
     })),
     ...heldout.suites.map(r => ({
@@ -575,11 +636,14 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
       suite_group: 'heldout',
       suite_id: r.suiteId,
       suite_name: r.suiteName,
+      actual_provider: r.actualProvider,
       total_columns: r.totalColumns,
       correct_columns: r.correctColumns,
       accuracy_pct: r.accuracyPct,
       corrections_needed: r.correctionsNeeded,
       duration_ms: r.durationMs,
+      prompt_tokens: r.promptTokens,
+      completion_tokens: r.completionTokens,
       tokens_used: r.tokensUsed,
     })),
   ];
@@ -590,11 +654,14 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
       'suite_group',
       'suite_id',
       'suite_name',
+      'actual_provider',
       'total_columns',
       'correct_columns',
       'accuracy_pct',
       'corrections_needed',
       'duration_ms',
+      'prompt_tokens',
+      'completion_tokens',
       'tokens_used',
     ]),
     'utf8',
@@ -608,7 +675,12 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
     overallAccuracyPct,
     totalCorrectionsNeeded,
     totalDurationMs,
+    totalPromptTokens,
+    totalCompletionTokens,
     totalTokensUsed,
+    totalApiCalls,
+    totalApiFailures,
+    csvOutPath,
   };
 }
 
@@ -624,9 +696,21 @@ async function main() {
     }
   }
 
+  const hasKey = Boolean(process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim());
+  const modelName = process.env.AI_MODEL || DEFAULT_AI_MODEL;
+
   console.log(`\n======================================================`);
-  console.log(`  Evaluating Suggestions (Provider: ${providerArg})`);
+  console.log(`  Evaluating Suggestions`);
+  console.log(`  Provider: ${providerArg}`);
+  console.log(`  Model: ${providerArg === 'heuristic' ? 'N/A (rule-based)' : modelName}`);
+  console.log(`  API key: ${hasKey ? 'พบ' : 'ไม่พบ'}`);
   console.log(`======================================================\n`);
+
+  if ((providerArg === 'ai' || providerArg === 'combined') && !hasKey) {
+    console.error(`❌ Error: ไม่พบ ANTHROPIC_API_KEY ในสภาพแวดล้อมหรือ .env.local`);
+    console.error(`ไม่สามารถรันการประเมินด้วย --provider ${providerArg} ได้ (หยุดการทำงานทันที)`);
+    process.exit(1);
+  }
 
   const summary = await runEvaluation(providerArg);
 
@@ -637,6 +721,7 @@ async function main() {
   console.table(
     summary.development.suites.map(s => ({
       'Suite Name': s.suiteName,
+      'Provider': s.actualProvider,
       'Columns': s.totalColumns,
       'Correct': s.correctColumns,
       'Accuracy (%)': `${s.accuracyPct}%`,
@@ -670,6 +755,7 @@ async function main() {
   console.table(
     summary.heldout.suites.map(s => ({
       'Suite Name': s.suiteName,
+      'Provider': s.actualProvider,
       'Columns': s.totalColumns,
       'Correct': s.correctColumns,
       'Accuracy (%)': `${s.accuracyPct}%`,
@@ -691,9 +777,17 @@ async function main() {
   console.log(`Held-Out Overall Accuracy: ${summary.heldout.overallAccuracyPct}% (${summary.heldout.totalCorrectionsNeeded} corrections needed across 3 held-out suites)`);
 
   console.log(`\n------------------------------------------------------`);
+  console.log(`Execution & Token Summary:`);
+  console.log(`  Provider: ${providerArg}`);
+  console.log(`  Model: ${providerArg === 'heuristic' ? 'N/A (rule-based)' : modelName}`);
+  console.log(`  API Calls: ${summary.totalApiCalls} (Failed: ${summary.totalApiFailures})`);
+  console.log(`  Input Tokens (Prompt): ${summary.totalPromptTokens.toLocaleString()}`);
+  console.log(`  Output Tokens (Completion): ${summary.totalCompletionTokens.toLocaleString()}`);
+  console.log(`  Total Tokens: ${summary.totalTokensUsed.toLocaleString()}`);
+  console.log(`  Total Elapsed Time: ${summary.totalDurationMs}ms`);
+  console.log(`------------------------------------------------------`);
   console.log(`Combined (Dev + Heldout) Accuracy: ${summary.overallAccuracyPct}% (${summary.totalCorrectionsNeeded} corrections needed across ${summary.development.suites.length + summary.heldout.suites.length} suites)`);
-  console.log(`Total Latency: ${summary.totalDurationMs}ms | Total Tokens: ${summary.totalTokensUsed}`);
-  console.log(`Result written to: results/eval_suggestions_${providerArg}_*.csv\n`);
+  console.log(`Result written to: ${summary.csvOutPath}\n`);
 }
 
 if (require.main === module) {

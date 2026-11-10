@@ -22,7 +22,7 @@ import type {
 import type { BaselineValidationReport, FeatureDataType } from '../types';
 import type { XlsxWorksheet } from '../scorecardImport';
 
-export const DEFAULT_AI_MODEL = 'claude-3-5-sonnet-latest';
+export const DEFAULT_AI_MODEL = 'claude-sonnet-5-5';
 export const DEFAULT_TIMEOUT_MS = 30_000;
 export const DEFAULT_MAX_RETRIES = 1;
 
@@ -250,16 +250,20 @@ export interface AiSuggestionProviderOptions {
   maxRetries?: number;
   /** Injected client for unit testing without network calls */
   client?: Pick<Anthropic, 'messages'>;
+  /** If true, throws error immediately on failure instead of falling back to heuristic */
+  throwOnError?: boolean;
 }
 
 export class AiSuggestionProvider implements SuggestionProvider {
   readonly name = 'ai';
   private client: Pick<Anthropic, 'messages'> | null = null;
   private model: string;
+  private throwOnError: boolean;
   private lastUsage: AiUsageStats | null = null;
 
   constructor(opts: AiSuggestionProviderOptions = {}) {
     this.model = opts.model || process.env.AI_MODEL || DEFAULT_AI_MODEL;
+    this.throwOnError = opts.throwOnError ?? false;
     if (opts.client) {
       this.client = opts.client;
     } else {
@@ -291,6 +295,9 @@ export class AiSuggestionProvider implements SuggestionProvider {
     const heurMap = new Map(heuristicResults.map(h => [h.column, h]));
 
     if (!this.client) {
+      if (this.throwOnError) {
+        throw new Error('ANTHROPIC_API_KEY is not configured or client initialization failed.');
+      }
       return heuristicResults;
     }
 
@@ -438,8 +445,20 @@ Return JSON strictly according to the provide_column_suggestions tool.`;
           reason: ai.reason ? String(ai.reason).trim() : heur?.reason || 'ระบุโดย AI',
         };
       });
-    } catch {
-      // On timeout or failure, seamlessly fallback to heuristics
+    } catch (err: unknown) {
+      const errStr = err instanceof Error ? err.message : String(err);
+      const isModelError =
+        (err as any)?.status === 404 ||
+        errStr.toLowerCase().includes('not_found_error') ||
+        errStr.toLowerCase().includes('model');
+      const contextualMsg = isModelError
+        ? `Anthropic API does not recognize model "${this.model}": ${errStr}`
+        : `Anthropic API call failed with model "${this.model}": ${errStr}`;
+
+      if (this.throwOnError) {
+        throw new Error(contextualMsg);
+      }
+      // On timeout or failure in standard mode, seamlessly fallback to heuristics
       return heuristicResults;
     }
   }
@@ -580,7 +599,19 @@ Return JSON strictly according to provide_feature_settings tool.`;
           outOfBoundCount,
         };
       });
-    } catch {
+    } catch (err: unknown) {
+      const errStr = err instanceof Error ? err.message : String(err);
+      const isModelError =
+        (err as any)?.status === 404 ||
+        errStr.toLowerCase().includes('not_found_error') ||
+        errStr.toLowerCase().includes('model');
+      const contextualMsg = isModelError
+        ? `Anthropic API does not recognize model "${this.model}": ${errStr}`
+        : `Anthropic API call failed with model "${this.model}": ${errStr}`;
+
+      if (this.throwOnError) {
+        throw new Error(contextualMsg);
+      }
       return heuristicResults;
     }
   }

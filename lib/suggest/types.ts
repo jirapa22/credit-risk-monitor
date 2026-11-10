@@ -49,12 +49,22 @@ export interface DatasetProfile {
   columns: ColumnProfileSummary[];
 }
 
+export interface ColumnProposal {
+  role: ColumnRole;
+  type: FeatureDataType;
+  confidence: number;
+  reason: string;
+}
+
 export interface ColumnSuggestion {
   column: string;
   role: ColumnRole;
   type: FeatureDataType;
   confidence: number;
   reason: string;
+  aiProposal?: ColumnProposal;
+  heuristicProposal?: ColumnProposal;
+  agreement?: 'agree' | 'disagree' | 'heuristic_only' | 'ai_only';
 }
 
 export interface ColumnMappingEntry {
@@ -67,12 +77,15 @@ export interface ColumnMappingEntry {
 export interface FeatureSettingSuggestion {
   feature: string;
   dataType: FeatureDataType;
+  description?: string;
   minValue?: number | null;
   maxValue?: number | null;
   anomalyTransform?: AnomalyTransform;
   missingStrategy?: MissingStrategy;
   categories?: string[];
   reason: string;
+  outOfBoundCount?: number;
+  outOfBoundPct?: number;
 }
 
 export interface SuggestFeatureOptions {
@@ -88,6 +101,48 @@ export interface ScoreDirectionSuggestion {
   reason: string;
 }
 
+export interface AiUsageStats {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  durationMs: number;
+  model: string;
+}
+
+export interface AiStatusResponse {
+  available: boolean;
+  model: string;
+  provider: string;
+  hasKey: boolean;
+}
+
+export interface AiColumnProfileSummary {
+  column: string;
+  inferredType: FeatureDataType;
+  nonNullCount: number;
+  missingCount: number;
+  missingRate: number;
+  uniqueCount: number;
+  uniqueRatio: number;
+  sampleValues: (string | number)[];
+  numericStats?: {
+    min: number;
+    p5: number;
+    median: number;
+    p95: number;
+    max: number;
+    skewness: number;
+    isBinaryZeroOne: boolean;
+  };
+  categories?: string[];
+}
+
+export interface AiDatasetPayload {
+  referenceId: string;
+  rowCount: number;
+  columns: AiColumnProfileSummary[];
+}
+
 export interface SuggestionProvider {
   readonly name: string;
   suggestColumns(
@@ -98,5 +153,6 @@ export interface SuggestionProvider {
     mapping: ColumnMappingEntry[],
     options?: SuggestFeatureOptions,
   ): Promise<FeatureSettingSuggestion[]> | FeatureSettingSuggestion[];
+  getLastUsage?(): AiUsageStats | null;
 }
 

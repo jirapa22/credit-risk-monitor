@@ -28,6 +28,7 @@
 | 10a | 67d02b1 | Baseline Registry: lifecycle DRAFT→VALIDATED→ACTIVE→ARCHIVED, blob storage, auto validation, export/import |
 | 10b | 0a0b238 | โหมด score_column (โมเดลภายนอก), scoreDirection ทุกจุด, risk grade D1–D10 อัตโนมัติ, lib/defaults.ts, guard test no-hardcode (0 violations), ลบโค้ดเก่า (dataGenerator, utils/stats, api/risk-score); 109/109 tests |
 | 10b-2 | 302e84a | ตัวแปร categorical ทุกชั้น: UNSEEN_CATEGORY, fillMode, __OTHER__/__UNSEEN__, CSI รายหมวด, chi-square, Jensen–Shannon, category_shift / unseen_category injection; 115/115 tests |
+| 10c | d112f16, b56e460, 4d2ef3a | UI Baseline Registry + Wizard 5 ขั้น + แถบเลือกโมเดล; SuggestionProvider (heuristic) เดาบทบาท/ชนิดคอลัมน์, min/max, transform, scoreDirection อัตโนมัติ; นำเข้า/ส่งออก scorecard CSV/xlsx (ตัวอ่าน xlsx เขียนเองทุกชีต); samples/ สำหรับ demo; guard test ครอบ app/dashboard; build ผ่าน; 127/127 tests |
 
 ## ข้อค้นพบ (ใช้ในบทที่ 4)
 1. Log1p แก้ปัญหาข้อมูลเบ้: MAD ติดธงบน Reference 7.25% → 1.3%, IQR 9.4% → 3.0%; ขอบล่าง IQR จากติดลบ → 7,781 บาท (จับรายได้กรอกผิดหน่วยได้)
@@ -46,6 +47,8 @@
 13. เปลี่ยน Baseline เวอร์ชัน: ผลของ v1 ยังอยู่และแยกจาก v2; persistence ของ trigger นับเฉพาะเวอร์ชันเดียวกัน (v2 รอบแรกได้ INVESTIGATE_DRIFT ไม่ใช่ CONSIDER_RETRAIN)
 14. multivariate_inconsistent แบบทั่วไป (เลือกคู่ |Spearman| สูงสุด): ascore_v1 เลือก loan_amount–dti_ratio (ρ=+0.39); LOF recall low 1.00→0.95, medium/high 1.00
 15. Categorical (โมเดลปลอม cat_credit_v1: occupation 5 หมวด, region 4 หมวด): category_shift 40 จุด% → CSI 2.73, JS distance 0.478, χ² 258.4 (df 4, p≈1e-54) ทั้งหมด CRITICAL; unseen_category 5% จับได้ 25/25 และ trigger = INVESTIGATE_DATA (drift ทางการ CRITICAL จาก __UNSEEN__ แต่ตัดแถวโดนธงแล้ว STABLE); 'Engineer'/' engineer '/'ENGINEER' = หมวดเดียวกัน
+16. Onboarding heuristic: samples/baseline_ext_model.csv เดาถูก 8/8 คอลัมน์ (ชื่อไทย/ชื่อเฉพาะ); scoreDirection อัตโนมัติถูกทั้ง ascore_v1 (safer, AUC 0.711) และ ext model (riskier); scorecard export→import ตรง 100% (855/855, ต่าง 0.0000); scorecard แต้มผิด 1 bin (+20) → ตรงเพียง 78.36% ระบบเตือน
+17. ข้อจำกัดของกฎ (ใช้เป็นเหตุผลของ AI ใน 10d): 'รายได้ต่อเดือน' เคยถูกจับเป็น date เพราะคำว่า 'เดือน' — แก้แล้วด้วยการตรวจชนิดข้อมูลก่อน (confidence 0.70→0.88); ชีต Scorecard ใน ascore_model_report.xlsx ใช้ป้าย bin เป็นข้อความ ('≤17,800', '17,801–22,300') ไม่ใช่ upper_bound → ต้องตีความ (งานของ AI)
 
 ## หมายเหตุสำหรับผลการทดลอง
 - ผล grid เต็ม 926868a (3,895 trial) ใช้นิยาม multivariate_inconsistent แบบเดิม (3 ตัวแปรคงที่) → ต้องรัน grid ใหม่ใน Step 11 ก่อนใช้ตัวเลขในเล่ม

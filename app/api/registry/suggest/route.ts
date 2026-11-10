@@ -40,6 +40,10 @@ export async function POST(request: Request) {
       : undefined;
     const scoring: ScoringConfig | null =
       body?.scoring && typeof body.scoring === 'object' ? body.scoring : null;
+    const providerType =
+      body?.provider === 'heuristic' || body?.provider === 'ai' || body?.provider === 'auto'
+        ? body.provider
+        : 'auto';
 
     const result = await generateSuggestions({
       referenceId,
@@ -48,6 +52,8 @@ export async function POST(request: Request) {
       mapping,
       scoringFeatures,
       scoring,
+      providerType,
+      sha256: blob.meta.sha256,
     });
 
     return NextResponse.json(result);

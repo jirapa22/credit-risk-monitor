@@ -6,7 +6,12 @@ import { parseNumber } from '../validation';
 import type { ScoringConfig } from '../types';
 import { buildDatasetProfile, heuristicProvider, niceCeil, niceFloor } from './heuristic';
 import { detectScoreDirection } from './scoreDirection';
+import { AiSuggestionProvider, buildAiPayload, maskSensitiveSample, DEFAULT_AI_MODEL } from './ai';
+import { CombinedSuggestionProvider, clearSuggestionCache, buildCacheKey } from './combined';
+import { verifyNumberGrounding, type GroundingCheckResult } from './grounding';
+import { extractScorecardWithAi, type AiScorecardExtractionResult } from './scorecardExtract';
 import type {
+  AiUsageStats,
   ColumnMappingEntry,
   ColumnSuggestion,
   DatasetProfile,
@@ -16,7 +21,24 @@ import type {
 } from './types';
 
 export * from './types';
-export { buildDatasetProfile, heuristicProvider, niceCeil, niceFloor, detectScoreDirection };
+export {
+  buildDatasetProfile,
+  heuristicProvider,
+  niceCeil,
+  niceFloor,
+  detectScoreDirection,
+  AiSuggestionProvider,
+  buildAiPayload,
+  maskSensitiveSample,
+  DEFAULT_AI_MODEL,
+  CombinedSuggestionProvider,
+  clearSuggestionCache,
+  buildCacheKey,
+  verifyNumberGrounding,
+  type GroundingCheckResult,
+  extractScorecardWithAi,
+  type AiScorecardExtractionResult,
+};
 
 export interface RunSuggestOptions {
   referenceId: string;
@@ -26,6 +48,8 @@ export interface RunSuggestOptions {
   scoringFeatures?: string[];
   scoring?: ScoringConfig | null;
   provider?: SuggestionProvider;
+  providerType?: 'auto' | 'heuristic' | 'ai';
+  sha256?: string;
 }
 
 export interface SuggestResponsePayload {
@@ -34,12 +58,27 @@ export interface SuggestResponsePayload {
   columns: ColumnSuggestion[];
   featureSettings: FeatureSettingSuggestion[];
   scoreDirection: ScoreDirectionSuggestion | null;
+  usage?: AiUsageStats | null;
+  aiStatus?: { available: boolean; model: string };
 }
 
 export async function generateSuggestions(
   options: RunSuggestOptions,
 ): Promise<SuggestResponsePayload> {
-  const provider = options.provider ?? heuristicProvider;
+  let provider: SuggestionProvider;
+  if (options.provider) {
+    provider = options.provider;
+  } else if (options.providerType === 'heuristic') {
+    provider = heuristicProvider;
+  } else if (options.providerType === 'ai') {
+    provider = new AiSuggestionProvider();
+  } else {
+    // 'auto' (default): combined provider if Anthropic key is set, else heuristic
+    provider = process.env.ANTHROPIC_API_KEY
+      ? new CombinedSuggestionProvider()
+      : heuristicProvider;
+  }
+
   const profile = buildDatasetProfile(options.referenceId, options.rows, options.columns);
   const columns = await provider.suggestColumns(profile);
 
@@ -99,12 +138,20 @@ export async function generateSuggestions(
     }
   }
 
+  const usage = provider.getLastUsage ? provider.getLastUsage() : null;
+  const aiStatus = {
+    available: Boolean(process.env.ANTHROPIC_API_KEY),
+    model: process.env.AI_MODEL || DEFAULT_AI_MODEL,
+  };
+
   return {
     provider: provider.name,
     profile,
     columns,
     featureSettings,
     scoreDirection,
+    usage,
+    aiStatus,
   };
 }
 

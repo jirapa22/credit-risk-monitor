@@ -1,0 +1,9 @@
+provider,suite_id,suite_name,total_columns,correct_columns,accuracy_pct,corrections_needed,duration_ms,tokens_used
+heuristic,ascore_v1,A-Score v1 Reference,6,5,83.3,1,0,0
+heuristic,ext_model,External PD Model,8,8,100,0,1,0
+heuristic,fake_model_1,Fake Model #1 (Standard Scorecard),5,5,100,0,0,0
+heuristic,fake_model_2,Fake Model #2 (With Categorical City),5,5,100,0,1,0
+heuristic,fake_model_3,Fake Model #3 (External Score),7,7,100,0,0,0
+heuristic,tricky_a,Tricky Suite A (Bank Acronyms),7,5,71.4,2,0,0
+heuristic,tricky_b,Tricky Suite B (Trap Thai Words),7,7,100,0,0,0
+heuristic,tricky_c,Tricky Suite C (Blind Names),7,5,71.4,2,0,0

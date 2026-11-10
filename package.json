@@ -9,9 +9,11 @@
     "lint": "eslint",
     "test": "vitest run",
     "build:reference": "python3 scripts/build_reference_dataset.py",
-    "experiments": "tsx scripts/run_experiments.ts"
+    "experiments": "tsx scripts/run_experiments.ts",
+    "eval:suggest": "tsx scripts/eval_suggestions.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.7.0",
     "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4",

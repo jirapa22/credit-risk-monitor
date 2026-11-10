@@ -9,7 +9,7 @@
  *   Step 4: Feature Settings (Min/Max, Missing Strategy, Categorical Rare Threshold)
  *   Step 5: Validate Baseline & Activate (Summary, Deciles, Performance AUC/KS, Rules)
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type {
   ColumnRole,
   ColumnSuggestion,
@@ -68,6 +68,27 @@ export default function BaselineOnboardingWizard({
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string>('');
 
+  // AI state
+  const [aiAvailable, setAiAvailable] = useState<boolean>(false);
+  const [aiEnabled, setAiEnabled] = useState<boolean>(true);
+  const [aiModel, setAiModel] = useState<string>('');
+  const [isExtractingScorecard, setIsExtractingScorecard] = useState<boolean>(false);
+  const [aiExplanation, setAiExplanation] = useState<string>('');
+  const [aiExplanationGrounded, setAiExplanationGrounded] = useState<boolean>(false);
+  const [isExplaining, setIsExplaining] = useState<boolean>(false);
+
+  useEffect(() => {
+    fetch('/api/ai/status')
+      .then(res => res.json())
+      .then(data => {
+        if (data.available) {
+          setAiAvailable(true);
+          setAiModel(data.model || 'Claude');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Suggestions state
   const [isSuggesting, setIsSuggesting] = useState<boolean>(false);
   const [columnSuggestions, setColumnSuggestions] = useState<ColumnSuggestion[]>([]);
@@ -93,6 +114,7 @@ export default function BaselineOnboardingWizard({
   // Feature settings state
   const [featureDefs, setFeatureDefs] = useState<Record<string, {
     displayName: string;
+    description?: string;
     dataType: FeatureDataType;
     minValue?: number;
     maxValue?: number;
@@ -100,6 +122,7 @@ export default function BaselineOnboardingWizard({
     allowedCategories: string[];
     rareCategoryThreshold: number;
     anomalyTransform?: 'none' | 'log1p';
+    outOfBoundCount?: number;
   }>>({});
 
   // Step 5: Validation state
@@ -170,7 +193,10 @@ export default function BaselineOnboardingWizard({
       const sugRes = await fetch('/api/registry/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referenceId: generatedRefId }),
+        body: JSON.stringify({
+          referenceId: generatedRefId,
+          provider: aiEnabled && aiAvailable ? 'auto' : 'heuristic',
+        }),
       });
       const sugData = await sugRes.json();
       if (!sugRes.ok) {
@@ -198,6 +224,7 @@ export default function BaselineOnboardingWizard({
       for (const fs of (sugData.featureSettings as FeatureSettingSuggestion[] ?? [])) {
         fDefs[fs.feature] = {
           displayName: fs.feature,
+          description: fs.description,
           dataType: fs.dataType,
           minValue: fs.minValue ?? undefined,
           maxValue: fs.maxValue ?? undefined,
@@ -205,6 +232,7 @@ export default function BaselineOnboardingWizard({
           allowedCategories: fs.categories ?? [],
           rareCategoryThreshold: 0.01,
           anomalyTransform: fs.anomalyTransform,
+          outOfBoundCount: fs.outOfBoundCount,
         };
       }
       setFeatureDefs(fDefs);
@@ -237,6 +265,7 @@ export default function BaselineOnboardingWizard({
   const mappingWarnings: string[] = [];
   if (idCount === 0) mappingWarnings.push('ยังไม่ได้กำหนดคอลัมน์ ID (รหัสแถว) — ระบบจะใช้แถวเป็น ID');
   if (idCount > 1) mappingWarnings.push(`พบคอลัมน์ ID มากกว่า 1 คอลัมน์ (${idCount} คอลัมน์) — ควรมีเพียง 1 ตัว`);
+  if (labelCount > 1) mappingWarnings.push(`พบคอลัมน์ Label มากกว่า 1 คอลัมน์ (${labelCount} คอลัมน์) — ควรมีเพียง 1 ตัว`);
   if (featureCount === 0) mappingWarnings.push('ต้องมีอย่างน้อย 1 คอลัมน์ที่เป็น Feature เพื่อใช้ติดตาม Drift');
   if (mode === 'score_column' && scoreCount === 0) {
     mappingWarnings.push('โหมด External Score จำเป็นต้องมีคอลัมน์ Score 1 คอลัมน์');
@@ -301,6 +330,58 @@ export default function BaselineOnboardingWizard({
       setScorecardImportReport(`❌ ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsImportingScorecard(false);
+    }
+  };
+
+  const handleAiExtractScorecard = async () => {
+    setIsExtractingScorecard(true);
+    setScorecardImportReport('');
+    try {
+      let res: Response;
+      if (file && file.name.toLowerCase().endsWith('.xlsx')) {
+        const form = new FormData();
+        form.append('file', file);
+        if (referenceId) form.append('referenceId', referenceId);
+        res = await fetch('/api/registry/scorecard/extract', {
+          method: 'POST',
+          body: form,
+        });
+      } else {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.xlsx';
+        const pickedFile = await new Promise<File | null>(resolve => {
+          input.onchange = () => resolve(input.files?.[0] || null);
+          input.click();
+        });
+        if (!pickedFile) {
+          setIsExtractingScorecard(false);
+          return;
+        }
+        const form = new FormData();
+        form.append('file', pickedFile);
+        if (referenceId) form.append('referenceId', referenceId);
+        res = await fetch('/api/registry/scorecard/extract', {
+          method: 'POST',
+          body: form,
+        });
+      }
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || (data.errors && data.errors.join('; ')) || 'ไม่สามารถดึง Scorecard ได้');
+      }
+      setScorecardConfig(data.scoring);
+      setScorecardFileName('ดึงโดย AI จากรายงานโมเดล');
+      const matchPct = data.scoreComparison?.matchWithinHalfPointPct ?? 100;
+      if (data.autoAccepted) {
+        setScorecardImportReport(`✅ AI ดึง Scorecard สำเร็จ (${data.scoring.features.length} ตัวแปร) — คะแนนตรงกับ Reference ${matchPct.toFixed(2)}% (อนุมัติรับอัตโนมัติ)`);
+      } else {
+        setScorecardImportReport(`⚠️ AI ดึง Scorecard ได้ แต่คะแนนตรงกับ Reference เพียง ${matchPct.toFixed(2)}% (< 99%) — กรุณาตรวจสอบก่อนยืนยัน`);
+      }
+    } catch (err: unknown) {
+      setScorecardImportReport(`❌ เกิดข้อผิดพลาด: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsExtractingScorecard(false);
     }
   };
 
@@ -386,6 +467,14 @@ export default function BaselineOnboardingWizard({
           },
           featureRegistry: registryPayload,
           ...(mode === 'scorecard' && scorecardConfig ? { scoring: scorecardConfig } : {}),
+          onboardingLog: columnSuggestions.map(cs => ({
+            timestamp: new Date().toISOString(),
+            field: cs.column,
+            heuristic: cs.heuristicProposal?.role || cs.role,
+            ai: cs.aiProposal?.role || cs.role,
+            chosen: columnMapping[cs.column]?.role || cs.role,
+            provider: aiEnabled && aiAvailable ? 'combined' : 'heuristic',
+          })),
         }),
       });
 
@@ -406,6 +495,23 @@ export default function BaselineOnboardingWizard({
       }
 
       setValidationReport(valData.validationReport);
+
+      // 4. Request AI / Grounded Explanation of validation report
+      setIsExplaining(true);
+      fetch('/api/registry/explain-validation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report: valData.validationReport }),
+      })
+        .then(r => r.json())
+        .then(expData => {
+          if (expData.explanation) {
+            setAiExplanation(expData.explanation);
+            setAiExplanationGrounded(Boolean(expData.grounded));
+          }
+        })
+        .catch(() => {})
+        .finally(() => setIsExplaining(false));
     } catch (err: unknown) {
       setValidationError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -456,12 +562,33 @@ export default function BaselineOnboardingWizard({
               เตรียมไฟล์ข้อมูลพัฒนาโมเดล + คะแนน → ตรวจสอบการแนะนำ → ยืนยันและเปิดใช้งาน
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 text-lg p-1 transition"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-3">
+            {aiAvailable ? (
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/60 border border-emerald-700/60 text-emerald-300 text-xs shadow-sm">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>🤖 AI พร้อมใช้ ({aiModel})</span>
+                <label className="flex items-center gap-1 cursor-pointer pl-2 border-l border-emerald-800 text-[11px] text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={aiEnabled}
+                    onChange={e => setAiEnabled(e.target.checked)}
+                    className="rounded border-emerald-700 bg-slate-900"
+                  />
+                  <span>เปิดใช้ AI</span>
+                </label>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-950 border border-slate-700 text-slate-400 text-xs">
+                <span>🤖 AI ไม่ได้ตั้งค่า (ใช้ระบบกฎแทน)</span>
+              </div>
+            )}
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-200 text-lg p-1 transition"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Step Bar */}
@@ -685,11 +812,33 @@ export default function BaselineOnboardingWizard({
                             </select>
                           </td>
                           <td className="py-2.5 px-3">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${confColor}`}>
-                                {(conf * 100).toFixed(0)}%
-                              </span>
-                              <span className="text-[11px] text-slate-400 truncate max-w-xs" title={sug?.reason}>
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${confColor}`}>
+                                  {(conf * 100).toFixed(0)}%
+                                </span>
+                                {sug?.agreement === 'agree' && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-700/60">
+                                    🤖 AI + กฎ ตรงกัน
+                                  </span>
+                                )}
+                                {sug?.agreement === 'disagree' && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-700/60">
+                                    ⚠️ AI ว่า {sug.aiProposal?.role} / กฎว่า {sug.heuristicProposal?.role}
+                                  </span>
+                                )}
+                                {sug?.agreement === 'ai_only' && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-700/60">
+                                    🤖 AI
+                                  </span>
+                                )}
+                                {sug?.agreement === 'heuristic_only' && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                                    กฎ
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-400" title={sug?.reason}>
                                 {sug?.reason || 'กำหนดโดยผู้ใช้'}
                               </span>
                             </div>
@@ -822,9 +971,9 @@ export default function BaselineOnboardingWizard({
                   <p className="text-[11px] text-slate-400">
                     อัปโหลดไฟล์ Scorecard ที่มีคอลัมน์ variable, upper_bound, points, bin_label
                   </p>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <label className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg cursor-pointer transition">
-                      เลือกไฟล์ Scorecard
+                      เลือกไฟล์ Scorecard (CSV)
                       <input
                         type="file"
                         accept=".csv,.xlsx"
@@ -832,6 +981,14 @@ export default function BaselineOnboardingWizard({
                         className="hidden"
                       />
                     </label>
+                    <button
+                      type="button"
+                      onClick={handleAiExtractScorecard}
+                      disabled={isExtractingScorecard}
+                      className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shadow transition disabled:opacity-50"
+                    >
+                      <span>{isExtractingScorecard ? '🤖 กำลังอ่านตารางโมเดล...' : '🤖 ให้ AI อ่านรายงานโมเดล (.xlsx)'}</span>
+                    </button>
                     {scorecardFileName && (
                       <span className="text-xs font-mono text-slate-300">{scorecardFileName}</span>
                     )}
@@ -1009,6 +1166,34 @@ export default function BaselineOnboardingWizard({
                         </div>
                       </div>
                     )}
+
+                    {/* Data Dictionary & Out of Bounds Alert */}
+                    <div className="pt-1.5 border-t border-slate-800/60 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] text-slate-400 font-semibold whitespace-nowrap">
+                          คำอธิบายตัวแปร (Data Dictionary):
+                        </label>
+                        <input
+                          type="text"
+                          value={def.description || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setFeatureDefs(prev => ({
+                              ...prev,
+                              [col]: { ...prev[col], description: val },
+                            }));
+                          }}
+                          placeholder="ระบุคำอธิบายทางธุรกิจของตัวแปรนี้..."
+                          className="w-full bg-slate-900 border border-slate-700/80 rounded px-2.5 py-1 text-xs text-slate-300 outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      {def.outOfBoundCount !== undefined && def.outOfBoundCount > 0 && (
+                        <p className="text-[10px] text-amber-400 flex items-center gap-1">
+                          <span>⚠️</span>
+                          <span>พบข้อมูลใน Reference อยู่นอกช่วงที่เสนอ {def.outOfBoundCount} รายการ — โปรดตรวจทานขอบเขต Min/Max</span>
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1088,6 +1273,27 @@ export default function BaselineOnboardingWizard({
                       {validationReport.computed.rowCount.toLocaleString()} แถว
                     </span>
                   </div>
+
+                  {/* AI Grounded Validation Summary */}
+                  {(isExplaining || aiExplanation) && (
+                    <div className="bg-gradient-to-br from-indigo-950/40 to-slate-950/70 border border-indigo-500/30 rounded-xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                          🤖 AI สรุปรายงานตรวจ Baseline
+                        </span>
+                        {aiExplanationGrounded && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-700/60">
+                            ✓ ผ่านการตรวจ Number Grounding (ทุกตัวเลขตรงกับรายงาน)
+                          </span>
+                        )}
+                      </div>
+                      {isExplaining ? (
+                        <p className="text-xs text-indigo-300/80 animate-pulse">กำลังสรุปรายงานด้วย AI...</p>
+                      ) : (
+                        <p className="text-xs text-slate-300 leading-relaxed">{aiExplanation}</p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Errors / Warnings */}
                   {validationReport.errors.length > 0 && (

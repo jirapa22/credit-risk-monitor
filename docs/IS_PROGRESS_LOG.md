@@ -80,11 +80,13 @@
   การวัดผลในเล่ม: ความแม่นของการจับคู่คอลัมน์ heuristic vs AI บนหลาย Baseline + จำนวนจุดที่ผู้ใช้ต้องแก้
 - 11 การทดลอง drift แบบใหม่ (label/concept/mix/gradual) + power curve (ขนาด drift × จำนวนแถว) เทียบ PSI/KS/Wasserstein + calibrate เกณฑ์
 - 12 Lending Club เป็น Baseline ตัวที่สอง (score_column)
+- 13 + Model Portfolio / Model Profile (ไอเดียผู้ใช้ 10 พ.ย.): หน้าแรก = การ์ดโมเดล (สถานะ, ติดตามล่าสุด, trigger รอรีวิว) + การ์ด ➕ เพิ่มโมเดลใหม่; หน้าโปรไฟล์ = Model Card (Mitchell et al. 2019: ผลิตภัณฑ์, จุดประสงค์, ผู้รับผิดชอบ, ตัวแปร, AUC/Gini/KS, ข้อจำกัด) + สุขภาพโมเดล (PSI ย้อนหลัง) + เวอร์ชัน Baseline + ปุ่ม ติดตาม/Sandbox/อัปเดต Baseline/Export; ตรงกับ Multi-Product Expansion ในสไลด์เดิม และ Model Registry (MLOps slide 12)
 - 13 UI Monitoring Report (Data Quality + Drift + Trigger + review) + AI สรุป/อธิบาย Drift Report และ Trigger สำหรับผู้บริหาร (ตัวเลขทั้งหมดมาจากระบบ)
 - "เรื่อง Upstash": production ยังเป็น storage memory (ไม่มี env vars) — ต้องตั้ง Upstash + Vercel Blob + API key ของ AI (สำหรับ 10d/13) ก่อน demo
 - 14 (ใหม่ 9 พ.ย.) ประเมินกับผู้ใช้: ผู้ทดสอบ 3–5 คน เทียบ Excel vs ระบบ (เวลา, จับความผิดปกติได้กี่จุด, สรุปถูกไหม) + SUS 10 ข้อ + จับเวลานำเข้า Baseline ใหม่ผ่านหน้าเว็บ (หลักฐานความยืดหยุ่นจากมุมผู้ใช้) — Claude เตรียมแบบฟอร์ม/โจทย์/แบบสอบถาม/ตารางคำนวณ
 - ผู้ใช้ยืนยัน 9 พ.ย.: ไม่ตัด Step ใด ๆ, คงหลักความยืดหยุ่น; ประมาณเวลาที่เหลือ ~2.5–3 สัปดาห์ (ระบบ 6–8 วัน + เล่ม/สไลด์ 7–10 วัน; ร่างบท 1–3 คู่ขนานได้)
 - 10d (7ee2b1d): AI provider + guardrails + eval script เสร็จ; heuristic eval 92.3% (48/52), Tricky A/C 71.4% — รอแก้ PDPA (ค่าตัวอย่างแต่ละคอลัมน์มาจากแถวเดียวกัน → ประกอบเป็นข้อมูลลูกค้าได้; ต้องสุ่มอิสระรายคอลัมน์ + ปัด 2 หลักสำคัญ + วันที่ระดับเดือน) และทำ Tricky C ให้ไม่มีชื่อบอกใบ้
 - ผู้ใช้ตัดสินใจ 10 พ.ย.: ใช้ Claude API จริง (ประมาณการค่าใช้จ่ายทั้ง IS หลักร้อยบาท) — เงื่อนไข: แก้ PDPA ก่อน, ตั้ง spend limit, key อยู่ใน .env.local เท่านั้น (production ใส่ใน Vercel env ตอนทำเรื่อง Upstash)
+- รอ: ชุดทดสอบ held-out D1–D3 (ล็อก sha ก่อนเทียบ AI เพราะกฎเดาจากค่าถูกเพิ่มหลังเห็น Suite C) → วัดผล heuristic/ai/combined ด้วย API key จริง
 - ยังไม่ทราบวันนำเสนอ Final
 - เขียนเล่ม บทที่ 1–5 + สไลด์ Final

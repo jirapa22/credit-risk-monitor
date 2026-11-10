@@ -1,0 +1,10 @@
+{
+  "frozenAt": "2026-11-10T14:43:01.811Z",
+  "heuristicSha256": "757df0ea8fcaf116a261e0d3cfb2d3ad195bb311c9830cfc0de1bcd7a6775f7e",
+  "datasets": {
+    "d1_numeric_id_score_bureau.csv": "ca97a3c24230d5c3c7ce462ddf24ba51b0d0cf0a065c9701bc43cb241e11c5c8",
+    "d2_two_dates_thai_status.csv": "46dcb8e452e57289c67177e0ad1504bfe6df936b292259e97f02cb9e4e9564ac",
+    "d3_blind_three_binary.csv": "17669aad3021d3d29e6b605aaa5b7a8156b2d652581fca0c92328e517545b1e7"
+  },
+  "note": "Frozen held-out suites for fair heuristic vs AI evaluation. Do NOT modify heuristic.ts to tune for these suites."
+}

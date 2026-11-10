@@ -7,6 +7,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { parseCsv } from '../lib/csv';
 import { toCsv } from '../lib/injection';
 import { buildDatasetProfile, heuristicProvider } from '../lib/suggest/heuristic';
@@ -275,6 +276,125 @@ export async function ensureEvalDatasets(): Promise<EvalSuiteMeta[]> {
   return suites;
 }
 
+const HELDOUT_DIR = join(EVAL_DIR, 'heldout');
+
+export function getHeldoutSuites(): EvalSuiteMeta[] {
+  return [
+    {
+      id: 'heldout_d1',
+      name: 'Held-out D1 (Numeric ID, Score 300-900, 2+ [0,1] features)',
+      description: 'ID เป็นตัวเลขล้วน, Score ช่วง 300-900, มีตัวแปรช่วง [0,1] 2 ตัว (utilization, dsr)',
+      csvFileName: 'heldout/d1_numeric_id_score_bureau.csv',
+      groundTruth: {
+        cust_num: 'id',
+        apply_date: 'date',
+        monthly_income: 'feature',
+        utilization: 'feature',
+        dsr: 'feature',
+        bureau_score: 'score',
+        default_flag: 'label',
+      },
+    },
+    {
+      id: 'heldout_d2',
+      name: 'Held-out D2 (Two dates: apply/birth, Thai status_90)',
+      description: 'มี 2 วันที่ (วันสมัคร=date, วันเกิด=feature), label ชื่อ "สถานะ_90", ชื่อไทยทั้งหมด',
+      csvFileName: 'heldout/d2_two_dates_thai_status.csv',
+      groundTruth: {
+        รหัสผู้สมัคร: 'id',
+        วันสมัคร: 'date',
+        วันเกิด: 'feature',
+        รายได้ต่อเดือน: 'feature',
+        ภาระหนี้ต่อเดือน: 'feature',
+        คะแนนแบบจำลอง: 'score',
+        สถานะ_90: 'label',
+      },
+    },
+    {
+      id: 'heldout_d3',
+      name: 'Held-out D3 (Blind names v1..v9, 3 binary variables)',
+      description: 'ชื่อไม่มีความหมาย v1..v9 มีตัวแปร 0/1 ที่ไม่ใช่ label 2 ตัว (v6, v7) และ label คือ v9 ที่สัมพันธ์กับ score v8',
+      csvFileName: 'heldout/d3_blind_three_binary.csv',
+      groundTruth: {
+        v1: 'id',
+        v2: 'date',
+        v3: 'feature',
+        v4: 'feature',
+        v5: 'feature',
+        v6: 'feature',
+        v7: 'feature',
+        v8: 'score',
+        v9: 'label',
+      },
+    },
+  ];
+}
+
+export interface FrozenIntegrityCheck {
+  isFrozenValid: boolean;
+  heuristicMatches: boolean;
+  datasetsMatch: boolean;
+  heuristicCurrentSha: string;
+  heuristicFrozenSha: string;
+  mismatchedDatasets: string[];
+  warning?: string;
+}
+
+export function verifyHeldoutIntegrity(): FrozenIntegrityCheck {
+  const frozenPath = join(HELDOUT_DIR, 'FROZEN.json');
+  if (!existsSync(frozenPath)) {
+    return {
+      isFrozenValid: false,
+      heuristicMatches: false,
+      datasetsMatch: false,
+      heuristicCurrentSha: '',
+      heuristicFrozenSha: '',
+      mismatchedDatasets: [],
+      warning: 'ไม่พบไฟล์ FROZEN.json ใน samples/eval/heldout/',
+    };
+  }
+
+  const frozen = JSON.parse(readFileSync(frozenPath, 'utf8'));
+  const currentHeuristicContent = readFileSync(join(ROOT, 'lib', 'suggest', 'heuristic.ts'));
+  const currentHeuristicSha = createHash('sha256').update(currentHeuristicContent).digest('hex');
+
+  const heuristicMatches = currentHeuristicSha === frozen.heuristicSha256;
+  const mismatchedDatasets: string[] = [];
+
+  for (const [fileName, expectedSha] of Object.entries(frozen.datasets || {})) {
+    const dsPath = join(HELDOUT_DIR, fileName);
+    if (!existsSync(dsPath)) {
+      mismatchedDatasets.push(`${fileName} (file missing)`);
+      continue;
+    }
+    const currentSha = createHash('sha256').update(readFileSync(dsPath)).digest('hex');
+    if (currentSha !== expectedSha) {
+      mismatchedDatasets.push(fileName);
+    }
+  }
+
+  const datasetsMatch = mismatchedDatasets.length === 0;
+  let warning: string | undefined;
+
+  if (!heuristicMatches) {
+    warning =
+      `⚠️ คำเตือน: lib/suggest/heuristic.ts ถูกแก้ไขหลังล็อกชุดทดสอบ (hash ปัจจุบัน: ${currentHeuristicSha.slice(0, 8)}... != ล็อก: ${String(frozen.heuristicSha256).slice(0, 8)}...)\n` +
+      `ผล held-out ไม่ใช่การวัดที่ยุติธรรมแล้ว (Held-out measurement is NO LONGER FAIR!)`;
+  } else if (!datasetsMatch) {
+    warning = `⚠️ คำเตือน: ไฟล์ชุดข้อมูล heldout (${mismatchedDatasets.join(', ')}) ถูกแก้ไขหลังล็อก`;
+  }
+
+  return {
+    isFrozenValid: heuristicMatches && datasetsMatch,
+    heuristicMatches,
+    datasetsMatch,
+    heuristicCurrentSha: currentHeuristicSha,
+    heuristicFrozenSha: frozen.heuristicSha256,
+    mismatchedDatasets,
+    warning,
+  };
+}
+
 export interface SuiteEvalResult {
   suiteId: string;
   suiteName: string;
@@ -287,30 +407,23 @@ export interface SuiteEvalResult {
   perRoleAccuracy: Record<string, { total: number; correct: number; pct: number }>;
 }
 
-export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined'): Promise<{
-  provider: string;
+export interface SuiteGroupEvalResult {
+  groupName: string;
   suites: SuiteEvalResult[];
+  roleAccuracy: Record<string, { total: number; correct: number; pct: number }>;
+  totalColumns: number;
+  correctColumns: number;
   overallAccuracyPct: number;
   totalCorrectionsNeeded: number;
   totalDurationMs: number;
   totalTokensUsed: number;
-}> {
-  const suitesMeta = await ensureEvalDatasets();
+}
 
-  let provider: SuggestionProvider;
-  if (providerName === 'ai') {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      console.warn('⚠️ ไม่พบ ANTHROPIC_API_KEY ในสภาพแวดล้อม — สลับเป็น heuristic อัตโนมัติ');
-      provider = heuristicProvider;
-    } else {
-      provider = new AiSuggestionProvider();
-    }
-  } else if (providerName === 'combined') {
-    provider = new CombinedSuggestionProvider();
-  } else {
-    provider = heuristicProvider;
-  }
-
+export async function evaluateSuiteGroup(
+  groupName: string,
+  suitesMeta: EvalSuiteMeta[],
+  provider: SuggestionProvider,
+): Promise<SuiteGroupEvalResult> {
   const results: SuiteEvalResult[] = [];
   let totalColsAll = 0;
   let correctColsAll = 0;
@@ -369,27 +482,112 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
     });
   }
 
-  const overallAccuracyPct = +((correctColsAll / totalColsAll) * 100).toFixed(2);
+  const overallAccuracyPct = totalColsAll > 0 ? +((correctColsAll / totalColsAll) * 100).toFixed(2) : 0;
   const totalCorrectionsNeeded = totalColsAll - correctColsAll;
+
+  const roleAccuracy: Record<string, { total: number; correct: number; pct: number }> = {
+    id: { total: 0, correct: 0, pct: 0 },
+    date: { total: 0, correct: 0, pct: 0 },
+    label: { total: 0, correct: 0, pct: 0 },
+    score: { total: 0, correct: 0, pct: 0 },
+    feature: { total: 0, correct: 0, pct: 0 },
+  };
+  for (const s of results) {
+    for (const [role, st] of Object.entries(s.perRoleAccuracy)) {
+      if (!roleAccuracy[role]) roleAccuracy[role] = { total: 0, correct: 0, pct: 0 };
+      roleAccuracy[role].total += st.total;
+      roleAccuracy[role].correct += st.correct;
+    }
+  }
+  for (const r of Object.keys(roleAccuracy)) {
+    roleAccuracy[r].pct = +(roleAccuracy[r].total > 0 ? (roleAccuracy[r].correct / roleAccuracy[r].total) * 100 : 0).toFixed(1);
+  }
+
+  return {
+    groupName,
+    suites: results,
+    roleAccuracy,
+    totalColumns: totalColsAll,
+    correctColumns: correctColsAll,
+    overallAccuracyPct,
+    totalCorrectionsNeeded,
+    totalDurationMs: totalDurationAll,
+    totalTokensUsed: totalTokensAll,
+  };
+}
+
+export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined'): Promise<{
+  provider: string;
+  development: SuiteGroupEvalResult;
+  heldout: SuiteGroupEvalResult;
+  integrity: FrozenIntegrityCheck;
+  overallAccuracyPct: number;
+  totalCorrectionsNeeded: number;
+  totalDurationMs: number;
+  totalTokensUsed: number;
+}> {
+  const devSuites = await ensureEvalDatasets();
+  const heldoutSuites = getHeldoutSuites();
+  const integrity = verifyHeldoutIntegrity();
+
+  let provider: SuggestionProvider;
+  if (providerName === 'ai') {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.warn('⚠️ ไม่พบ ANTHROPIC_API_KEY ในสภาพแวดล้อม — สลับเป็น heuristic อัตโนมัติ');
+      provider = heuristicProvider;
+    } else {
+      provider = new AiSuggestionProvider();
+    }
+  } else if (providerName === 'combined') {
+    provider = new CombinedSuggestionProvider();
+  } else {
+    provider = heuristicProvider;
+  }
+
+  const development = await evaluateSuiteGroup('development', devSuites, provider);
+  const heldout = await evaluateSuiteGroup('heldout', heldoutSuites, provider);
+
+  const totalColsAll = development.totalColumns + heldout.totalColumns;
+  const correctColsAll = development.correctColumns + heldout.correctColumns;
+  const overallAccuracyPct = totalColsAll > 0 ? +((correctColsAll / totalColsAll) * 100).toFixed(2) : 0;
+  const totalCorrectionsNeeded = totalColsAll - correctColsAll;
+  const totalDurationMs = development.totalDurationMs + heldout.totalDurationMs;
+  const totalTokensUsed = development.totalTokensUsed + heldout.totalTokensUsed;
 
   // Write CSV result
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const csvOutPath = join(RESULTS_DIR, `eval_suggestions_${providerName}_${timestamp}.csv`);
-  const csvRows = results.map(r => ({
-    provider: providerName,
-    suite_id: r.suiteId,
-    suite_name: r.suiteName,
-    total_columns: r.totalColumns,
-    correct_columns: r.correctColumns,
-    accuracy_pct: r.accuracyPct,
-    corrections_needed: r.correctionsNeeded,
-    duration_ms: r.durationMs,
-    tokens_used: r.tokensUsed,
-  }));
+  const csvRows = [
+    ...development.suites.map(r => ({
+      provider: providerName,
+      suite_group: 'development',
+      suite_id: r.suiteId,
+      suite_name: r.suiteName,
+      total_columns: r.totalColumns,
+      correct_columns: r.correctColumns,
+      accuracy_pct: r.accuracyPct,
+      corrections_needed: r.correctionsNeeded,
+      duration_ms: r.durationMs,
+      tokens_used: r.tokensUsed,
+    })),
+    ...heldout.suites.map(r => ({
+      provider: providerName,
+      suite_group: 'heldout',
+      suite_id: r.suiteId,
+      suite_name: r.suiteName,
+      total_columns: r.totalColumns,
+      correct_columns: r.correctColumns,
+      accuracy_pct: r.accuracyPct,
+      corrections_needed: r.correctionsNeeded,
+      duration_ms: r.durationMs,
+      tokens_used: r.tokensUsed,
+    })),
+  ];
   writeFileSync(
     csvOutPath,
     toCsv(csvRows, [
       'provider',
+      'suite_group',
       'suite_id',
       'suite_name',
       'total_columns',
@@ -404,11 +602,13 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
 
   return {
     provider: providerName,
-    suites: results,
+    development,
+    heldout,
+    integrity,
     overallAccuracyPct,
     totalCorrectionsNeeded,
-    totalDurationMs: totalDurationAll,
-    totalTokensUsed: totalTokensAll,
+    totalDurationMs,
+    totalTokensUsed,
   };
 }
 
@@ -430,8 +630,12 @@ async function main() {
 
   const summary = await runEvaluation(providerArg);
 
+  // ─── Section 1: Development Suites (8 Suites) ───────────────
+  console.log(`\n══════════════════════════════════════════════════════════════════`);
+  console.log(`  Part 1: Development Suites (8 Suites)`);
+  console.log(`══════════════════════════════════════════════════════════════════`);
   console.table(
-    summary.suites.map(s => ({
+    summary.development.suites.map(s => ({
       'Suite Name': s.suiteName,
       'Columns': s.totalColumns,
       'Correct': s.correctColumns,
@@ -441,37 +645,53 @@ async function main() {
     })),
   );
 
-  // Role-level breakdown across all evaluated suites
-  const roleAgg: Record<string, { total: number; correct: number }> = {
-    id: { total: 0, correct: 0 },
-    date: { total: 0, correct: 0 },
-    label: { total: 0, correct: 0 },
-    score: { total: 0, correct: 0 },
-    feature: { total: 0, correct: 0 },
-  };
-  for (const s of summary.suites) {
-    if (s.perRoleAccuracy) {
-      for (const [role, data] of Object.entries(s.perRoleAccuracy)) {
-        if (!roleAgg[role]) roleAgg[role] = { total: 0, correct: 0 };
-        roleAgg[role].total += data.total;
-        roleAgg[role].correct += data.correct;
-      }
-    }
-  }
-
-  console.log(`\n--- Accuracy by Column Role (id / date / label / score / feature) ---`);
+  console.log(`\n--- Development Role Breakdown (id / date / label / score / feature) ---`);
   console.table(
-    Object.entries(roleAgg).map(([role, st]) => ({
+    Object.entries(summary.development.roleAccuracy).map(([role, st]) => ({
       'Role': role,
       'Total Columns': st.total,
       'Correct': st.correct,
-      'Accuracy (%)': `${st.total > 0 ? ((st.correct / st.total) * 100).toFixed(1) : '0'}%`,
+      'Accuracy (%)': `${st.pct}%`,
       'Corrections Needed': st.total - st.correct,
     })),
   );
+  console.log(`Development Overall Accuracy: ${summary.development.overallAccuracyPct}% (${summary.development.totalCorrectionsNeeded} corrections needed across 8 suites)`);
+
+  // ─── Section 2: Held-Out Suites (Frozen D1–D3) ───────────────
+  console.log(`\n══════════════════════════════════════════════════════════════════`);
+  console.log(`  Part 2: Held-Out Suites (Frozen D1–D3)`);
+  console.log(`══════════════════════════════════════════════════════════════════`);
+  if (summary.integrity.warning) {
+    console.warn(`\n${summary.integrity.warning}\n`);
+  } else {
+    console.log(`🔒 Frozen integrity verified (heuristic.ts SHA256: ${summary.integrity.heuristicCurrentSha.slice(0, 12)}... matches FROZEN.json)`);
+  }
+
+  console.table(
+    summary.heldout.suites.map(s => ({
+      'Suite Name': s.suiteName,
+      'Columns': s.totalColumns,
+      'Correct': s.correctColumns,
+      'Accuracy (%)': `${s.accuracyPct}%`,
+      'Corrections': s.correctionsNeeded,
+      'Latency (ms)': `${s.durationMs}ms`,
+    })),
+  );
+
+  console.log(`\n--- Held-Out Role Breakdown (id / date / label / score / feature) ---`);
+  console.table(
+    Object.entries(summary.heldout.roleAccuracy).map(([role, st]) => ({
+      'Role': role,
+      'Total Columns': st.total,
+      'Correct': st.correct,
+      'Accuracy (%)': `${st.pct}%`,
+      'Corrections Needed': st.total - st.correct,
+    })),
+  );
+  console.log(`Held-Out Overall Accuracy: ${summary.heldout.overallAccuracyPct}% (${summary.heldout.totalCorrectionsNeeded} corrections needed across 3 held-out suites)`);
 
   console.log(`\n------------------------------------------------------`);
-  console.log(`Overall Accuracy: ${summary.overallAccuracyPct}% (${summary.totalCorrectionsNeeded} corrections needed across ${summary.suites.length} suites)`);
+  console.log(`Combined (Dev + Heldout) Accuracy: ${summary.overallAccuracyPct}% (${summary.totalCorrectionsNeeded} corrections needed across ${summary.development.suites.length + summary.heldout.suites.length} suites)`);
   console.log(`Total Latency: ${summary.totalDurationMs}ms | Total Tokens: ${summary.totalTokensUsed}`);
   console.log(`Result written to: results/eval_suggestions_${providerArg}_*.csv\n`);
 }

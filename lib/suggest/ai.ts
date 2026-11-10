@@ -19,7 +19,8 @@ import type {
   SuggestFeatureOptions,
   SuggestionProvider,
 } from './types';
-import type { FeatureDataType } from '../types';
+import type { BaselineValidationReport, FeatureDataType } from '../types';
+import type { XlsxWorksheet } from '../scorecardImport';
 
 export const DEFAULT_AI_MODEL = 'claude-3-5-sonnet-latest';
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -29,18 +30,77 @@ const SENSITIVE_NAME_RE =
   /(?:^|[_\s-]|\b)(id|no|cust|acct|account|phone|tel|email|card|citizen|pid|nid|ssn|name)(?:$|[_\s-]|\b)|รหัส|เลข|บัตร|เบอร์|โทร|อีเมล|ชื่อ/i;
 
 /**
- * Masks identifier/PII strings for PDPA compliance.
- * e.g. "EXT0012" -> "EXT***", "0812345678" -> "081***", "test@bank.com" -> "te***@***"
+ * Rounds a number to a specified number of significant figures (defaults to 2).
+ * e.g. 23950 -> 24000, 0.0164 -> 0.016, 0.53 -> 0.53
  */
-export function maskSensitiveSample(val: unknown, isSensitiveColumn = false): string | number {
-  if (typeof val === 'number') {
-    if (!Number.isFinite(val)) return 0;
-    // Round to at most 2 significant digits to avoid leaking exact customer values
-    const mag = Math.pow(10, Math.floor(Math.log10(Math.abs(val) || 1)) - 1);
-    return Math.round(val / mag) * mag;
+export function roundToSigFigs(val: number, sigFigs = 2): number {
+  if (!Number.isFinite(val) || val === 0) return 0;
+  return Number(val.toPrecision(sigFigs));
+}
+
+/**
+ * Formats any date string or Date instance strictly to YYYY-MM (drops day of month).
+ */
+export function formatDateToYearMonth(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  const s = String(val).trim();
+  if (!s) return '';
+
+  const isoMatch = s.match(/^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}`;
   }
+
+  const dmyMatch = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}`;
+  }
+
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+
+  return s;
+}
+
+/**
+ * Masks identifier/PII strings and rounds numbers/dates for PDPA compliance.
+ * e.g. "EXT0012" -> "EXT***", "0812345678" -> "081***", "2024-01-15" -> "2024-01", 23950 -> 24000
+ */
+export function maskSensitiveSample(
+  val: unknown,
+  isSensitiveColumn = false,
+  inferredType?: FeatureDataType,
+): string | number {
+  if (val === null || val === undefined) return '';
+
+  if (typeof val === 'number') {
+    return roundToSigFigs(val, 2);
+  }
+
   const s = String(val ?? '').trim();
   if (!s) return '';
+
+  // If numeric column or numeric string
+  if (inferredType === 'numeric' || inferredType === 'binary') {
+    const n = Number(s);
+    if (Number.isFinite(n)) {
+      return roundToSigFigs(n, 2);
+    }
+  }
+
+  // If date column or date-like value -> only YYYY-MM
+  if (
+    inferredType === 'date' ||
+    /^\d{4}[-/]\d{1,2}/.test(s) ||
+    /^\d{1,2}[-/]\d{1,2}[-/]\d{4}/.test(s)
+  ) {
+    const ym = formatDateToYearMonth(s);
+    if (ym) return ym;
+  }
 
   if (s.includes('@')) {
     const [user, domain] = s.split('@');
@@ -57,7 +117,8 @@ export function maskSensitiveSample(val: unknown, isSensitiveColumn = false): st
 
 /**
  * Builds a privacy-safe, aggregated payload for AI suggestions (Step 10d.B).
- * NEVER includes customer rows. Includes only column summaries and masked samples.
+ * NEVER includes customer rows. Includes only column summaries, rounded numbers (2 sig figs),
+ * dates truncated to YYYY-MM, and masked samples.
  */
 export function buildAiPayload(
   profile: DatasetProfile,
@@ -70,27 +131,27 @@ export function buildAiPayload(
     const isSensitive = SENSITIVE_NAME_RE.test(col.column);
     const maskedSamples = (col.sampleValues || [])
       .slice(0, maxSamples)
-      .map(v => maskSensitiveSample(v, isSensitive));
+      .map(v => maskSensitiveSample(v, isSensitive, col.inferredType));
 
     const item: AiColumnProfileSummary = {
       column: col.column,
       inferredType: col.inferredType,
       nonNullCount: col.nonNullCount,
       missingCount: col.missingCount,
-      missingRate: col.missingRate,
+      missingRate: roundToSigFigs(col.missingRate, 2),
       uniqueCount: col.uniqueCount,
-      uniqueRatio: col.uniqueRatio,
+      uniqueRatio: roundToSigFigs(col.uniqueRatio, 2),
       sampleValues: maskedSamples,
     };
 
     if (col.numericStats) {
       item.numericStats = {
-        min: col.numericStats.min,
-        p5: col.numericStats.p5,
-        median: col.numericStats.median,
-        p95: col.numericStats.p95,
-        max: col.numericStats.max,
-        skewness: col.numericStats.skewness,
+        min: roundToSigFigs(col.numericStats.min, 2),
+        p5: roundToSigFigs(col.numericStats.p5, 2),
+        median: roundToSigFigs(col.numericStats.median, 2),
+        p95: roundToSigFigs(col.numericStats.p95, 2),
+        max: roundToSigFigs(col.numericStats.max, 2),
+        skewness: roundToSigFigs(col.numericStats.skewness, 2),
         isBinaryZeroOne: col.numericStats.isBinaryZeroOne,
       };
     }
@@ -107,6 +168,79 @@ export function buildAiPayload(
     rowCount: profile.rowCount,
     columns,
   };
+}
+
+/**
+ * Privacy-safe builder for validation report explanation requests sent to AI.
+ * Strips raw error arrays, customer-level details, and formats numbers to 2 sig figs.
+ */
+export function buildAiValidationExplanationPayload(report: BaselineValidationReport): {
+  ok: boolean;
+  errorsCount: number;
+  warningsCount: number;
+  computed?: {
+    rowCount: number;
+    badCount: number;
+    badRatePct: number;
+    auc?: number;
+    ks?: number;
+    gini?: number;
+    referenceFlaggedCount: number;
+    referenceFlaggedPct: number;
+    multivariateFitMs: number;
+  };
+} {
+  const c = report.computed;
+  return {
+    ok: report.ok,
+    errorsCount: report.errors?.length ?? 0,
+    warningsCount: report.warnings?.length ?? 0,
+    computed: c
+      ? {
+          rowCount: c.rowCount,
+          badCount: c.badCount ?? 0,
+          badRatePct: c.badRate != null ? roundToSigFigs(c.badRate * 100, 2) : 0,
+          auc: c.performance?.auc != null ? roundToSigFigs(c.performance.auc, 2) : undefined,
+          ks: c.performance?.ks != null ? roundToSigFigs(c.performance.ks, 2) : undefined,
+          gini: c.performance?.gini != null ? roundToSigFigs(c.performance.gini, 2) : undefined,
+          referenceFlaggedCount: c.referenceFlaggedCount ?? 0,
+          referenceFlaggedPct: roundToSigFigs(c.referenceFlaggedPct ?? 0, 2),
+          multivariateFitMs: roundToSigFigs(c.multivariateFitMs ?? 0, 2),
+        }
+      : undefined,
+  };
+}
+
+/**
+ * Filters workbook sheets to ONLY send scorecard tables to AI,
+ * strictly excluding any customer data rows or extraneous sheets.
+ */
+export function buildAiScorecardPayload(sheets: XlsxWorksheet[]): string {
+  const SCORECARD_SHEET_RE = /scorecard|คะแนน|weight|point|model|coef|woe|cut/i;
+  let relevantSheets = sheets.filter(s => SCORECARD_SHEET_RE.test(s.name));
+  if (relevantSheets.length === 0) {
+    relevantSheets = sheets.filter(s => {
+      const top = s.matrix.slice(0, 5).flat().map(v => String(v).toLowerCase());
+      return top.some(k => k.includes('point') || k.includes('woe') || k.includes('bin') || k.includes('คะแนน'));
+    });
+  }
+  if (relevantSheets.length === 0) {
+    relevantSheets = sheets.slice(0, 1);
+  }
+
+  const parts: string[] = [];
+  for (const s of relevantSheets) {
+    parts.push(`=== Scorecard Sheet: "${s.name}" (Rows: ${s.rowCount}) ===`);
+    const previewRows = s.matrix.slice(0, 50);
+    for (const r of previewRows) {
+      parts.push(r.join(' | '));
+    }
+    if (s.matrix.length > 50) {
+      parts.push(`... (${s.matrix.length - 50} more rows omitted)`);
+    }
+    parts.push('');
+  }
+  return parts.join('\n');
 }
 
 export interface AiSuggestionProviderOptions {

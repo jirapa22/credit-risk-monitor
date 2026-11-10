@@ -16,7 +16,12 @@ import {
   type ScorecardImportResult,
   type XlsxWorksheet,
 } from '../scorecardImport';
-import { DEFAULT_AI_MODEL, DEFAULT_TIMEOUT_MS, DEFAULT_MAX_RETRIES } from './ai';
+import {
+  DEFAULT_AI_MODEL,
+  DEFAULT_TIMEOUT_MS,
+  DEFAULT_MAX_RETRIES,
+  buildAiScorecardPayload,
+} from './ai';
 
 export interface ScorecardExtractionOptions {
   referenceRows?: Record<string, unknown>[];
@@ -30,22 +35,6 @@ export interface AiScorecardExtractionResult extends ScorecardImportResult {
   autoAccepted: boolean;
   extractedBy: 'ai' | 'heuristic';
   rawSheetSummaries: { name: string; rowCount: number }[];
-}
-
-function formatSheetsForAiPrompt(sheets: XlsxWorksheet[]): string {
-  const parts: string[] = [];
-  for (const s of sheets) {
-    parts.push(`=== Sheet: "${s.name}" (Rows: ${s.rowCount}) ===`);
-    const previewRows = s.matrix.slice(0, 35);
-    for (const r of previewRows) {
-      parts.push(r.join(' | '));
-    }
-    if (s.matrix.length > 35) {
-      parts.push(`... (${s.matrix.length - 35} more rows omitted)`);
-    }
-    parts.push('');
-  }
-  return parts.join('\n');
 }
 
 /**
@@ -103,7 +92,7 @@ export async function extractScorecardWithAi(
   }
 
   const model = options.model || process.env.AI_MODEL || DEFAULT_AI_MODEL;
-  const promptText = formatSheetsForAiPrompt(sheets);
+  const promptText = buildAiScorecardPayload(sheets);
 
   const systemPrompt = `You are a credit scoring model expert. Inspect the Excel sheets provided and extract the credit scorecard specification:
 1. Identify the sheet that contains the Scorecard table and base points.
@@ -234,3 +223,4 @@ Return JSON strictly according to submit_extracted_scorecard tool.`;
     };
   }
 }
+

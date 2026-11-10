@@ -441,6 +441,35 @@ async function main() {
     })),
   );
 
+  // Role-level breakdown across all evaluated suites
+  const roleAgg: Record<string, { total: number; correct: number }> = {
+    id: { total: 0, correct: 0 },
+    date: { total: 0, correct: 0 },
+    label: { total: 0, correct: 0 },
+    score: { total: 0, correct: 0 },
+    feature: { total: 0, correct: 0 },
+  };
+  for (const s of summary.suites) {
+    if (s.perRoleAccuracy) {
+      for (const [role, data] of Object.entries(s.perRoleAccuracy)) {
+        if (!roleAgg[role]) roleAgg[role] = { total: 0, correct: 0 };
+        roleAgg[role].total += data.total;
+        roleAgg[role].correct += data.correct;
+      }
+    }
+  }
+
+  console.log(`\n--- Accuracy by Column Role (id / date / label / score / feature) ---`);
+  console.table(
+    Object.entries(roleAgg).map(([role, st]) => ({
+      'Role': role,
+      'Total Columns': st.total,
+      'Correct': st.correct,
+      'Accuracy (%)': `${st.total > 0 ? ((st.correct / st.total) * 100).toFixed(1) : '0'}%`,
+      'Corrections Needed': st.total - st.correct,
+    })),
+  );
+
   console.log(`\n------------------------------------------------------`);
   console.log(`Overall Accuracy: ${summary.overallAccuracyPct}% (${summary.totalCorrectionsNeeded} corrections needed across ${summary.suites.length} suites)`);
   console.log(`Total Latency: ${summary.totalDurationMs}ms | Total Tokens: ${summary.totalTokensUsed}`);

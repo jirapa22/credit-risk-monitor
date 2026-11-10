@@ -151,6 +151,69 @@ describe('Step 10d — AI-assisted Baseline Onboarding Guardrails', () => {
     expect(maskSensitiveSample('1100501234567', true)).toBe('110***');
   });
 
+  // ── (2b) Independent Per-Column Sampling + Rounding for PDPA ───────────────
+  it('(2b) independent per-column sampling prevents row reconstruction (PDPA disjoint test), rounds numbers to 2 sig figs, and truncates dates to YYYY-MM', () => {
+    // 1. Dataset where each row has unique, distinguishable values
+    const N = 40;
+    const testCols = ['col_id', 'col_date', 'col_income', 'col_loan', 'col_rate', 'col_cat'];
+    const uniqueRows: Record<string, unknown>[] = Array.from({ length: N }, (_, i) => ({
+      col_id: `ID_${String(i).padStart(3, '0')}`,
+      col_date: `2024-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+      col_income: 10000 + (i + 1) * 1234,
+      col_loan: 50000 + (i + 1) * 3456,
+      col_rate: +(0.05 + (i + 1) * 0.0123).toFixed(4),
+      col_cat: `CAT_${i}`,
+    }));
+
+    const profile = buildDatasetProfile('test_pdpa_unique', uniqueRows, testCols);
+
+    // Verify row overlap across sampled columns:
+    // Count how many columns sampled a value originating from row i
+    const rowHits = new Array(N).fill(0);
+    for (const c of profile.columns) {
+      for (const sample of c.sampleValues) {
+        const originRowIdx = uniqueRows.findIndex(r => r[c.column] === sample);
+        if (originRowIdx !== -1) {
+          rowHits[originRowIdx]++;
+        }
+      }
+    }
+
+    // Strictly verify that no row in the original file had samples chosen in > 2 columns
+    for (let i = 0; i < N; i++) {
+      expect(rowHits[i]).toBeLessThanOrEqual(2);
+    }
+    const maxRowHits = Math.max(...rowHits);
+    expect(maxRowHits).toBeLessThanOrEqual(2);
+
+    // 2. Test buildAiPayload rounding & date truncation
+    const payload = buildAiPayload(profile);
+
+    // Date column: only YYYY-MM format (no day)
+    const dateCol = payload.columns.find(c => c.column === 'col_date');
+    expect(dateCol).toBeDefined();
+    for (const sample of dateCol!.sampleValues) {
+      expect(String(sample)).toMatch(/^\d{4}-\d{2}$/);
+    }
+
+    // Numeric columns: stats & samples rounded to 2 sig figs
+    const incCol = payload.columns.find(c => c.column === 'col_income');
+    expect(incCol).toBeDefined();
+    expect(incCol!.numericStats).toBeDefined();
+    const stats = incCol!.numericStats!;
+    for (const key of ['min', 'p5', 'median', 'p95', 'max', 'skewness'] as const) {
+      const val = stats[key] as number;
+      if (val !== 0) {
+        expect(Number(val.toPrecision(2))).toBe(val);
+      }
+    }
+    for (const sample of incCol!.sampleValues) {
+      if (typeof sample === 'number' && sample !== 0) {
+        expect(Number(sample.toPrecision(2))).toBe(sample);
+      }
+    }
+  });
+
   // ── (3) Number Grounding: Hallucinated Numbers are Discarded ────────────────
   it('(3) number grounding verifies numbers against report and discards hallucinated numbers', () => {
     const mockReport: BaselineValidationReport = {

@@ -264,7 +264,7 @@ export const heuristicProvider: SuggestionProvider = {
 
     // Fallback if no 'id' was matched by name: pick first column with uniqueRatio >= 0.98
     if (!drafts.some(d => d.role === 'id')) {
-      const idx = profile.columns.findIndex(c => c.uniqueRatio >= 0.98);
+      const idx = profile.columns.findIndex(c => c.uniqueRatio >= 0.98 && c.inferredType === 'string');
       if (idx !== -1) {
         drafts[idx] = {
           column: profile.columns[idx].column,
@@ -272,6 +272,58 @@ export const heuristicProvider: SuggestionProvider = {
           type: profile.columns[idx].inferredType,
           confidence: 0.75,
           reason: `ทุกแถวมีค่าไม่ซ้ำกัน (${(profile.columns[idx].uniqueRatio * 100).toFixed(1)}%) จึงแนะนำให้ใช้เป็นคอลัมน์รหัสอ้างอิง (id)`,
+        };
+      }
+    }
+
+    // Fallback if no 'label' was matched by name: check for binary 0/1 variable
+    if (!drafts.some(d => d.role === 'label')) {
+      const idx = profile.columns.findIndex(
+        (c, i) =>
+          drafts[i].role !== 'id' &&
+          drafts[i].role !== 'date' &&
+          (c.inferredType === 'binary' ||
+            (c.numericStats?.isBinaryZeroOne === true && c.uniqueCount <= 2)),
+      );
+      if (idx !== -1) {
+        drafts[idx] = {
+          column: profile.columns[idx].column,
+          role: 'label',
+          type: 'binary',
+          confidence: 0.85,
+          reason: `ไม่มีชื่อคอลัมน์บอกใบ้ แต่พบตัวแปรทวิภาค (0/1) ที่มีสัดส่วนสอดคล้องกับตัวแปรเป้าหมาย (label)`,
+        };
+      }
+    }
+
+    // Fallback if no 'score' was matched by name: check for continuous PD in [0, 1] or credit score [200, 1000]
+    if (!drafts.some(d => d.role === 'score')) {
+      const idx = profile.columns.findIndex((c, i) => {
+        if (drafts[i].role === 'id' || drafts[i].role === 'date' || drafts[i].role === 'label') {
+          return false;
+        }
+        if (c.inferredType !== 'numeric' || !c.numericStats) return false;
+        if (c.numericStats.isBinaryZeroOne || c.uniqueCount < 5) return false;
+        // Case A: continuous PD probability in [0, 1]
+        const isPdProbability =
+          c.numericStats.min >= 0 &&
+          c.numericStats.max <= 1.0 &&
+          c.numericStats.median < 0.6 &&
+          c.uniqueCount >= 10;
+        // Case B: standard credit score in [200, 1000]
+        const isStandardScore =
+          c.numericStats.min >= 200 &&
+          c.numericStats.max <= 1000 &&
+          c.numericStats.median >= 300;
+        return isPdProbability || isStandardScore;
+      });
+      if (idx !== -1) {
+        drafts[idx] = {
+          column: profile.columns[idx].column,
+          role: 'score',
+          type: 'numeric',
+          confidence: 0.84,
+          reason: `ไม่มีชื่อคอลัมน์บอกใบ้ แต่พบตัวแปรตัวเลขที่มีการกระจายตัวสอดคล้องกับคะแนน/ความน่าจะเป็นผิดนัด (score)`,
         };
       }
     }

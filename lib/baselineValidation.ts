@@ -45,6 +45,25 @@ export interface ValidateBaselineOptions {
 /**
  * Infers column schemas from raw reference rows (used by `POST /api/registry/references` for Step 10c).
  */
+function hashColumnName(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function createRng(seed: number) {
+  let s = seed >>> 0;
+  return function next(): number {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 export function inferColumnsFromRows(
   rows: Record<string, unknown>[],
   columns?: string[],
@@ -56,20 +75,63 @@ export function inferColumnsFromRows(
         ? Object.keys(rows[0])
         : [];
   const total = rows.length;
+  // Track row usage across columns to prevent samples from reconstructing full customer rows (PDPA)
+  const rowUsageCount = new Array(total).fill(0);
 
   return cols.map(name => {
     const nonBlank: unknown[] = [];
-    for (const r of rows) {
-      if (!isBlank(r[name])) nonBlank.push(r[name]);
+    const nonBlankEntries: { rowIdx: number; val: unknown; strVal: string }[] = [];
+    for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+      const val = rows[rIdx][name];
+      if (!isBlank(val)) {
+        nonBlank.push(val);
+        nonBlankEntries.push({ rowIdx: rIdx, val, strVal: String(val).trim() });
+      }
     }
     const nonNullCount = nonBlank.length;
     const missingCount = total - nonNullCount;
     const missingRate = total > 0 ? missingCount / total : 0;
     const uniqueSet = new Set(nonBlank.map(v => String(v).trim()));
     const lowerUniqueSet = new Set(nonBlank.map(v => String(v).trim().toLowerCase()));
-    const sampleValues = [...uniqueSet].slice(0, 5).map(v => {
-      const n = parseNumber(v);
-      return Number.isFinite(n) ? n : v;
+
+    // Independent per-column PRNG seeded with column name hash
+    const colRng = createRng(hashColumnName(name) ^ 0x85ebca6b);
+
+    // Group non-blank entries by unique string value, selecting row with lowest current usage
+    const uniqueMap = new Map<string, { rowIdx: number; val: unknown; usage: number }>();
+    for (const entry of nonBlankEntries) {
+      const existing = uniqueMap.get(entry.strVal);
+      const usage = rowUsageCount[entry.rowIdx];
+      if (!existing || usage < existing.usage) {
+        uniqueMap.set(entry.strVal, { rowIdx: entry.rowIdx, val: entry.val, usage });
+      }
+    }
+
+    // Convert to candidate list and sort by lowest rowUsageCount first (ties randomized via colRng)
+    const uniqueCandidates = Array.from(uniqueMap.values());
+    uniqueCandidates.sort((a, b) => {
+      if (a.usage !== b.usage) return a.usage - b.usage;
+      return colRng() - 0.5;
+    });
+
+    const chosen = uniqueCandidates.slice(0, 5);
+
+    // Mark row usage so subsequent columns pick different rows
+    for (const c of chosen) {
+      rowUsageCount[c.rowIdx]++;
+    }
+
+    // Shuffle the chosen sample values using column PRNG so order is not in row order
+    for (let i = chosen.length - 1; i > 0; i--) {
+      const j = Math.floor(colRng() * (i + 1));
+      const tmp = chosen[i];
+      chosen[i] = chosen[j];
+      chosen[j] = tmp;
+    }
+
+    const sampleValues: (string | number)[] = chosen.map(c => {
+      const n = parseNumber(c.val);
+      return Number.isFinite(n) ? n : String(c.val);
     });
 
     let inferredType: FeatureDataType = 'string';

@@ -236,3 +236,4 @@ export class CombinedSuggestionProvider implements SuggestionProvider {
       });
   }
 }
+

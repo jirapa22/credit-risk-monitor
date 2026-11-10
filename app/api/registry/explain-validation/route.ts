@@ -8,7 +8,12 @@
 import { NextResponse } from 'next/server';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { verifyNumberGrounding } from '../../../../lib/suggest/grounding';
-import { DEFAULT_AI_MODEL, DEFAULT_TIMEOUT_MS, DEFAULT_MAX_RETRIES } from '../../../../lib/suggest/ai';
+import {
+  DEFAULT_AI_MODEL,
+  DEFAULT_TIMEOUT_MS,
+  DEFAULT_MAX_RETRIES,
+  buildAiValidationExplanationPayload,
+} from '../../../../lib/suggest/ai';
 import type { BaselineValidationReport } from '../../../../lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -70,7 +75,7 @@ If any number is not present in the report, the automated verification system wi
       messages: [
         {
           role: 'user',
-          content: `Explain this baseline validation report in 3-5 sentences:\n${JSON.stringify(report, null, 2)}`,
+          content: `Explain this baseline validation report in 3-5 sentences:\n${JSON.stringify(buildAiValidationExplanationPayload(report), null, 2)}`,
         },
       ],
     });

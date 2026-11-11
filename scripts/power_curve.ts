@@ -160,8 +160,11 @@ async function main() {
               let actScores: number[] = [];
               if (model.scoring?.scorecard && Object.keys(model.scoring.scorecard).length > 0) {
                 actScores = inj.rows.map(r => calculateAScore(model.scoring, r as any));
-              } else if (model.columns?.scoreColumn && inj.columns.includes(model.columns.scoreColumn)) {
-                actScores = inj.rows.map(r => Number(r[model.columns.scoreColumn])).filter(Number.isFinite);
+              } else {
+                const scCol = model.scoreColumn || model.columns?.scoreColumn;
+                if (scCol && inj.columns.includes(scCol)) {
+                  actScores = inj.rows.map(r => Number(r[scCol])).filter(Number.isFinite);
+                }
               }
               if (actScores.length > 0) {
                 const psiVal = psiWithBoundaries(profile.scores, actScores, profile.scoreBoundaries).value;
@@ -172,7 +175,7 @@ async function main() {
               }
             }
           } else if (typeKey === 'label_shift') {
-            const lblCol = model.columns?.labelColumn || 'default_flag';
+            const lblCol = model.labelColumn || model.columns?.labelColumn || 'default_flag';
             targetCol = lblCol;
             initMetric('label_rate');
 
@@ -318,3 +321,4 @@ main().catch(err => {
   console.error('Power curve error:', err);
   process.exit(1);
 });
+

@@ -1,0 +1,2795 @@
+{
+  "modelId": "ext_model",
+  "createdAt": "2026-11-11T15:08:53.525Z",
+  "quick": false,
+  "sizes": [
+    100,
+    250,
+    500,
+    1000,
+    2500
+  ],
+  "seeds": 30,
+  "curves": [
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0.2,
+          "calibrated": 0.1
+        },
+        "ks": {
+          "fixed": 0.2333,
+          "calibrated": 0.0333
+        },
+        "wasserstein": {
+          "fixed": 0.6333,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": 0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0.3,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 0.4,
+          "calibrated": 0
+        },
+        "wasserstein": {
+          "fixed": 0.7,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0.4,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 0.5,
+          "calibrated": 0.0333
+        },
+        "wasserstein": {
+          "fixed": 0.8,
+          "calibrated": 0.1
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.7333,
+          "calibrated": 0.2333
+        },
+        "ks": {
+          "fixed": 0.6667,
+          "calibrated": 0.5
+        },
+        "wasserstein": {
+          "fixed": 0.9333,
+          "calibrated": 0.3667
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.9333,
+          "calibrated": 0.5333
+        },
+        "ks": {
+          "fixed": 0.9667,
+          "calibrated": 0.8333
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 0.7333
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 0.9
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 0.9333
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "wasserstein": {
+          "fixed": 0.2333,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": 0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "ks": {
+          "fixed": 0.0333,
+          "calibrated": 0.1
+        },
+        "wasserstein": {
+          "fixed": 0.2333,
+          "calibrated": 0.1333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.1667
+        },
+        "ks": {
+          "fixed": 0.1333,
+          "calibrated": 0.2667
+        },
+        "wasserstein": {
+          "fixed": 0.5,
+          "calibrated": 0.2
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.2,
+          "calibrated": 0.6
+        },
+        "ks": {
+          "fixed": 0.6333,
+          "calibrated": 0.8667
+        },
+        "wasserstein": {
+          "fixed": 0.9,
+          "calibrated": 0.7333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.7,
+          "calibrated": 0.9667
+        },
+        "ks": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "wasserstein": {
+          "fixed": 0.0333,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": 0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.1
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.1667
+        },
+        "wasserstein": {
+          "fixed": 0.1333,
+          "calibrated": 0.1333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.2667
+        },
+        "ks": {
+          "fixed": 0.0667,
+          "calibrated": 0.4667
+        },
+        "wasserstein": {
+          "fixed": 0.3333,
+          "calibrated": 0.4
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.1,
+          "calibrated": 0.9
+        },
+        "ks": {
+          "fixed": 0.5667,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.9333,
+          "calibrated": 0.9333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.6,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": 0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.4333
+        },
+        "wasserstein": {
+          "fixed": 0.0333,
+          "calibrated": 0.3333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.6333
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.8667
+        },
+        "wasserstein": {
+          "fixed": 0.3333,
+          "calibrated": 0.7333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 0.6,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.5333,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": 0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.4
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.6
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0.5667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.0667,
+          "calibrated": 0.9667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 0.6333,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.3333,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0.2,
+          "calibrated": 0.1
+        },
+        "ks": {
+          "fixed": 0.2333,
+          "calibrated": 0.0333
+        },
+        "wasserstein": {
+          "fixed": 0.6333,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": -0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0.4667,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 0.8,
+          "calibrated": 0.2
+        },
+        "wasserstein": {
+          "fixed": 0.7667,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": -0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0.6,
+          "calibrated": 0.1667
+        },
+        "ks": {
+          "fixed": 0.7667,
+          "calibrated": 0.3667
+        },
+        "wasserstein": {
+          "fixed": 0.8,
+          "calibrated": 0.1667
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": -0.075,
+      "metrics": {
+        "csi": {
+          "fixed": 0.7667,
+          "calibrated": 0.3333
+        },
+        "ks": {
+          "fixed": 0.9333,
+          "calibrated": 0.5333
+        },
+        "wasserstein": {
+          "fixed": 0.9667,
+          "calibrated": 0.3333
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": -0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.8,
+          "calibrated": 0.5333
+        },
+        "ks": {
+          "fixed": 0.9667,
+          "calibrated": 0.7333
+        },
+        "wasserstein": {
+          "fixed": 0.9,
+          "calibrated": 0.5333
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": -0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.9667,
+          "calibrated": 0.6
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 0.9333
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 0.8667
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": -0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 0.9333
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 100,
+      "magnitude": -0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.2667,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "wasserstein": {
+          "fixed": 0.2333,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": -0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.1333
+        },
+        "ks": {
+          "fixed": 0.8,
+          "calibrated": 0.8667
+        },
+        "wasserstein": {
+          "fixed": 0.3,
+          "calibrated": 0.1333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": -0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0.1,
+          "calibrated": 0.3667
+        },
+        "ks": {
+          "fixed": 0.8667,
+          "calibrated": 0.9667
+        },
+        "wasserstein": {
+          "fixed": 0.6,
+          "calibrated": 0.4333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": -0.075,
+      "metrics": {
+        "csi": {
+          "fixed": 0.3,
+          "calibrated": 0.7667
+        },
+        "ks": {
+          "fixed": 0.9667,
+          "calibrated": 0.9667
+        },
+        "wasserstein": {
+          "fixed": 0.9,
+          "calibrated": 0.6667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": -0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.6,
+          "calibrated": 0.8667
+        },
+        "ks": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 0.9
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": -0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": -0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 250,
+      "magnitude": -0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "wasserstein": {
+          "fixed": 0.0333,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": -0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.3
+        },
+        "ks": {
+          "fixed": 0.7667,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.1667,
+          "calibrated": 0.2
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": -0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.7
+        },
+        "ks": {
+          "fixed": 0.9,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.6333,
+          "calibrated": 0.7667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": -0.075,
+      "metrics": {
+        "csi": {
+          "fixed": 0.1333,
+          "calibrated": 0.9333
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": -0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.4667,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": -0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": -0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 500,
+      "magnitude": -0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": -0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.3667
+        },
+        "ks": {
+          "fixed": 0.9,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.1333,
+          "calibrated": 0.5
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": -0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.9667
+        },
+        "ks": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.7,
+          "calibrated": 0.9667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": -0.075,
+      "metrics": {
+        "csi": {
+          "fixed": 0.0667,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": -0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.4,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": -0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": -0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 1000,
+      "magnitude": -0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": -0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.9333
+        },
+        "ks": {
+          "fixed": 0.9,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0.9333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": -0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 0.9333,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.8667,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": -0.075,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": -0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.0667,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": -0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": -0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "รายได้ต่อเดือน",
+      "n": 2500,
+      "magnitude": -0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 100,
+      "magnitude": 1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 100,
+      "magnitude": 1.1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 100,
+      "magnitude": 1.25,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 100,
+      "magnitude": 1.5,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.0333,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 100,
+      "magnitude": 2,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.3667,
+          "calibrated": 0.3667
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 250,
+      "magnitude": 1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 250,
+      "magnitude": 1.1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 250,
+      "magnitude": 1.25,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 250,
+      "magnitude": 1.5,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 250,
+      "magnitude": 2,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.4,
+          "calibrated": 0.4
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 500,
+      "magnitude": 1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 500,
+      "magnitude": 1.1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 500,
+      "magnitude": 1.25,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 500,
+      "magnitude": 1.5,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 500,
+      "magnitude": 2,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.6,
+          "calibrated": 0.6
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 1000,
+      "magnitude": 1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 1000,
+      "magnitude": 1.1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 1000,
+      "magnitude": 1.25,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 1000,
+      "magnitude": 1.5,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 1000,
+      "magnitude": 2,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.8,
+          "calibrated": 0.8
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 2500,
+      "magnitude": 1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 2500,
+      "magnitude": 1.1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 2500,
+      "magnitude": 1.25,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 2500,
+      "magnitude": 1.5,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "flag_npl_90",
+      "n": 2500,
+      "magnitude": 2,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.9333,
+          "calibrated": 0.9333
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 100,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0.0667,
+          "calibrated": 0.0667
+        },
+        "js": {
+          "fixed": 0.1333,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 100,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0.1333,
+          "calibrated": 0.2
+        },
+        "js": {
+          "fixed": 0.4,
+          "calibrated": 0.2
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 100,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.5,
+          "calibrated": 0.7333
+        },
+        "js": {
+          "fixed": 0.8667,
+          "calibrated": 0.7333
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 100,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.9667,
+          "calibrated": 0.9667
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 0.9667
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 100,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 100,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 100,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 250,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "js": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 250,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.5667
+        },
+        "js": {
+          "fixed": 0.1667,
+          "calibrated": 0.5667
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 250,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.3667,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 0.8667,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 250,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 250,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 250,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 250,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 500,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "js": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 500,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.8333
+        },
+        "js": {
+          "fixed": 0.0333,
+          "calibrated": 0.8333
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 500,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.2,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 0.9333,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 500,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 500,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 500,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 500,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 1000,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "js": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 1000,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 0,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 1000,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.0667,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 1000,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 1000,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 1000,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 1000,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 2500,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "js": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 2500,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 0,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 2500,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 2500,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 2500,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 2500,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "category_shift",
+      "targetFeature": "กลุ่มอาชีพ",
+      "n": 2500,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "js": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+provider,strategy,suite_group,suite_id,suite_name,actual_provider,total_columns,correct_columns,accuracy_pct,corrections_needed,duration_ms,prompt_tokens,completion_tokens,tokens_used
+combined,ai_primary,development,ascore_v1,A-Score v1 Reference,combined,6,6,100,0,6443,2002,987,2989
+combined,ai_primary,development,ext_model,External PD Model,combined,8,8,100,0,6775,2483,1060,3543
+combined,ai_primary,development,fake_model_1,Fake Model #1 (Standard Scorecard),combined,5,5,100,0,6264,1762,873,2635
+combined,ai_primary,development,fake_model_2,Fake Model #2 (With Categorical City),combined,5,5,100,0,4868,1732,722,2454
+combined,ai_primary,development,fake_model_3,Fake Model #3 (External Score),combined,7,7,100,0,6656,2180,1024,3204
+combined,ai_primary,development,tricky_a,Tricky Suite A (Bank Acronyms),combined,7,7,100,0,5917,2201,881,3082
+combined,ai_primary,development,tricky_b,Tricky Suite B (Trap Thai Words),combined,7,7,100,0,7514,2243,1177,3420
+combined,ai_primary,development,tricky_c,Tricky Suite C (Blind Names),combined,7,6,85.7,1,7023,2190,1013,3203
+combined,ai_primary,heldout,heldout_d1,"Held-out D1 (Numeric ID, Score 300-900, 2+ [0,1] features)",combined,7,7,100,0,7223,2286,1032,3318
+combined,ai_primary,heldout,heldout_d2,"Held-out D2 (Two dates: apply/birth, Thai status_90)",combined,7,7,100,0,6863,2190,1052,3242
+combined,ai_primary,heldout,heldout_d3,"Held-out D3 (Blind names v1..v9, 3 binary variables)",combined,9,8,88.9,1,9893,2572,1447,4019

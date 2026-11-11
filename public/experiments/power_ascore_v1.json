@@ -1,137 +1,140 @@
 {
   "modelId": "ascore_v1",
-  "createdAt": "2026-11-11T12:38:17.272Z",
-  "quick": true,
+  "createdAt": "2026-11-11T14:54:48.439Z",
+  "quick": false,
   "sizes": [
+    100,
     250,
-    1000
+    500,
+    1000,
+    2500
   ],
-  "seeds": 10,
+  "seeds": 30,
   "curves": [
     {
       "type": "mix_shift",
       "targetFeature": "monthly_income",
-      "n": 250,
+      "n": 100,
       "magnitude": 0,
       "metrics": {
         "csi": {
-          "fixed": 0,
-          "calibrated": 0.1
+          "fixed": 0.0333,
+          "calibrated": 0.0333
         },
         "ks": {
-          "fixed": 0,
-          "calibrated": 0
+          "fixed": 0.2,
+          "calibrated": 0.0333
         },
         "wasserstein": {
-          "fixed": 0.2,
+          "fixed": 0.5,
           "calibrated": 0
         },
         "psi": {
-          "fixed": 0,
-          "calibrated": 0.2
+          "fixed": 0.4667,
+          "calibrated": 0
         }
       }
     },
     {
       "type": "mix_shift",
       "targetFeature": "monthly_income",
-      "n": 250,
+      "n": 100,
       "magnitude": 0.025,
       "metrics": {
         "csi": {
-          "fixed": 0,
-          "calibrated": 0.2
-        },
-        "ks": {
-          "fixed": 0,
+          "fixed": 0.0333,
           "calibrated": 0.1
         },
+        "ks": {
+          "fixed": 0.2333,
+          "calibrated": 0.0333
+        },
         "wasserstein": {
-          "fixed": 0.3,
-          "calibrated": 0.2
+          "fixed": 0.5,
+          "calibrated": 0.0667
         },
         "psi": {
-          "fixed": 0,
-          "calibrated": 0.2
+          "fixed": 0.4333,
+          "calibrated": 0
         }
       }
     },
     {
       "type": "mix_shift",
       "targetFeature": "monthly_income",
-      "n": 250,
+      "n": 100,
       "magnitude": 0.05,
       "metrics": {
         "csi": {
-          "fixed": 0.1,
-          "calibrated": 0.4
+          "fixed": 0.0667,
+          "calibrated": 0.2
         },
         "ks": {
-          "fixed": 0.3,
-          "calibrated": 0.4
+          "fixed": 0.4,
+          "calibrated": 0.1
         },
         "wasserstein": {
-          "fixed": 0.4,
-          "calibrated": 0.3
+          "fixed": 0.6,
+          "calibrated": 0.0667
         },
         "psi": {
-          "fixed": 0,
-          "calibrated": 0.1
+          "fixed": 0.4333,
+          "calibrated": 0
         }
       }
     },
     {
       "type": "mix_shift",
       "targetFeature": "monthly_income",
-      "n": 250,
+      "n": 100,
       "magnitude": 0.1,
       "metrics": {
         "csi": {
-          "fixed": 0.2,
-          "calibrated": 0.7
+          "fixed": 0.3333,
+          "calibrated": 0.3667
         },
         "ks": {
-          "fixed": 0.7,
-          "calibrated": 0.9
+          "fixed": 0.6667,
+          "calibrated": 0.4333
         },
         "wasserstein": {
-          "fixed": 1,
-          "calibrated": 0.9
+          "fixed": 0.8667,
+          "calibrated": 0.3667
         },
         "psi": {
-          "fixed": 0,
-          "calibrated": 0.2
+          "fixed": 0.4667,
+          "calibrated": 0.0333
         }
       }
     },
     {
       "type": "mix_shift",
       "targetFeature": "monthly_income",
-      "n": 250,
+      "n": 100,
       "magnitude": 0.15,
       "metrics": {
         "csi": {
-          "fixed": 0.6,
-          "calibrated": 1
+          "fixed": 0.7333,
+          "calibrated": 0.8
         },
         "ks": {
           "fixed": 1,
-          "calibrated": 1
+          "calibrated": 0.9333
         },
         "wasserstein": {
           "fixed": 1,
-          "calibrated": 1
+          "calibrated": 0.7
         },
         "psi": {
-          "fixed": 0.1,
-          "calibrated": 0.2
+          "fixed": 0.4333,
+          "calibrated": 0.0667
         }
       }
     },
     {
       "type": "mix_shift",
       "targetFeature": "monthly_income",
-      "n": 250,
+      "n": 100,
       "magnitude": 0.2,
       "metrics": {
         "csi": {
@@ -144,11 +147,203 @@
         },
         "wasserstein": {
           "fixed": 1,
+          "calibrated": 0.9
+        },
+        "psi": {
+          "fixed": 0.6667,
+          "calibrated": 0.1667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 100,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.8,
+          "calibrated": 0.4667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 100,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.9333,
+          "calibrated": 0.7333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "wasserstein": {
+          "fixed": 0.0667,
+          "calibrated": 0
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": 0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.1333
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "wasserstein": {
+          "fixed": 0.1333,
+          "calibrated": 0.1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0.0333,
+          "calibrated": 0.3
+        },
+        "ks": {
+          "fixed": 0.1,
+          "calibrated": 0.2
+        },
+        "wasserstein": {
+          "fixed": 0.4667,
+          "calibrated": 0.2333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.0667,
+          "calibrated": 0.7
+        },
+        "ks": {
+          "fixed": 0.7,
+          "calibrated": 0.8667
+        },
+        "wasserstein": {
+          "fixed": 0.9,
+          "calibrated": 0.7667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.1
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.5333,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.0333,
+          "calibrated": 0.2333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
           "calibrated": 1
         },
         "psi": {
           "fixed": 0.1,
-          "calibrated": 0.6
+          "calibrated": 0.5
         }
       }
     },
@@ -171,8 +366,8 @@
           "calibrated": 1
         },
         "psi": {
-          "fixed": 0.7,
-          "calibrated": 1
+          "fixed": 0.6667,
+          "calibrated": 0.9667
         }
       }
     },
@@ -203,7 +398,7 @@
     {
       "type": "mix_shift",
       "targetFeature": "monthly_income",
-      "n": 1000,
+      "n": 500,
       "magnitude": 0,
       "metrics": {
         "csi": {
@@ -212,15 +407,207 @@
         },
         "ks": {
           "fixed": 0,
-          "calibrated": 0
+          "calibrated": 0.0333
         },
         "wasserstein": {
           "fixed": 0,
-          "calibrated": 0
+          "calibrated": 0.0667
         },
         "psi": {
           "fixed": 0,
-          "calibrated": 0
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": 0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.1333
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.1333
+        },
+        "wasserstein": {
+          "fixed": 0.0333,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.4667
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.4333
+        },
+        "wasserstein": {
+          "fixed": 0.2,
+          "calibrated": 0.3
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.1
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.9333
+        },
+        "ks": {
+          "fixed": 0.6,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.9333,
+          "calibrated": 0.9667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.3
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.4667,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.5333
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.8667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.5,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 1000,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0333
         }
       }
     },
@@ -232,19 +619,19 @@
       "metrics": {
         "csi": {
           "fixed": 0,
-          "calibrated": 0.1
+          "calibrated": 0.2
         },
         "ks": {
           "fixed": 0,
-          "calibrated": 0.2
+          "calibrated": 0.2333
         },
         "wasserstein": {
-          "fixed": 0,
-          "calibrated": 0.2
+          "fixed": 0.0667,
+          "calibrated": 0.2667
         },
         "psi": {
           "fixed": 0,
-          "calibrated": 0
+          "calibrated": 0.0333
         }
       }
     },
@@ -256,19 +643,19 @@
       "metrics": {
         "csi": {
           "fixed": 0,
-          "calibrated": 0.5
+          "calibrated": 0.6333
         },
         "ks": {
           "fixed": 0,
-          "calibrated": 1
+          "calibrated": 0.8333
         },
         "wasserstein": {
-          "fixed": 0.1,
-          "calibrated": 0.8
+          "fixed": 0.1667,
+          "calibrated": 0.7667
         },
         "psi": {
           "fixed": 0,
-          "calibrated": 0
+          "calibrated": 0.0333
         }
       }
     },
@@ -292,7 +679,7 @@
         },
         "psi": {
           "fixed": 0,
-          "calibrated": 0.3
+          "calibrated": 0.4333
         }
       }
     },
@@ -316,7 +703,7 @@
         },
         "psi": {
           "fixed": 0,
-          "calibrated": 0.8
+          "calibrated": 0.8667
         }
       }
     },
@@ -363,7 +750,7 @@
           "calibrated": 1
         },
         "psi": {
-          "fixed": 0.1,
+          "fixed": 0.2,
           "calibrated": 1
         }
       }
@@ -393,240 +780,816 @@
       }
     },
     {
-      "type": "mean_shift",
+      "type": "mix_shift",
       "targetFeature": "monthly_income",
-      "n": 250,
+      "n": 2500,
       "magnitude": 0,
       "metrics": {
         "csi": {
           "fixed": 0,
-          "calibrated": 0.1
+          "calibrated": 0.0667
         },
         "ks": {
           "fixed": 0,
-          "calibrated": 0
+          "calibrated": 0.1667
         },
         "wasserstein": {
-          "fixed": 0.2,
-          "calibrated": 0
+          "fixed": 0,
+          "calibrated": 0.1
         },
         "psi": {
           "fixed": 0,
-          "calibrated": 0.2
+          "calibrated": 0.1
         }
       }
     },
     {
-      "type": "mean_shift",
+      "type": "mix_shift",
       "targetFeature": "monthly_income",
-      "n": 250,
-      "magnitude": -0.025,
+      "n": 2500,
+      "magnitude": 0.025,
       "metrics": {
         "csi": {
           "fixed": 0,
-          "calibrated": 0.1
+          "calibrated": 0.4333
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.5333
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0.6333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.1667
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": 0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.3
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": 0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 0.4333,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.9
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": 0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.2667,
+          "calibrated": 1
         },
         "ks": {
           "fixed": 1,
           "calibrated": 1
         },
         "wasserstein": {
-          "fixed": 0.4,
-          "calibrated": 0.3
+          "fixed": 1,
+          "calibrated": 1
         },
         "psi": {
           "fixed": 0,
-          "calibrated": 0.2
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": 0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": 0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.0333,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mix_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": 0.4,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 1,
+          "calibrated": 1
         }
       }
     },
     {
       "type": "mean_shift",
       "targetFeature": "monthly_income",
-      "n": 250,
+      "n": 100,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0.0333,
+          "calibrated": 0.0333
+        },
+        "ks": {
+          "fixed": 0.2,
+          "calibrated": 0.0333
+        },
+        "wasserstein": {
+          "fixed": 0.5,
+          "calibrated": 0
+        },
+        "psi": {
+          "fixed": 0.4667,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 100,
+      "magnitude": -0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "ks": {
+          "fixed": 0.9667,
+          "calibrated": 0.5667
+        },
+        "wasserstein": {
+          "fixed": 0.7,
+          "calibrated": 0.1
+        },
+        "psi": {
+          "fixed": 0.3667,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 100,
       "magnitude": -0.05,
       "metrics": {
         "csi": {
           "fixed": 0,
-          "calibrated": 0.4
+          "calibrated": 0.1667
         },
         "ks": {
-          "fixed": 1,
-          "calibrated": 1
+          "fixed": 0.9667,
+          "calibrated": 0.6667
         },
         "wasserstein": {
-          "fixed": 0.7,
-          "calibrated": 0.6
+          "fixed": 0.7333,
+          "calibrated": 0.2
         },
         "psi": {
-          "fixed": 0,
-          "calibrated": 0.2
+          "fixed": 0.3667,
+          "calibrated": 0.1
         }
       }
     },
     {
       "type": "mean_shift",
       "targetFeature": "monthly_income",
-      "n": 250,
+      "n": 100,
       "magnitude": -0.075,
       "metrics": {
         "csi": {
-          "fixed": 0.1,
-          "calibrated": 0.6
-        },
-        "ks": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "wasserstein": {
-          "fixed": 1,
-          "calibrated": 0.9
-        },
-        "psi": {
-          "fixed": 0,
-          "calibrated": 0.2
-        }
-      }
-    },
-    {
-      "type": "mean_shift",
-      "targetFeature": "monthly_income",
-      "n": 250,
-      "magnitude": -0.1,
-      "metrics": {
-        "csi": {
-          "fixed": 0.1,
-          "calibrated": 0.9
-        },
-        "ks": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "wasserstein": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "psi": {
-          "fixed": 0.1,
+          "fixed": 0.0333,
           "calibrated": 0.3
-        }
-      }
-    },
-    {
-      "type": "mean_shift",
-      "targetFeature": "monthly_income",
-      "n": 250,
-      "magnitude": -0.15,
-      "metrics": {
-        "csi": {
-          "fixed": 0.9,
-          "calibrated": 1
         },
         "ks": {
           "fixed": 1,
-          "calibrated": 1
+          "calibrated": 0.8667
         },
         "wasserstein": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "psi": {
-          "fixed": 0.2,
-          "calibrated": 0.6
-        }
-      }
-    },
-    {
-      "type": "mean_shift",
-      "targetFeature": "monthly_income",
-      "n": 250,
-      "magnitude": -0.2,
-      "metrics": {
-        "csi": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "ks": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "wasserstein": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "psi": {
-          "fixed": 0.4,
-          "calibrated": 0.7
-        }
-      }
-    },
-    {
-      "type": "mean_shift",
-      "targetFeature": "monthly_income",
-      "n": 250,
-      "magnitude": -0.3,
-      "metrics": {
-        "csi": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "ks": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "wasserstein": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "psi": {
-          "fixed": 1,
-          "calibrated": 1
-        }
-      }
-    },
-    {
-      "type": "mean_shift",
-      "targetFeature": "monthly_income",
-      "n": 1000,
-      "magnitude": 0,
-      "metrics": {
-        "csi": {
-          "fixed": 0,
-          "calibrated": 0
-        },
-        "ks": {
-          "fixed": 0,
-          "calibrated": 0
-        },
-        "wasserstein": {
-          "fixed": 0,
-          "calibrated": 0
-        },
-        "psi": {
-          "fixed": 0,
-          "calibrated": 0
-        }
-      }
-    },
-    {
-      "type": "mean_shift",
-      "targetFeature": "monthly_income",
-      "n": 1000,
-      "magnitude": -0.025,
-      "metrics": {
-        "csi": {
-          "fixed": 0,
-          "calibrated": 0.1
-        },
-        "ks": {
-          "fixed": 1,
-          "calibrated": 1
-        },
-        "wasserstein": {
-          "fixed": 0.1,
+          "fixed": 0.9333,
           "calibrated": 0.5
         },
         "psi": {
+          "fixed": 0.4,
+          "calibrated": 0.1667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 100,
+      "magnitude": -0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.3333,
+          "calibrated": 0.5
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.9667,
+          "calibrated": 0.6667
+        },
+        "psi": {
+          "fixed": 0.4667,
+          "calibrated": 0.2
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 100,
+      "magnitude": -0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.6333,
+          "calibrated": 0.7667
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 0.9667
+        },
+        "psi": {
+          "fixed": 0.8,
+          "calibrated": 0.2667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 100,
+      "magnitude": -0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.8333,
+          "calibrated": 0.3667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 100,
+      "magnitude": -0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.9667,
+          "calibrated": 0.7667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "wasserstein": {
+          "fixed": 0.0667,
+          "calibrated": 0
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": -0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.3333,
+          "calibrated": 0.1333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": -0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.2
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.7667,
+          "calibrated": 0.6333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": -0.075,
+      "metrics": {
+        "csi": {
+          "fixed": 0.0333,
+          "calibrated": 0.5667
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 0.8667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.1
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": -0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0.0667,
+          "calibrated": 0.8
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.0333,
+          "calibrated": 0.2
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": -0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.8333,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.1333,
+          "calibrated": 0.5333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": -0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.3667,
+          "calibrated": 0.7333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 250,
+      "magnitude": -0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": -0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.1333,
+          "calibrated": 0.1667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.1333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": -0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.4
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.6333,
+          "calibrated": 0.7333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.2
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": -0.075,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.7
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.9667,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.2333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": -0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.3667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": -0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.6333,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.0667,
+          "calibrated": 0.9333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": -0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0.1667,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 500,
+      "magnitude": -0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 1000,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 1000,
+      "magnitude": -0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.1333
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.1333,
+          "calibrated": 0.5333
+        },
+        "psi": {
           "fixed": 0,
           "calibrated": 0.1
         }
@@ -640,7 +1603,7 @@
       "metrics": {
         "csi": {
           "fixed": 0,
-          "calibrated": 0.7
+          "calibrated": 0.6333
         },
         "ks": {
           "fixed": 1,
@@ -652,7 +1615,7 @@
         },
         "psi": {
           "fixed": 0,
-          "calibrated": 0.1
+          "calibrated": 0.1333
         }
       }
     },
@@ -676,7 +1639,7 @@
         },
         "psi": {
           "fixed": 0,
-          "calibrated": 0.2
+          "calibrated": 0.3333
         }
       }
     },
@@ -700,7 +1663,7 @@
         },
         "psi": {
           "fixed": 0,
-          "calibrated": 0.4
+          "calibrated": 0.6333
         }
       }
     },
@@ -711,7 +1674,7 @@
       "magnitude": -0.15,
       "metrics": {
         "csi": {
-          "fixed": 0.9,
+          "fixed": 0.8,
           "calibrated": 1
         },
         "ks": {
@@ -747,7 +1710,7 @@
           "calibrated": 1
         },
         "psi": {
-          "fixed": 0,
+          "fixed": 0.0333,
           "calibrated": 1
         }
       }
@@ -773,6 +1736,258 @@
         "psi": {
           "fixed": 1,
           "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": 0,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.0667
+        },
+        "ks": {
+          "fixed": 0,
+          "calibrated": 0.1667
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0.1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.1
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": -0.025,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.4333
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0,
+          "calibrated": 0.9333
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.2333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": -0.05,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 0.9333
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 0.7333,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.4333
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": -0.075,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 0.8667
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": -0.1,
+      "metrics": {
+        "csi": {
+          "fixed": 0,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": -0.15,
+      "metrics": {
+        "csi": {
+          "fixed": 0.8667,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": -0.2,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 0,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "mean_shift",
+      "targetFeature": "monthly_income",
+      "n": 2500,
+      "magnitude": -0.3,
+      "metrics": {
+        "csi": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "ks": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "wasserstein": {
+          "fixed": 1,
+          "calibrated": 1
+        },
+        "psi": {
+          "fixed": 1,
+          "calibrated": 1
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 100,
+      "magnitude": 1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 100,
+      "magnitude": 1.1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 100,
+      "magnitude": 1.25,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 100,
+      "magnitude": 1.5,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.0333,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 100,
+      "magnitude": 2,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.2,
+          "calibrated": 0.2
         }
       }
     },
@@ -831,8 +2046,68 @@
       "magnitude": 2,
       "metrics": {
         "label_rate": {
-          "fixed": 0.6,
-          "calibrated": 0.6
+          "fixed": 0.3333,
+          "calibrated": 0.3333
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 500,
+      "magnitude": 1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 500,
+      "magnitude": 1.1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 500,
+      "magnitude": 1.25,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 500,
+      "magnitude": 1.5,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.0667,
+          "calibrated": 0.0667
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 500,
+      "magnitude": 2,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.6667,
+          "calibrated": 0.6667
         }
       }
     },
@@ -879,6 +2154,66 @@
       "magnitude": 1.5,
       "metrics": {
         "label_rate": {
+          "fixed": 0.0333,
+          "calibrated": 0.0333
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 1000,
+      "magnitude": 2,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0.9,
+          "calibrated": 0.9
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 2500,
+      "magnitude": 1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 2500,
+      "magnitude": 1.1,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 2500,
+      "magnitude": 1.25,
+      "metrics": {
+        "label_rate": {
+          "fixed": 0,
+          "calibrated": 0
+        }
+      }
+    },
+    {
+      "type": "label_shift",
+      "targetFeature": "default_flag",
+      "n": 2500,
+      "magnitude": 1.5,
+      "metrics": {
+        "label_rate": {
           "fixed": 0.1,
           "calibrated": 0.1
         }
@@ -887,7 +2222,7 @@
     {
       "type": "label_shift",
       "targetFeature": "default_flag",
-      "n": 1000,
+      "n": 2500,
       "magnitude": 2,
       "metrics": {
         "label_rate": {

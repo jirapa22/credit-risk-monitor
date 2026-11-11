@@ -1,0 +1,154 @@
+{
+  "commit": "a344d31",
+  "startedAt": "2026-11-11T15:16:19.624Z",
+  "elapsedSec": 79.661,
+  "trials": 4795,
+  "msPerTrial": 16.6133472367049,
+  "quick": false,
+  "grid": {
+    "severities": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "rates": [
+      0.01,
+      0.05,
+      0.1,
+      0.2,
+      0.3
+    ],
+    "seeds": {
+      "groupA": 30,
+      "schema_break": 5,
+      "drift": 30,
+      "none": 100
+    }
+  },
+  "modelId": "ext_model",
+  "configVersion": "1.0.0",
+  "referenceId": "ext_model_ref_301",
+  "anomalyConfig": null,
+  "forestSeed": 42,
+  "severityTable": {
+    "unit_error": {
+      "low": 10,
+      "medium": 100,
+      "high": 1000
+    },
+    "extreme_outlier": {
+      "low": 1.5,
+      "medium": 3,
+      "high": 10
+    },
+    "negative_value": {
+      "low": -0.01,
+      "medium": -1,
+      "high": -10
+    },
+    "type_error": {
+      "low": "<value> บาท",
+      "medium": "N/A",
+      "high": "#VALUE!"
+    },
+    "missing_injection": {
+      "low": "",
+      "medium": "",
+      "high": ""
+    },
+    "swapped_columns": {
+      "low": "swap",
+      "medium": "swap",
+      "high": "swap"
+    },
+    "duplicate_rows": {
+      "low": "copy",
+      "medium": "copy",
+      "high": "copy"
+    },
+    "multivariate_inconsistent": {
+      "low": {
+        "income": 0.1,
+        "loan": 0.95,
+        "dti": 0.05
+      },
+      "medium": {
+        "income": 0.07,
+        "loan": 0.97,
+        "dti": 0.03
+      },
+      "high": {
+        "income": 0.05,
+        "loan": 0.99,
+        "dti": 0.02
+      }
+    },
+    "schema_break": {
+      "low": "rename_case",
+      "medium": "rename_typo",
+      "high": "drop_column"
+    },
+    "mean_shift": {
+      "low": -0.1,
+      "medium": -0.2,
+      "high": -0.4
+    },
+    "variance_change": {
+      "low": 1.25,
+      "medium": 1.5,
+      "high": 2
+    },
+    "category_shift": {
+      "low": 0.1,
+      "medium": 0.2,
+      "high": 0.4
+    },
+    "unseen_category": {
+      "low": "typo_low",
+      "medium": "typo_med",
+      "high": "typo_high"
+    },
+    "label_shift": {
+      "low": 1.25,
+      "medium": 1.5,
+      "high": 2
+    },
+    "concept_shift": {
+      "low": 0.25,
+      "medium": 0.5,
+      "high": 1
+    },
+    "mix_shift": {
+      "low": 0.1,
+      "medium": 0.2,
+      "high": 0.4
+    },
+    "missing_drift": {
+      "low": 0.05,
+      "medium": 0.1,
+      "high": 0.2
+    }
+  },
+  "expectedLayer": {
+    "none": "none",
+    "type_error": "validation",
+    "missing_injection": "validation",
+    "negative_value": "validation",
+    "schema_break": "validation",
+    "duplicate_rows": "validation",
+    "unit_error": {
+      "low": "anomaly",
+      "medium": "validation",
+      "high": "validation"
+    },
+    "extreme_outlier": "anomaly",
+    "swapped_columns": "anomaly",
+    "multivariate_inconsistent": "anomaly",
+    "mean_shift": "drift",
+    "variance_change": "drift",
+    "label_shift": "drift",
+    "concept_shift": "drift",
+    "mix_shift": "drift",
+    "missing_drift": "drift"
+  }
+}

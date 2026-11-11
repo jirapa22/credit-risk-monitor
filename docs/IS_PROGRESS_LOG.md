@@ -53,6 +53,12 @@
 19. Heuristic (ล็อก sha ccc9807): development 96.15% (50/52; ตัวเลขนี้สูงเกินจริงเพราะกฎเดาจากค่าเพิ่มหลังเห็น Suite C), held-out 86.96% (20/23): D1 100%, D2 85.7% (วันเกิด → ignore, เฉลย = feature: เฉลยกำกวม ควรอภิปรายในเล่ม), D3 77.8% (ตัวแปร 0/1 สามตัว เลือก label ผิดเป็นตัวแรกที่เจอ)
 20. เทียบตัวเดาคอลัมน์ (claude-sonnet-5-5, 10 พ.ย.; ไฟล์ results/eval_suggestions_*_2026-11-10T15-58/16-00/16-04): development heuristic 96.2% / AI 98.1% / combined 100%; HELD-OUT heuristic 87.0% (20/23) / AI 95.7% (22/23) / combined 87.0% (20/23). AI ชนะบน D2 (100% vs 85.7%) และ D3 (88.9% vs 77.8%). Combined (เลือกตาม confidence) แพ้ AI บน held-out เพราะ confidence ของกฎสูงเกินจริง (ไม่ calibrated) จึงชนะ AI ตอนเห็นต่าง — ดีบน dev เพราะกฎถูกจูนกับ dev. ต้นทุน: AI ~3,000 token/ชุด, ~6 วินาที/ชุด; รวมทั้งรอบ ~35k token
 
+21. 11a (29a38f1): label_shift → label เท่านั้น → RECALIBRATE; concept_shift → concept เท่านั้น → CONSIDER_RETRAIN; mix_shift → covariate เท่านั้น → INVESTIGATE_DRIFT (ไม่มี section leakage). label_shift ใช้การพลิกแบบถ่วงตามความเสี่ยง (ต้องอธิบายในบท 3). mean_shift (คูณค่าโดยไม่แตะ label) ทำให้ concept เตือนด้วย = artifact ของวิธีจำลอง → ใช้ mix_shift เป็นสถานการณ์ covariate หลัก
+22. จำลอง 12 เดือน: sudden mean_shift −20% เริ่ม M6 → false alarm 0 ใน M1–5, เตือน M6 (delay 0), CONSIDER_RETRAIN M7 (persistence); gradual ถึง −20% ที่ M12 → WARNING ตั้งแต่ M6 (−2.9%, เกณฑ์ชั่วคราวไวเกิน), CRITICAL M9, RETRAIN M10
+23. 11b calibration (a344d31) ascore_v1: เกณฑ์ calibrated (p95/p99 ของ null bootstrap) n=250 → PSI 0.071/0.099, CSI income 0.037/0.057, KS 0.083/0.105, W 0.116/0.148; n=1000 → PSI 0.018/0.024, CSI 0.010/0.014, KS 0.042/0.047, W 0.056/0.067 (fixed: PSI/CSI 0.10/0.25, KS/W 0.10/0.20). False alarm ที่ n=250: fixed สูงสุด ~20% (Wasserstein), calibrated ~5%
+24. Power (quick) mix_shift รายได้: n=1000 ที่ +10 จุด% → CSI fixed 0% vs calibrated 100%; ที่ +15 → CSI fixed 30%. เกณฑ์ PSI/CSI มาตรฐานไม่ไวกับ drift ระดับกลางในไฟล์ขนาดใหญ่ ส่วน calibrated ไวมาก
+25. ประเด็นอภิปราย: calibrated = มีนัยสำคัญทางสถิติ แต่ที่ n ใหญ่จะเตือน shift เล็กที่อาจไม่มีผลทางธุรกิจ (PSI 0.018) → เสนอโหมด hybrid: เตือนเมื่อเกินเกณฑ์ calibrated และมีขนาดผลขั้นต่ำ (เช่น PSI ≥ 0.05) — ทำใน Step 13 หรือเป็นงานอนาคต
+
 ## หมายเหตุสำหรับผลการทดลอง
 - ผล grid เต็ม 926868a (3,895 trial) ใช้นิยาม multivariate_inconsistent แบบเดิม (3 ตัวแปรคงที่) → ต้องรัน grid ใหม่ใน Step 11 ก่อนใช้ตัวเลขในเล่ม
 

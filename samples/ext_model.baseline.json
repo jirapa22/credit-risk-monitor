@@ -1,0 +1,82 @@
+{
+  "modelId": "ext_model",
+  "version": "1.0.0",
+  "name": "External Risk Model v1 (PD Score)",
+  "description": "Model-agnostic score_column baseline with categorical occupation and imputable income",
+  "mode": "score_column",
+  "columns": {
+    "idColumn": "cust_no",
+    "dateColumn": "app_date",
+    "labelColumn": "flag_npl_90",
+    "scoreColumn": "pd_score"
+  },
+  "scoreDirection": "higher_is_riskier",
+  "referenceDatasetId": "ext_model_ref_301",
+  "featureRegistry": {
+    "รายได้ต่อเดือน": {
+      "columnName": "รายได้ต่อเดือน",
+      "displayName": "รายได้ต่อเดือน",
+      "dataType": "numeric",
+      "required": false,
+      "monitoringEnabled": true,
+      "displayOrder": 1,
+      "validation": {
+        "minValue": 0,
+        "maxValue": 200000,
+        "allowNull": true,
+        "missingStrategy": "fillMedian"
+      }
+    },
+    "วงเงินสินเชื่อ": {
+      "columnName": "วงเงินสินเชื่อ",
+      "displayName": "วงเงินสินเชื่อ",
+      "dataType": "numeric",
+      "required": true,
+      "monitoringEnabled": true,
+      "displayOrder": 2,
+      "validation": {
+        "minValue": 0,
+        "maxValue": 500000,
+        "allowNull": false
+      }
+    },
+    "สัดส่วนภาระหนี้": {
+      "columnName": "สัดส่วนภาระหนี้",
+      "displayName": "สัดส่วนภาระหนี้ (DTI)",
+      "dataType": "numeric",
+      "required": true,
+      "monitoringEnabled": true,
+      "displayOrder": 3,
+      "validation": {
+        "minValue": 0,
+        "maxValue": 2.0,
+        "allowNull": false
+      }
+    },
+    "กลุ่มอาชีพ": {
+      "columnName": "กลุ่มอาชีพ",
+      "displayName": "กลุ่มอาชีพ",
+      "dataType": "categorical",
+      "required": true,
+      "monitoringEnabled": true,
+      "displayOrder": 4,
+      "allowedCategories": [
+        "พนักงานบริษัท",
+        "ข้าราชการ",
+        "ค้าขาย",
+        "อาชีพอิสระ"
+      ]
+    }
+  },
+  "thresholds": {
+    "psi_warning": 0.10,
+    "psi_critical": 0.25,
+    "gini_min": 0.15,
+    "auc_min": 0.55,
+    "ks_min": 0.10,
+    "csi_features": {}
+  },
+  "driftConfig": {
+    "thresholdMode": "fixed"
+  }
+}

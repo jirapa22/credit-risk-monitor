@@ -14,6 +14,7 @@
  */
 import type {
   AnomalyTransform,
+  CalibratedThresholds,
   CategoryProportionEntry,
   ConceptBinBadRate,
   ConceptFeatureReport,
@@ -40,6 +41,7 @@ import type { ReferenceProfile } from './reference';
 import type { CleanRow } from './validation';
 import { DEFAULT_LABEL_COLUMN, resolveModelColumns } from './defaults';
 import { classify, resolveCsiFeatures, runDriftDetection } from './drift';
+import { getNearestSize } from './calibration';
 import { calculateAScore } from './scoring';
 import {
   assessMetricReliability,
@@ -58,6 +60,7 @@ import {
 
 // ─── Default thresholds (overridable via model.driftConfig) ──────────────────
 export const DEFAULT_DRIFT_CONFIG: Required<DriftConfig> = {
+  thresholdMode: 'fixed',
   // ค่าเริ่มต้นชั่วคราวสำหรับ KS D และ Wasserstein — จะปรับให้แม่นขึ้นใน Step 11
   ksWarning: 0.10,
   ksCritical: 0.20,
@@ -103,6 +106,7 @@ function worstStatus(statuses: (DriftStatus | DriftSectionStatus)[]): DriftStatu
 export function resolveDriftConfig(model: any): Required<DriftConfig> {
   const dc = (model?.driftConfig ?? {}) as DriftConfig;
   return {
+    thresholdMode: dc.thresholdMode ?? DEFAULT_DRIFT_CONFIG.thresholdMode,
     ksWarning: dc.ksWarning ?? DEFAULT_DRIFT_CONFIG.ksWarning,
     ksCritical: dc.ksCritical ?? DEFAULT_DRIFT_CONFIG.ksCritical,
     wassersteinWarning: dc.wassersteinWarning ?? DEFAULT_DRIFT_CONFIG.wassersteinWarning,
@@ -122,7 +126,7 @@ export function resolveDriftConfig(model: any): Required<DriftConfig> {
 }
 
 // ─── Statistical helpers ─────────────────────────────────────────────────────
-function linearQuantile(sorted: number[], p: number): number {
+export function linearQuantile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   if (sorted.length === 1) return sorted[0];
   const pos = (sorted.length - 1) * p;
@@ -343,6 +347,7 @@ interface ResolvedModelSpec {
   categoricalFeatures: string[];
   thresholds: MonitoringThresholds;
   driftConfig: Required<DriftConfig>;
+  calibratedThresholds?: CalibratedThresholds;
 }
 
 function resolveModelSpec(model: any): ResolvedModelSpec {
@@ -407,6 +412,7 @@ function resolveModelSpec(model: any): ResolvedModelSpec {
     categoricalFeatures: [...categoricalSet],
     thresholds,
     driftConfig: resolveDriftConfig(model),
+    calibratedThresholds: model?.calibratedThresholds ?? model?.baseline?.calibratedThresholds,
   };
 }
 
@@ -494,6 +500,12 @@ export function buildDriftReport(
     );
 
   // ── (a) Covariate Drift ───────────────────────────────────────────────────
+  const calibrated = spec.calibratedThresholds;
+  const thresholdMode = spec.driftConfig.thresholdMode;
+  const nUpload = input.cleanRows.length;
+  const nearestN = calibrated?.sizes ? getNearestSize(calibrated.sizes, nUpload) : null;
+  const calThr = nearestN !== null ? (calibrated?.bySize?.[nearestN] ?? (calibrated?.bySize as any)?.[String(nearestN)]) : undefined;
+
   const covariateFeatures: Record<string, CovariateFeatureReport> = {};
   for (const key of spec.numericFeatures) {
     const def = spec.registry[key];
@@ -509,6 +521,8 @@ export function buildDriftReport(
         displayName,
         kind: 'feature',
         status: 'NOT_AVAILABLE',
+        statusFixed: 'NOT_AVAILABLE',
+        statusCalibrated: 'NOT_AVAILABLE',
         reason:
           refVals.length === 0
             ? `ไม่มีตัวแปร "${displayName}" ใน Reference Dataset`
@@ -531,9 +545,40 @@ export function buildDriftReport(
       dc.wassersteinWarning,
       dc.wassersteinCritical,
     );
-    const statuses: DriftStatus[] = [ks.status, wasserstein.status];
-    if (csiEntry && csiEntry.status !== 'NOT_AVAILABLE') statuses.push(csiEntry.status);
-    const fStatus = worstStatus(statuses);
+
+    const fixedCsiWarn = spec.thresholds.csi_features?.[key]?.threshold ?? def?.csiThreshold ?? 0.10;
+    const fixedCsiCrit = Math.max(spec.thresholds.psi_critical, fixedCsiWarn);
+    const fixedKsWarn = dc.ksWarning;
+    const fixedKsCrit = dc.ksCritical;
+    const fixedWassWarn = dc.wassersteinWarning;
+    const fixedWassCrit = dc.wassersteinCritical;
+
+    const calCsiWarn = calThr?.csi?.[key]?.warning ?? fixedCsiWarn;
+    const calCsiCrit = calThr?.csi?.[key]?.critical ?? fixedCsiCrit;
+    const calKsWarn = calThr?.ks?.[key]?.warning ?? fixedKsWarn;
+    const calKsCrit = calThr?.ks?.[key]?.critical ?? fixedKsCrit;
+    const calWassWarn = calThr?.wasserstein?.[key]?.warning ?? fixedWassWarn;
+    const calWassCrit = calThr?.wasserstein?.[key]?.critical ?? fixedWassCrit;
+
+    const fixedStatuses: DriftStatus[] = [
+      classify(ks.d, fixedKsWarn, fixedKsCrit),
+      classify(wasserstein.scaled, fixedWassWarn, fixedWassCrit),
+    ];
+    if (csiEntry && csiEntry.status !== 'NOT_AVAILABLE') {
+      fixedStatuses.push(classify(csiEntry.value, fixedCsiWarn, fixedCsiCrit));
+    }
+    const fStatusFixed = worstStatus(fixedStatuses);
+
+    const calStatuses: DriftStatus[] = [
+      classify(ks.d, calKsWarn, calKsCrit),
+      classify(wasserstein.scaled, calWassWarn, calWassCrit),
+    ];
+    if (csiEntry && csiEntry.status !== 'NOT_AVAILABLE') {
+      calStatuses.push(classify(csiEntry.value, calCsiWarn, calCsiCrit));
+    }
+    const fStatusCalibrated = worstStatus(calStatuses);
+
+    const fStatus = thresholdMode === 'calibrated' ? fStatusCalibrated : fStatusFixed;
 
     const triggeredMetrics: string[] = [];
     if (csiEntry && csiEntry.status !== 'STABLE' && csiEntry.status !== 'NOT_AVAILABLE') {
@@ -552,6 +597,8 @@ export function buildDriftReport(
       kind: 'feature',
       dataType: 'numeric',
       status: fStatus,
+      statusFixed: fStatusFixed,
+      statusCalibrated: fStatusCalibrated,
       reason:
         triggeredMetrics.length > 0
           ? `พบการเลื่อนของการกระจายใน "${displayName}": ${triggeredMetrics.join(', ')}`
@@ -581,6 +628,8 @@ export function buildDriftReport(
         kind: 'feature',
         dataType: 'categorical',
         status: 'NOT_AVAILABLE',
+        statusFixed: 'NOT_AVAILABLE',
+        statusCalibrated: 'NOT_AVAILABLE',
         reason:
           refCatVals.length === 0
             ? `ไม่มีตัวแปร "${displayName}" ใน Reference Dataset`
@@ -645,9 +694,33 @@ export function buildDriftReport(
       categories,
     };
 
-    const statuses: DriftStatus[] = [jensenShannon.status];
-    if (csiEntry && csiEntry.status !== 'NOT_AVAILABLE') statuses.push(csiEntry.status);
-    const fStatus = worstStatus(statuses);
+    const fixedCsiWarn = spec.thresholds.csi_features?.[key]?.threshold ?? def?.csiThreshold ?? 0.10;
+    const fixedCsiCrit = Math.max(spec.thresholds.psi_critical, fixedCsiWarn);
+    const fixedJsWarn = dc.jsWarning;
+    const fixedJsCrit = dc.jsCritical;
+
+    const calCsiWarn = calThr?.csi?.[key]?.warning ?? fixedCsiWarn;
+    const calCsiCrit = calThr?.csi?.[key]?.critical ?? fixedCsiCrit;
+    const calJsWarn = calThr?.js?.[key]?.warning ?? fixedJsWarn;
+    const calJsCrit = calThr?.js?.[key]?.critical ?? fixedJsCrit;
+
+    const fixedStatuses: DriftStatus[] = [
+      classify(jsRaw.distance, fixedJsWarn, fixedJsCrit),
+    ];
+    if (csiEntry && csiEntry.status !== 'NOT_AVAILABLE') {
+      fixedStatuses.push(classify(catPsi.value, fixedCsiWarn, fixedCsiCrit));
+    }
+    const fStatusFixed = worstStatus(fixedStatuses);
+
+    const calStatuses: DriftStatus[] = [
+      classify(jsRaw.distance, calJsWarn, calJsCrit),
+    ];
+    if (csiEntry && csiEntry.status !== 'NOT_AVAILABLE') {
+      calStatuses.push(classify(catPsi.value, calCsiWarn, calCsiCrit));
+    }
+    const fStatusCalibrated = worstStatus(calStatuses);
+
+    const fStatus = thresholdMode === 'calibrated' ? fStatusCalibrated : fStatusFixed;
 
     const triggeredMetrics: string[] = [];
     if (csiEntry && csiEntry.status !== 'STABLE' && csiEntry.status !== 'NOT_AVAILABLE') {
@@ -663,6 +736,8 @@ export function buildDriftReport(
       kind: 'feature',
       dataType: 'categorical',
       status: fStatus,
+      statusFixed: fStatusFixed,
+      statusCalibrated: fStatusCalibrated,
       reason:
         triggeredMetrics.length > 0
           ? `พบการเลื่อนของสัดส่วนหมวดใน "${displayName}": ${triggeredMetrics.join(', ')}, χ²=${chiSquare.statistic.toFixed(2)} (p=${chiSquare.pValue.toFixed(4)})`
@@ -683,6 +758,8 @@ export function buildDriftReport(
       displayName: spec.scoreColumn ?? 'Score',
       kind: 'score',
       status: 'NOT_AVAILABLE',
+      statusFixed: 'NOT_AVAILABLE',
+      statusCalibrated: 'NOT_AVAILABLE',
       reason: 'โมเดลไม่มีสกอร์การ์ดหรือคอลัมน์คะแนน จึงไม่สามารถคำนวณ Drift ของคะแนนรวมได้',
       psiOrCsi: null,
       distributionProfile: null,
@@ -700,9 +777,41 @@ export function buildDriftReport(
       dc.wassersteinWarning,
       dc.wassersteinCritical,
     );
-    const sStatuses: DriftStatus[] = [ks.status, wasserstein.status];
-    if (psiEntry.status !== 'NOT_AVAILABLE') sStatuses.unshift(psiEntry.status);
-    const sStatus = worstStatus(sStatuses);
+
+    const fixedPsiWarn = spec.thresholds.psi_warning;
+    const fixedPsiCrit = spec.thresholds.psi_critical;
+    const fixedKsWarn = dc.ksWarning;
+    const fixedKsCrit = dc.ksCritical;
+    const fixedWassWarn = dc.wassersteinWarning;
+    const fixedWassCrit = dc.wassersteinCritical;
+
+    const calPsiWarn = calThr?.psi?.warning ?? fixedPsiWarn;
+    const calPsiCrit = calThr?.psi?.critical ?? fixedPsiCrit;
+    const calKsWarn = calThr?.ks?.score?.warning ?? fixedKsWarn;
+    const calKsCrit = calThr?.ks?.score?.critical ?? fixedKsCrit;
+    const calWassWarn = calThr?.wasserstein?.score?.warning ?? fixedWassWarn;
+    const calWassCrit = calThr?.wasserstein?.score?.critical ?? fixedWassCrit;
+
+    const fixedStatuses: DriftStatus[] = [
+      classify(ks.d, fixedKsWarn, fixedKsCrit),
+      classify(wasserstein.scaled, fixedWassWarn, fixedWassCrit),
+    ];
+    if (psiEntry.status !== 'NOT_AVAILABLE') {
+      fixedStatuses.unshift(classify(psiEntry.value, fixedPsiWarn, fixedPsiCrit));
+    }
+    const sStatusFixed = worstStatus(fixedStatuses);
+
+    const calStatuses: DriftStatus[] = [
+      classify(ks.d, calKsWarn, calKsCrit),
+      classify(wasserstein.scaled, calWassWarn, calWassCrit),
+    ];
+    if (psiEntry.status !== 'NOT_AVAILABLE') {
+      calStatuses.unshift(classify(psiEntry.value, calPsiWarn, calPsiCrit));
+    }
+    const sStatusCalibrated = worstStatus(calStatuses);
+
+    const sStatus = thresholdMode === 'calibrated' ? sStatusCalibrated : sStatusFixed;
+
     const parts: string[] = [];
     if (psiEntry.status !== 'STABLE' && psiEntry.status !== 'NOT_AVAILABLE') parts.push(`PSI=${psiEntry.value.toFixed(4)} (${psiEntry.status})`);
     if (ks.status !== 'STABLE') parts.push(`KS D=${ks.d.toFixed(4)} (${ks.status})`);
@@ -712,6 +821,8 @@ export function buildDriftReport(
       displayName: spec.scoreColumn ?? 'Model Score',
       kind: 'score',
       status: sStatus,
+      statusFixed: sStatusFixed,
+      statusCalibrated: sStatusCalibrated,
       reason:
         parts.length > 0
           ? `คะแนนรวมมีการเลื่อนของการกระจาย: ${parts.join(', ')}`
@@ -723,14 +834,27 @@ export function buildDriftReport(
     };
   }
 
+  const availableCovariatesFixed = [
+    ...Object.values(covariateFeatures).map(c => c.statusFixed ?? c.status),
+    scoreCovariate.statusFixed ?? scoreCovariate.status,
+  ].filter((s): s is DriftStatus => s !== 'NOT_AVAILABLE');
+  const covariateStatusFixed: DriftSectionStatus =
+    availableCovariatesFixed.length === 0 ? 'NOT_AVAILABLE' : worstStatus(availableCovariatesFixed);
+
+  const availableCovariatesCalibrated = [
+    ...Object.values(covariateFeatures).map(c => c.statusCalibrated ?? c.status),
+    scoreCovariate.statusCalibrated ?? scoreCovariate.status,
+  ].filter((s): s is DriftStatus => s !== 'NOT_AVAILABLE');
+  const covariateStatusCalibrated: DriftSectionStatus =
+    availableCovariatesCalibrated.length === 0 ? 'NOT_AVAILABLE' : worstStatus(availableCovariatesCalibrated);
+
+  const covariateStatus: DriftSectionStatus =
+    thresholdMode === 'calibrated' ? covariateStatusCalibrated : covariateStatusFixed;
+
   const availableCovariates = [
     ...Object.values(covariateFeatures),
     scoreCovariate,
   ].filter(c => c.status !== 'NOT_AVAILABLE');
-  const covariateStatus: DriftSectionStatus =
-    availableCovariates.length === 0
-      ? 'NOT_AVAILABLE'
-      : worstStatus(availableCovariates.map(c => c.status));
   const driftedCovNames = availableCovariates
     .filter(c => c.status === 'WARNING' || c.status === 'CRITICAL')
     .map(c => `${c.displayName} (${c.status})`);
@@ -1211,12 +1335,20 @@ export function buildDriftReport(
   }
 
   // ── (e) Summary ───────────────────────────────────────────────────────────
-  const overallStatus = worstStatus([
-    covariateStatus,
+  const overallStatusFixed = worstStatus([
+    covariateStatusFixed,
     missingStatus,
     labelSection.status,
     conceptSection.status,
   ]);
+  const overallStatusCalibrated = worstStatus([
+    covariateStatusCalibrated,
+    missingStatus,
+    labelSection.status,
+    conceptSection.status,
+  ]);
+  const overallStatus: DriftStatus =
+    thresholdMode === 'calibrated' ? overallStatusCalibrated : overallStatusFixed;
 
   const driftTypesDetected: string[] = [];
   for (const [k, f] of Object.entries(covariateFeatures)) {
@@ -1267,6 +1399,8 @@ export function buildDriftReport(
 
   const summaryMetrics: DriftReportSummaryMetrics = {
     overallStatus,
+    statusFixed: overallStatusFixed,
+    statusCalibrated: overallStatusCalibrated,
     driftTypesDetected,
     notAvailable,
   };
@@ -1274,8 +1408,12 @@ export function buildDriftReport(
   return {
     model: { modelId: spec.modelId, configVersion: spec.configVersion },
     referenceId: reference.meta.referenceId,
+    statusFixed: overallStatusFixed,
+    statusCalibrated: overallStatusCalibrated,
     covariate: {
       status: covariateStatus,
+      statusFixed: covariateStatusFixed,
+      statusCalibrated: covariateStatusCalibrated,
       reason: covariateReason,
       metrics: {
         features: covariateFeatures,
@@ -1284,6 +1422,8 @@ export function buildDriftReport(
     },
     missing: {
       status: missingStatus,
+      statusFixed: missingStatus,
+      statusCalibrated: missingStatus,
       reason: missingReason,
       metrics: {
         features: missingFeatures,
@@ -1293,10 +1433,20 @@ export function buildDriftReport(
         },
       },
     },
-    label: labelSection,
-    concept: conceptSection,
+    label: {
+      ...labelSection,
+      statusFixed: labelSection.status,
+      statusCalibrated: labelSection.status,
+    },
+    concept: {
+      ...conceptSection,
+      statusFixed: conceptSection.status,
+      statusCalibrated: conceptSection.status,
+    },
     summary: {
       status: overallStatus,
+      statusFixed: overallStatusFixed,
+      statusCalibrated: overallStatusCalibrated,
       reason: summaryReason,
       metrics: summaryMetrics,
       ...summaryMetrics,

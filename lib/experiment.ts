@@ -42,6 +42,8 @@ export interface FileMetrics {
   blocked: boolean;
   alarm: boolean;
   alarmExcludingFlagged: boolean;
+  statusFixed?: DriftStatus | 'BLOCKED';
+  statusCalibrated?: DriftStatus | 'BLOCKED';
   falseAlarm: boolean | null;     // data_error / none
   rescued: boolean | null;        // data_error
   detected: boolean | null;       // drift
@@ -71,6 +73,8 @@ export interface TrialResult {
   drift: DriftSnapshot | null;
   driftExcludingFlagged: DriftSnapshot | null;
   triggerAction: TriggerAction;
+  statusFixed?: DriftStatus | 'BLOCKED';
+  statusCalibrated?: DriftStatus | 'BLOCKED';
   sectionLeakage: DriftSectionName[];
   triggerCorrect: boolean;
   timingMs: number;
@@ -181,8 +185,13 @@ export function evaluateTrial(run: MonitoringRun, inj: ReturnType<typeof injectA
     : [expected.expectedAction];
   const triggerCorrect = expectedActions.includes(triggerAction);
 
+  const statusFixed: DriftStatus | 'BLOCKED' = blocked ? 'BLOCKED' : (run.driftReport?.statusFixed ?? run.drift?.overallStatus ?? 'STABLE');
+  const statusCalibrated: DriftStatus | 'BLOCKED' = blocked ? 'BLOCKED' : (run.driftReport?.statusCalibrated ?? run.drift?.overallStatus ?? 'STABLE');
+
   const file: FileMetrics = {
     blocked, alarm, alarmExcludingFlagged: alarmEx,
+    statusFixed,
+    statusCalibrated,
     falseAlarm: kind === 'drift' ? null : alarm,
     rescued: kind === 'data_error' ? alarm && !alarmEx : null,
     detected: kind === 'drift' ? alarm : null,
@@ -200,6 +209,8 @@ export function evaluateTrial(run: MonitoringRun, inj: ReturnType<typeof injectA
     detectors, file,
     drift: snap(run.drift), driftExcludingFlagged: snap(run.driftExcludingFlagged),
     triggerAction,
+    statusFixed,
+    statusCalibrated,
     sectionLeakage,
     triggerCorrect,
   };

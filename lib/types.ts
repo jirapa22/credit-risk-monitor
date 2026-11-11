@@ -154,7 +154,11 @@ export interface ValidationResult {
 export type DriftStatus = 'STABLE' | 'WARNING' | 'CRITICAL';
 export type DriftSectionStatus = DriftStatus | 'NOT_AVAILABLE';
 
+export type DriftThresholdMode = 'fixed' | 'calibrated';
+
 export interface DriftConfig {
+  /** Mode for drift thresholds: 'fixed' (default industry standards) | 'calibrated' (null distribution bootstrap). */
+  thresholdMode?: DriftThresholdMode;
   /** KS two-sample D thresholds (ค่าเริ่มต้นชั่วคราว 0.10 / 0.20 — จะปรับให้แม่นขึ้นใน Step 11). */
   ksWarning?: number;
   ksCritical?: number;
@@ -285,6 +289,8 @@ export interface CovariateFeatureReport {
   kind: 'feature' | 'score';
   dataType?: FeatureDataType;
   status: DriftSectionStatus;
+  statusFixed?: DriftSectionStatus;
+  statusCalibrated?: DriftSectionStatus;
   reason: string;
   psiOrCsi: StabilityResult | null;
   distributionProfile: DistributionProfile | null;
@@ -371,12 +377,16 @@ export interface ConceptPerformanceReport {
 
 export interface DriftReportSection<T> {
   status: DriftSectionStatus;
+  statusFixed?: DriftSectionStatus;
+  statusCalibrated?: DriftSectionStatus;
   reason: string;
   metrics: T;
 }
 
 export interface DriftReportSummaryMetrics {
   overallStatus: DriftStatus;
+  statusFixed?: DriftStatus;
+  statusCalibrated?: DriftStatus;
   driftTypesDetected: string[];
   notAvailable: { section: string; reason: string }[];
 }
@@ -384,6 +394,8 @@ export interface DriftReportSummaryMetrics {
 export interface DriftReport {
   model: ModelVersionRef;
   referenceId: string;
+  statusFixed?: DriftStatus;
+  statusCalibrated?: DriftStatus;
   covariate: DriftReportSection<{
     features: Record<string, CovariateFeatureReport>;
     score: CovariateFeatureReport;
@@ -712,6 +724,27 @@ export interface OnboardingLogEntry {
   provider: string;
 }
 
+export interface CalibratedThresholdPair {
+  warning: number;
+  critical: number;
+}
+
+export interface CalibratedMetricThresholds {
+  psi?: CalibratedThresholdPair;
+  csi: Record<string, CalibratedThresholdPair>;
+  ks: Record<string, CalibratedThresholdPair>;
+  wasserstein: Record<string, CalibratedThresholdPair>;
+  js: Record<string, CalibratedThresholdPair>;
+}
+
+export interface CalibratedThresholds {
+  calibratedAt: string;
+  resamples: number;
+  seed: number;
+  sizes: number[];
+  bySize: Record<number | string, CalibratedMetricThresholds>;
+}
+
 export interface BaselineVersion {
   modelId: string;
   version: string; // semver, e.g. "1.1.0"
@@ -735,6 +768,7 @@ export interface BaselineVersion {
   riskGrades?: { grade: string; minScore: number }[];
   experimentConfig?: { multivariateTargets?: string[] };
   referenceDatasetId: string;
+  calibratedThresholds?: CalibratedThresholds;
   validationReport?: BaselineValidationReport | null;
   onboardingLog?: OnboardingLogEntry[];
   createdAt: string;

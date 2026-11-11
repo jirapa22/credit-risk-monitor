@@ -11,7 +11,10 @@
     "build:reference": "python3 scripts/build_reference_dataset.py",
     "experiments": "tsx scripts/run_experiments.ts",
     "eval:suggest": "tsx scripts/eval_suggestions.ts",
-    "sequence": "tsx scripts/run_sequence.ts"
+    "sequence": "tsx scripts/run_sequence.ts",
+    "calibrate": "tsx scripts/calibrate.ts",
+    "power": "tsx scripts/power_curve.ts",
+    "seed:samples": "tsx scripts/seed_samples.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.7.0",

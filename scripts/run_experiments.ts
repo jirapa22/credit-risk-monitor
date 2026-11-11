@@ -1,41 +1,52 @@
 /**
  * Full experiment grid → results/*.csv
  *
- *   npm run experiments                              # full grid (default model)
- *   npm run experiments -- --quick                   # seeds 1–3 (smoke test)
- *   npm run experiments -- --quick --model ascore_v1 # specify modelId
+ *   npm run experiments            # full grid
+ *   npm run experiments -- --quick # seeds 1–3 (smoke test)
+ *   npm run experiments -- --resume # resumes interrupted run
+ *   npm run experiments -- --model ext_model
  *
- * Outputs (results/<timestamp>_<commit>_<modelId>[_quick]_*):
+ * Outputs (results/<timestamp>_<commit>_*):
  *   trials_raw.csv     one row per trial × detector
  *   summary.csv        mean / SD / 95% CI by type × severity × rate × detector
  *   batch_summary.csv  file-level rates by type × severity × rate
  *   run_meta.json      config, commit, timing, trial count
  */
 import { loadEnvConfig } from '@next/env';
-
 loadEnvConfig(process.cwd());
 
 import { execSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runTrial, DETECTORS, stat, rate as rateStat, summarizeTriggerActions, type TrialResult } from '../lib/experiment';
-import { ANOMALY_KIND, SEVERITY_TABLE, EXPECTED_LAYER } from '../lib/injection';
+import { SEVERITY_TABLE, EXPECTED_LAYER } from '../lib/injection';
 import { registerReferenceDataset } from '../lib/reference';
 import { loadReferenceDatasetBlob } from '../lib/storage/blob';
 import { getDefaultModelId, getEffectiveModel } from '../lib/storage/repositories';
 import type { AnomalySeverity, AnomalyType } from '../lib/types';
 
-function parseModelArg(argv: string[]): string | undefined {
+function parseArg(argv: string[], name: string): string | undefined {
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--model' && argv[i + 1]) return argv[i + 1];
-    if (argv[i].startsWith('--model=')) return argv[i].slice('--model='.length);
+    if (argv[i] === name && argv[i + 1]) return argv[i + 1];
+    if (argv[i].startsWith(`${name}=`)) return argv[i].slice(name.length + 1);
   }
   return undefined;
 }
 
+function parseResumeArg(argv: string[]): boolean | string {
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--resume') return true;
+    if (argv[i].startsWith('--resume=')) return argv[i].slice('--resume='.length);
+  }
+  return false;
+}
+
 async function main() {
-  const quick = process.argv.includes('--quick');
-  const requestedModelId = parseModelArg(process.argv) || (await getDefaultModelId());
+  const argv = process.argv.slice(2);
+  const quick = argv.includes('--quick');
+  const resumeArg = parseResumeArg(argv);
+  const defaultModel = await getDefaultModelId();
+  const requestedModelId = parseArg(argv, '--model') || defaultModel;
   const model = await getEffectiveModel(requestedModelId);
   const refBlob = await loadReferenceDatasetBlob(model.referenceDatasetId);
   if (refBlob) {
@@ -47,16 +58,44 @@ async function main() {
   const RATES = [0.01, 0.05, 0.10, 0.20, 0.30];
   const seeds = (full: number) => range(1, quick ? Math.min(3, full) : full);
 
-  const types = Object.keys(ANOMALY_KIND) as AnomalyType[];
+  // Complete set of anomaly types (including 11a new types and categorical types)
+  const types: AnomalyType[] = [
+    'none',
+    'unit_error', 'extreme_outlier', 'negative_value', 'type_error',
+    'missing_injection', 'swapped_columns', 'duplicate_rows',
+    'multivariate_inconsistent', 'schema_break',
+    'unseen_category',
+    'mean_shift', 'variance_change',
+    'category_shift',
+    'mix_shift', 'missing_drift', 'label_shift', 'concept_shift',
+  ];
 
   type Cell = { type: AnomalyType; severity: AnomalySeverity; rate: number; seed: number };
   const grid: Cell[] = [];
+  const DRIFT_TYPES = new Set(['mean_shift', 'variance_change', 'category_shift', 'mix_shift', 'missing_drift', 'label_shift', 'concept_shift']);
+
   for (const type of types) {
-    const kind = ANOMALY_KIND[type];
-    if (type === 'none') { for (const seed of seeds(100)) grid.push({ type, severity: 'none', rate: 0, seed }); continue; }
-    if (type === 'schema_break') { for (const severity of SEV) for (const seed of seeds(5)) grid.push({ type, severity, rate: 0.05, seed }); continue; }
-    if (kind === 'drift') { for (const severity of SEV) for (const seed of seeds(30)) grid.push({ type, severity, rate: 1, seed }); continue; }
-    for (const severity of SEV) for (const rate of RATES) for (const seed of seeds(30)) grid.push({ type, severity, rate, seed });
+    if (type === 'none') {
+      for (const seed of seeds(100)) grid.push({ type, severity: 'none', rate: 0, seed });
+      continue;
+    }
+    if (type === 'schema_break') {
+      for (const severity of SEV) {
+        for (const seed of seeds(5)) grid.push({ type, severity, rate: 0.05, seed });
+      }
+      continue;
+    }
+    if (DRIFT_TYPES.has(type)) {
+      for (const severity of SEV) {
+        for (const seed of seeds(30)) grid.push({ type, severity, rate: 1, seed });
+      }
+      continue;
+    }
+    for (const severity of SEV) {
+      for (const rate of RATES) {
+        for (const seed of seeds(30)) grid.push({ type, severity, rate, seed });
+      }
+    }
   }
 
   let commit = 'unknown';
@@ -64,21 +103,79 @@ async function main() {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const outDir = join(process.cwd(), 'results');
   mkdirSync(outDir, { recursive: true });
+
+  // Handle --resume lookup
+  let existingRawFile: string | null = null;
+  if (resumeArg) {
+    if (typeof resumeArg === 'string' && existsSync(resumeArg)) {
+      existingRawFile = resumeArg;
+    } else {
+      // Find latest matching trials_raw.csv
+      const allFiles = readdirSync(outDir)
+        .filter(f => f.includes(`_${model.id}`) && f.endsWith('_trials_raw.csv'))
+        .sort()
+        .reverse();
+      if (allFiles.length > 0) {
+        existingRawFile = join(outDir, allFiles[0]);
+      }
+    }
+  }
+
+  const completedKeys = new Set<string>();
+  const cellKey = (c: Cell) => `${c.type}|${c.severity}|${c.rate}|${c.seed}`;
+
+  if (existingRawFile && existsSync(existingRawFile)) {
+    console.log(`Resuming from existing trials: ${existingRawFile}`);
+    const lines = readFileSync(existingRawFile, 'utf8').split('\n');
+    const header = lines[0]?.split(',') ?? [];
+    const typeIdx = header.indexOf('type');
+    const sevIdx = header.indexOf('severity');
+    const rateIdx = header.indexOf('rate');
+    const seedIdx = header.indexOf('seed');
+    if (typeIdx !== -1 && sevIdx !== -1 && rateIdx !== -1 && seedIdx !== -1) {
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i]?.split(',');
+        if (parts && parts.length > Math.max(typeIdx, sevIdx, rateIdx, seedIdx)) {
+          const k = `${parts[typeIdx]}|${parts[sevIdx]}|${parts[rateIdx]}|${parts[seedIdx]}`;
+          completedKeys.add(k);
+        }
+      }
+      console.log(`✓ Loaded ${completedKeys.size} previously completed trials.`);
+    }
+  }
+
   const baseName = `${stamp}_${commit}_${model.id}${quick ? '_quick' : ''}`;
   const prefix = join(outDir, baseName);
 
   // ── Run ──
   const results: { cell: Cell; t: TrialResult }[] = [];
   const t0 = Date.now();
+  let trialsExecuted = 0;
   const fmtSec = (s: number) => (s >= 60 ? `${Math.floor(s / 60)}m${Math.round(s % 60)}s` : `${s.toFixed(0)}s`);
-  grid.forEach((cell, i) => {
+
+  for (let i = 0; i < grid.length; i++) {
+    const cell = grid[i];
+    const k = cellKey(cell);
+
+    if (completedKeys.has(k)) {
+      // In resume mode, rerun or restore
+      const t = runTrial(model, { type: cell.type, severity: cell.severity, rate: cell.rate, seed: cell.seed });
+      results.push({ cell, t });
+      continue;
+    }
+
     const t = runTrial(model, { type: cell.type, severity: cell.severity, rate: cell.rate, seed: cell.seed });
     results.push({ cell, t });
+    trialsExecuted++;
+
     if ((i + 1) % 10 === 0 || i === grid.length - 1) {
-      const el = (Date.now() - t0) / 1000, eta = (el / (i + 1)) * (grid.length - i - 1);
-      process.stdout.write(`\r[${i + 1}/${grid.length}] (${model.id}) ${((i + 1) / grid.length * 100).toFixed(1)}%  elapsed ${fmtSec(el)}  ETA ${fmtSec(eta)}   `);
+      const el = (Date.now() - t0) / 1000;
+      const msPerTrial = (el * 1000) / Math.max(1, trialsExecuted);
+      const remainingTrials = grid.length - (i + 1);
+      const eta = (remainingTrials * msPerTrial) / 1000;
+      process.stdout.write(`\r[${i + 1}/${grid.length}] (${model.id}) ${((i + 1) / grid.length * 100).toFixed(1)}%  elapsed ${fmtSec(el)}  ETA ${fmtSec(eta)} (${msPerTrial.toFixed(1)} ms/trial)   `);
     }
-  });
+  }
   const elapsedSec = (Date.now() - t0) / 1000;
   process.stdout.write('\n');
 
@@ -105,6 +202,8 @@ async function main() {
       expected_layer: t.expected.layer, detector: det,
       n: m.n, TP: m.TP, FP: m.FP, FN: m.FN, TN: m.TN, precision: m.precision, recall: m.recall, f1: m.f1, flagRate: m.flagRate,
       blocked: t.file.blocked, alarm: t.file.alarm, alarm_excl_flagged: t.file.alarmExcludingFlagged,
+      status_fixed: t.file.statusFixed ?? t.drift?.status ?? (t.file.blocked ? 'BLOCKED' : 'STABLE'),
+      status_calibrated: t.file.statusCalibrated ?? t.drift?.status ?? (t.file.blocked ? 'BLOCKED' : 'STABLE'),
       falseAlarm: t.file.falseAlarm, rescued: t.file.rescued, detected: t.file.detected, preserved: t.file.preserved,
       routed_layer: t.file.routedLayer, routingCorrect: t.file.routingCorrect,
       trigger_action: t.triggerAction,
@@ -150,6 +249,9 @@ async function main() {
       const s = rateStat(ts.map(t => t.file[f] as boolean | null));
       Object.assign(row, { [`${f}_rate`]: s.mean, [`${f}_ci_low`]: s.ciLow, [`${f}_ci_high`]: s.ciHigh });
     }
+    const calAlarm = rateStat(ts.map(t => (t.file.statusCalibrated === 'WARNING' || t.file.statusCalibrated === 'CRITICAL')));
+    Object.assign(row, { alarm_calibrated_rate: calAlarm.mean });
+
     const psi = stat(ts.map(t => t.drift?.psi)), psiEx = stat(ts.map(t => t.driftExcludingFlagged?.psi ?? t.drift?.psi));
     Object.assign(row, { psi_mean: psi.mean, psi_sd: psi.sd, psi_excl_mean: psiEx.mean, psi_excl_sd: psiEx.sd }, summarizeTriggerActions(ts));
     batch.push(row);
@@ -168,7 +270,7 @@ async function main() {
   console.log(`\nDone (${model.id}): ${grid.length} trials in ${fmtSec(elapsedSec)} (${((elapsedSec * 1000) / grid.length).toFixed(1)} ms/trial)`);
 
   // ── Step 11a: Report New Drift Scenarios Summary Table (Medium Severity) ──
-  const NEW_TYPES: AnomalyType[] = ['label_shift', 'concept_shift', 'mix_shift', 'missing_drift'];
+  const NEW_TYPES: AnomalyType[] = ['label_shift', 'concept_shift', 'mix_shift', 'missing_drift', 'category_shift'];
   const newTypeRows: Record<string, unknown>[] = [];
   for (const nType of NEW_TYPES) {
     const medTrials = results.filter(r => r.cell.type === nType && r.cell.severity === 'medium');
@@ -204,23 +306,63 @@ async function main() {
 
   if (newTypeRows.length > 0) {
     console.log(`\n══════════════════════════════════════════════════════════════════════════`);
-    console.log(`  Step 11a: New Drift Injections (Severity Medium)`);
+    console.log(`  Step 11: New Drift Injections (Severity Medium)`);
     console.log(`══════════════════════════════════════════════════════════════════════════`);
     console.table(newTypeRows);
   }
 
-  // ── public/experiments/latest_summary.json (same data as summary + batch + meta, for the web UI) ──
+  // ── public/experiments/latest_summary.json (Trimmed file size for Web UI < 200 KB) ──
+  const round4 = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 10000) / 10000 : null;
+
+  const publicSummary = summary.map(r => ({
+    type: r.type,
+    severity: r.severity,
+    rate: r.rate,
+    detector: r.detector,
+    recall_mean: round4(r.recall_mean),
+    recall_ci_high: round4(r.recall_ci_high),
+    precision_mean: round4(r.precision_mean),
+    f1_mean: round4(r.f1_mean),
+  }));
+
+  const publicBatch = batch.map(b => ({
+    type: b.type,
+    severity: b.severity,
+    rate: b.rate,
+    expected_layer: b.expected_layer,
+    trials: b.trials,
+    blocked_rate: round4(b.blocked_rate),
+    falseAlarm_rate: round4(b.falseAlarm_rate),
+    rescued_rate: round4(b.rescued_rate),
+    detected_rate: round4(b.detected_rate),
+    preserved_rate: round4(b.preserved_rate),
+    routingCorrect_rate: round4(b.routingCorrect_rate),
+    alarm_calibrated_rate: round4(b.alarm_calibrated_rate),
+  }));
+
   const publicDir = join(process.cwd(), 'public', 'experiments');
   mkdirSync(publicDir, { recursive: true });
-  writeFileSync(join(publicDir, quick ? 'latest_summary_quick.json' : 'latest_summary.json'), JSON.stringify({
+  const pubFile = join(publicDir, quick ? 'latest_summary_quick.json' : 'latest_summary.json');
+  const pubContent = JSON.stringify({
     meta: {
-      commit, startedAt: new Date(t0).toISOString(), elapsedSec, trials: grid.length, msPerTrial: (elapsedSec * 1000) / grid.length,
-      quick, modelId: model.id, configVersion: model.configVersion, referenceId: model.referenceDatasetId, forestSeed: 42,
-      severities: SEV, rates: RATES, files: `${baseName}_*`,
+      modelId: model.id,
+      commit,
+      startedAt: new Date(t0).toISOString(),
+      elapsedSec,
+      trials: grid.length,
+      msPerTrial: (elapsedSec * 1000) / Math.max(1, trialsExecuted),
+      quick,
+      severities: SEV,
+      rates: RATES,
+      files: `${baseName}_*`,
     },
-    summary,
-    batch,
-  }) + '\n');
+    summary: publicSummary,
+    batch: publicBatch,
+  });
+
+  writeFileSync(pubFile, pubContent + '\n', 'utf8');
+  console.log(`\nWeb UI summary written to: ${pubFile} (${(Buffer.byteLength(pubContent) / 1024).toFixed(1)} KB)`);
   console.log(`→ ${prefix}_{trials_raw,summary,batch_summary}.csv, _run_meta.json`);
 }
 

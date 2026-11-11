@@ -39,6 +39,7 @@ import {
 } from '../reference';
 import { DEFAULT_DATE_COLUMN, DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from '../defaults';
 import { validateBaseline } from '../baselineValidation';
+import { calibrateThresholds } from '../calibration';
 import { computeDistributionStats } from '../driftReport';
 import { calculateAUC, calculateGini, calculateKS, type DataPoint } from '../stats';
 
@@ -332,11 +333,11 @@ async function saveStoredModelMetadata(meta: ModelMetadata): Promise<void> {
   knownEventModelIds.add(meta.modelId);
 }
 
-async function getStoredVersions(modelId: string): Promise<BaselineVersion[]> {
+export async function getStoredVersions(modelId: string): Promise<BaselineVersion[]> {
   return (await getStore().get<BaselineVersion[]>(registryVersionsKey(modelId))) ?? [];
 }
 
-async function saveStoredVersions(modelId: string, versions: BaselineVersion[]): Promise<void> {
+export async function saveStoredVersions(modelId: string, versions: BaselineVersion[]): Promise<void> {
   await getStore().set(registryVersionsKey(modelId), versions);
   knownEventModelIds.add(modelId);
 }
@@ -694,10 +695,21 @@ export async function validateBaselineVersion(
       : 'VALIDATED'
     : 'DRAFT';
 
+  let calibratedThresholds = current.calibratedThresholds;
+  if (report.ok) {
+    try {
+      const profile = await loadReferenceProfile(target.referenceDatasetId, target);
+      calibratedThresholds = calibrateThresholds(profile, target);
+    } catch {
+      // non-blocking
+    }
+  }
+
   const updated: BaselineVersion = {
     ...current,
     status: nextStatus,
     validationReport: report,
+    calibratedThresholds,
     statusHistory:
       nextStatus !== current.status
         ? [

@@ -682,7 +682,9 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
         f => registry[f]?.dataType === 'categorical' || Boolean(profile.categorySpecs?.[f]),
       );
       if (validCatTargets.length === 0) break;
-      const shiftShare = SEVERITY_TABLE.category_shift[sevKey]; // 0.10 / 0.20 / 0.40
+      const shiftShare = typeof params.magnitude === 'number'
+        ? params.magnitude
+        : SEVERITY_TABLE.category_shift[sevKey]; // 0.10 / 0.20 / 0.40
       const targetShiftCount = Math.round(shiftShare * rate * n);
       for (const f of validCatTargets) {
         const col = registry[f]?.columnName || f;

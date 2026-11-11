@@ -3,7 +3,7 @@
  * so UI components can show severity values without bundling the pipeline.
  * Re-exported by lib/injection.ts.
  */
-import type { AnomalySeverity, AnomalyType, ExpectedLayer } from './types';
+import type { AnomalySeverity, AnomalyType, DriftSectionName, ExpectedLayer, TriggerAction } from './types';
 
 export type InjectionKind = 'data_error' | 'drift' | 'clean';
 export type Sev = Exclude<AnomalySeverity, 'none'>;
@@ -27,6 +27,11 @@ export const SEVERITY_TABLE = {
   variance_change:   { low: 1.25, medium: 1.5, high: 2 },                  // spread around Reference median × factor (log scale for log1p features)
   category_shift:    { low: 0.10, medium: 0.20, high: 0.40 },              // percentage-point share shifted from one category to another
   unseen_category:   { low: 'typo_low', medium: 'typo_med', high: 'typo_high' }, // unseen category injected (e.g. typo)
+  // Step 11a: new drift scenarios
+  label_shift:       { low: 1.25, medium: 1.5, high: 2.0 },                 // bad rate × factor
+  concept_shift:     { low: 0.25, medium: 0.50, high: 1.0 },               // proportion of rows whose labels are shuffled
+  mix_shift:         { low: 0.10, medium: 0.20, high: 0.40 },              // percentage-point share increase in lower quartile (<= p25)
+  missing_drift:     { low: 0.05, medium: 0.10, high: 0.20 },              // percentage-point increase in missing values of imputable features
 } as const;
 
 const BASE_ANOMALY_KIND: Record<string, InjectionKind> = {
@@ -35,6 +40,7 @@ const BASE_ANOMALY_KIND: Record<string, InjectionKind> = {
   missing_injection: 'data_error', swapped_columns: 'data_error', duplicate_rows: 'data_error',
   multivariate_inconsistent: 'data_error', schema_break: 'data_error',
   mean_shift: 'drift', variance_change: 'drift',
+  label_shift: 'drift', concept_shift: 'drift', mix_shift: 'drift', missing_drift: 'drift',
 };
 Object.defineProperties(BASE_ANOMALY_KIND, {
   unseen_category: { value: 'data_error', enumerable: false, configurable: true, writable: true },
@@ -52,6 +58,7 @@ const BASE_EXPECTED_LAYER: Record<string, ExpectedLayer | Record<Sev, ExpectedLa
   unit_error: { low: 'anomaly', medium: 'validation', high: 'validation' },
   extreme_outlier: 'anomaly', swapped_columns: 'anomaly', multivariate_inconsistent: 'anomaly',
   mean_shift: 'drift', variance_change: 'drift',
+  label_shift: 'drift', concept_shift: 'drift', mix_shift: 'drift', missing_drift: 'drift',
 };
 Object.defineProperties(BASE_EXPECTED_LAYER, {
   unseen_category: { value: 'anomaly', enumerable: false, configurable: true, writable: true },
@@ -59,8 +66,52 @@ Object.defineProperties(BASE_EXPECTED_LAYER, {
 });
 export const EXPECTED_LAYER = BASE_EXPECTED_LAYER as Record<AnomalyType, ExpectedLayer | Record<Sev, ExpectedLayer>>;
 
-export function expectedFor(type: AnomalyType, severity?: AnomalySeverity): { layer: ExpectedLayer; shouldAlarm: boolean } {
+export const EXPECTED_SECTION: Partial<Record<AnomalyType, DriftSectionName>> = {
+  mean_shift: 'covariate',
+  variance_change: 'covariate',
+  category_shift: 'covariate',
+  mix_shift: 'covariate',
+  label_shift: 'label',
+  concept_shift: 'concept',
+  missing_drift: 'missing',
+};
+
+export const EXPECTED_ACTION: Record<AnomalyType, TriggerAction | TriggerAction[]> = {
+  none: ['CONTINUE', 'MONITOR_CLOSELY'],
+  unit_error: ['INVESTIGATE_DATA', 'BLOCKED_INVALID_DATA'],
+  extreme_outlier: ['INVESTIGATE_DATA', 'BLOCKED_INVALID_DATA'],
+  negative_value: ['INVESTIGATE_DATA', 'BLOCKED_INVALID_DATA'],
+  type_error: ['INVESTIGATE_DATA', 'BLOCKED_INVALID_DATA'],
+  missing_injection: ['INVESTIGATE_DATA', 'BLOCKED_INVALID_DATA'],
+  swapped_columns: ['INVESTIGATE_DATA', 'BLOCKED_INVALID_DATA'],
+  duplicate_rows: ['INVESTIGATE_DATA', 'BLOCKED_INVALID_DATA'],
+  multivariate_inconsistent: ['INVESTIGATE_DATA', 'BLOCKED_INVALID_DATA'],
+  schema_break: ['BLOCKED_INVALID_DATA', 'INVESTIGATE_DATA'],
+  unseen_category: ['INVESTIGATE_DATA', 'BLOCKED_INVALID_DATA'],
+  mean_shift: 'INVESTIGATE_DRIFT',
+  variance_change: 'INVESTIGATE_DRIFT',
+  category_shift: 'INVESTIGATE_DRIFT',
+  mix_shift: 'INVESTIGATE_DRIFT',
+  label_shift: 'RECALIBRATE',
+  concept_shift: 'CONSIDER_RETRAIN',
+  missing_drift: 'INVESTIGATE_DATA',
+};
+
+export function expectedFor(
+  type: AnomalyType,
+  severity?: AnomalySeverity,
+): {
+  layer: ExpectedLayer;
+  section?: DriftSectionName;
+  shouldAlarm: boolean;
+  expectedAction?: TriggerAction | TriggerAction[];
+} {
   const e = EXPECTED_LAYER[type] ?? 'none';
   const layer = typeof e === 'string' ? e : e[(severity && severity !== 'none' ? severity : 'medium') as Sev];
-  return { layer, shouldAlarm: type !== 'none' };
+  if (type === 'none') {
+    return { layer: 'none', shouldAlarm: false };
+  }
+  const section = EXPECTED_SECTION[type];
+  const expectedAction = EXPECTED_ACTION[type] ?? ['CONTINUE', 'MONITOR_CLOSELY'];
+  return { layer, section, shouldAlarm: true, expectedAction };
 }

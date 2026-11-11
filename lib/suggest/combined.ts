@@ -20,6 +20,12 @@ import type {
   SuggestionProvider,
 } from './types';
 
+export type CombinedStrategy = 'ai_primary' | 'confidence';
+
+export interface CombinedProviderOptions {
+  strategy?: CombinedStrategy;
+}
+
 interface CacheEntry {
   timestamp: number;
   columns: ColumnSuggestion[];
@@ -35,8 +41,9 @@ export function buildCacheKey(
   sha256 = 'none',
   providerName = 'combined',
   modelName = 'default',
+  strategy: CombinedStrategy = 'ai_primary',
 ): string {
-  return `${referenceId}::${sha256}::${providerName}::${modelName}`;
+  return `${referenceId}::${sha256}::${providerName}::${modelName}::${strategy}`;
 }
 
 export function clearSuggestionCache(): void {
@@ -46,10 +53,16 @@ export function clearSuggestionCache(): void {
 export class CombinedSuggestionProvider implements SuggestionProvider {
   readonly name = 'combined';
   private aiProvider: AiSuggestionProvider;
+  private strategy: CombinedStrategy;
   private lastUsage: AiUsageStats | null = null;
 
-  constructor(aiProvider?: AiSuggestionProvider) {
+  constructor(aiProvider?: AiSuggestionProvider, opts: CombinedProviderOptions = {}) {
     this.aiProvider = aiProvider || new AiSuggestionProvider();
+    this.strategy = opts.strategy ?? 'ai_primary';
+  }
+
+  getStrategy(): CombinedStrategy {
+    return this.strategy;
   }
 
   getAiProvider(): AiSuggestionProvider {
@@ -65,7 +78,7 @@ export class CombinedSuggestionProvider implements SuggestionProvider {
     sha256?: string,
   ): Promise<ColumnSuggestion[]> {
     const model = this.aiProvider.getModel();
-    const cacheKey = buildCacheKey(profile.referenceId, sha256, this.name, model);
+    const cacheKey = buildCacheKey(profile.referenceId, sha256, this.name, model, this.strategy);
     const cached = suggestionCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
       this.lastUsage = cached.usage ?? null;
@@ -165,17 +178,23 @@ export class CombinedSuggestionProvider implements SuggestionProvider {
         };
       }
 
-      // Disagreement: Choose based on confidence
-      const chooseAi = a!.confidence >= h!.confidence;
+      // Disagreement: Choose based on strategy
+      const chooseAi = this.strategy === 'ai_primary' ? true : a!.confidence >= h!.confidence;
       const winner = chooseAi ? a! : h!;
+      const reason = chooseAi
+        ? (this.strategy === 'ai_primary'
+            ? `${a!.reason} [AI: ${a!.role} (หลัก) vs กฎ: ${h!.role} (ความเห็นที่สอง)]`
+            : `${a!.reason} [AI: ${a!.role} vs กฎ: ${h!.role}]`)
+        : (this.strategy === 'ai_primary'
+            ? `${h!.reason} [กฎ: ${h!.role} (หลัก) vs AI: ${a!.role} (ความเห็นที่สอง)]`
+            : `${h!.reason} [กฎ: ${h!.role} vs AI: ${a!.role}]`);
+
       return {
         column: cName,
         role: winner.role,
         type: winner.type,
         confidence: winner.confidence,
-        reason: chooseAi
-          ? `${a!.reason} [AI: ${a!.role} vs กฎ: ${h!.role}]`
-          : `${h!.reason} [กฎ: ${h!.role} vs AI: ${a!.role}]`,
+        reason,
         aiProposal: aProp,
         heuristicProposal: hProp,
         agreement: 'disagree',

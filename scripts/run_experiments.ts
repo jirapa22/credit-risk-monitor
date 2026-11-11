@@ -141,7 +141,10 @@ async function main() {
   for (const { cell, ts } of groups.values()) {
     const row: Record<string, unknown> = {
       modelId: model.id, configVersion: model.configVersion, referenceId: model.referenceDatasetId,
-      type: cell.type, kind: ts[0].kind, severity: cell.severity, rate: cell.rate, expected_layer: ts[0].expected.layer, trials: ts.length,
+      type: cell.type, kind: ts[0].kind, severity: cell.severity, rate: cell.rate,
+      expected_layer: ts[0].expected.layer,
+      expected_section: ts[0].expected.section ?? 'none',
+      trials: ts.length,
     };
     for (const f of ['blocked', 'alarm', 'falseAlarm', 'rescued', 'detected', 'preserved', 'routingCorrect'] as const) {
       const s = rateStat(ts.map(t => t.file[f] as boolean | null));
@@ -162,7 +165,49 @@ async function main() {
     severityTable: SEVERITY_TABLE, expectedLayer: EXPECTED_LAYER,
   }, null, 2) + '\n');
 
-  console.log(`Done (${model.id}): ${grid.length} trials in ${fmtSec(elapsedSec)} (${((elapsedSec * 1000) / grid.length).toFixed(1)} ms/trial)`);
+  console.log(`\nDone (${model.id}): ${grid.length} trials in ${fmtSec(elapsedSec)} (${((elapsedSec * 1000) / grid.length).toFixed(1)} ms/trial)`);
+
+  // ── Step 11a: Report New Drift Scenarios Summary Table (Medium Severity) ──
+  const NEW_TYPES: AnomalyType[] = ['label_shift', 'concept_shift', 'mix_shift', 'missing_drift'];
+  const newTypeRows: Record<string, unknown>[] = [];
+  for (const nType of NEW_TYPES) {
+    const medTrials = results.filter(r => r.cell.type === nType && r.cell.severity === 'medium');
+    if (medTrials.length === 0) continue;
+    const tFirst = medTrials[0].t;
+    if (tFirst.spec.skipped) {
+      newTypeRows.push({
+        'ชนิด': nType,
+        'Section ที่คาด': tFirst.expected.section ?? 'drift',
+        'Section ที่เตือนจริง': 'ข้าม (skipped)',
+        'sectionLeakage': '-',
+        'Trigger ที่ได้': '-',
+        'ตรงกับที่คาดไหม': `ข้าม: ${tFirst.spec.skipReason}`,
+      });
+      continue;
+    }
+
+    const expSec = tFirst.expected.section ?? 'none';
+    const routingOkRate = rateStat(medTrials.map(m => m.t.file.routingCorrect)).mean ?? 0;
+    const triggerOkRate = rateStat(medTrials.map(m => m.t.triggerCorrect)).mean ?? 0;
+    const allLeakages = [...new Set(medTrials.flatMap(m => m.t.sectionLeakage))];
+    const triggerActions = [...new Set(medTrials.map(m => m.t.triggerAction))];
+
+    newTypeRows.push({
+      'ชนิด': nType,
+      'Section ที่คาด': expSec,
+      'Section ที่เตือนจริง': (tFirst.file.routingCorrect ? expSec : 'none') + (allLeakages.length > 0 ? ` + ${allLeakages.join(', ')}` : ''),
+      'sectionLeakage': allLeakages.length > 0 ? allLeakages.join(', ') : 'ไม่มี (none)',
+      'Trigger ที่ได้': triggerActions.join(', '),
+      'ตรงกับที่คาดไหม': routingOkRate >= 0.8 && triggerOkRate >= 0.8 ? '✅ ตรง' : '⚠️ ไม่ตรงบางส่วน',
+    });
+  }
+
+  if (newTypeRows.length > 0) {
+    console.log(`\n══════════════════════════════════════════════════════════════════════════`);
+    console.log(`  Step 11a: New Drift Injections (Severity Medium)`);
+    console.log(`══════════════════════════════════════════════════════════════════════════`);
+    console.table(newTypeRows);
+  }
 
   // ── public/experiments/latest_summary.json (same data as summary + batch + meta, for the web UI) ──
   const publicDir = join(process.cwd(), 'public', 'experiments');

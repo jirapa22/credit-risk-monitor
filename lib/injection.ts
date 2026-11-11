@@ -12,13 +12,31 @@
  * - Every severity value is a named constant (SEVERITY_TABLE) for the thesis tables.
  * - EXPECTED_LAYER is the experiment's HYPOTHESIS, not a guarantee — Step 5 measures it.
  */
-import type { AnomalySeverity, AnomalyType, ExpectedLayer, FeatureDefinition } from './types';
+import type { AnomalySeverity, AnomalyType, DriftSectionName, ExpectedLayer, FeatureDefinition, TriggerAction } from './types';
 import { getSpecialColumnSet, resolveModelColumns } from './defaults';
 import { mulberry32 } from './random';
 import { getReferenceProfile, getReferenceRows, resolveCanonicalCategory, type ReferenceProfile } from './reference';
 import { quantile } from './anomaly/univariate';
-import { SEVERITY_TABLE, ANOMALY_KIND, expectedFor, type InjectionKind, type Sev } from './injection-meta';
-export { SEVERITY_TABLE, ANOMALY_KIND, EXPECTED_LAYER, expectedFor, type InjectionKind } from './injection-meta';
+import { calculateAScore } from './scoring';
+import {
+  SEVERITY_TABLE,
+  ANOMALY_KIND,
+  EXPECTED_LAYER,
+  EXPECTED_SECTION,
+  EXPECTED_ACTION,
+  expectedFor,
+  type InjectionKind,
+  type Sev,
+} from './injection-meta';
+export {
+  SEVERITY_TABLE,
+  ANOMALY_KIND,
+  EXPECTED_LAYER,
+  EXPECTED_SECTION,
+  EXPECTED_ACTION,
+  expectedFor,
+  type InjectionKind,
+} from './injection-meta';
 
 /**
  * Return numeric features from featureRegistry ordered by displayOrder (ascending),
@@ -134,6 +152,53 @@ export function selectMultivariateTargets(
   return { targets: bestPair, correlation: bestCorr };
 }
 
+/**
+ * Find the first feature in registry whose missingStrategy is imputable / non-rejecting
+ * (fillMedian, fillMean, fillMode, fillZero, fillDefault, ignore, flagOnly) or allows nulls.
+ */
+export function findImputableFeature(
+  registry: Record<string, FeatureDefinition>,
+  specialCols: Set<string>,
+  fallbackColumns: string[] = [],
+  scoringFeatures: string[] = [],
+): string | null {
+  const imputableStrategies = new Set([
+    'fillMedian',
+    'fillMean',
+    'fillMode',
+    'fillZero',
+    'fillDefault',
+    'ignore',
+    'flagOnly',
+  ]);
+
+  const entries = Object.entries(registry)
+    .filter(([k, d]) => !specialCols.has(k) && d.monitoringEnabled !== false)
+    .map(([k, d], idx) => ({ key: k, def: d, order: typeof d.displayOrder === 'number' ? d.displayOrder : Infinity, idx }));
+  entries.sort((a, b) => a.order - b.order || a.idx - b.idx);
+
+  for (const { key, def } of entries) {
+    const strat = def.validation?.missingStrategy || (def as any).missingStrategy;
+    if (strat && strat !== 'reject' && imputableStrategies.has(strat)) {
+      return key;
+    }
+    if (def.validation?.allowNull === true && !def.required && !scoringFeatures.includes(key)) {
+      return key;
+    }
+  }
+
+  for (const col of fallbackColumns) {
+    if (specialCols.has(col) || scoringFeatures.includes(col)) continue;
+    const def = registry[col];
+    if (def) {
+      const strat = def.validation?.missingStrategy || (def as any).missingStrategy;
+      if (strat && strat !== 'reject') return col;
+    }
+  }
+
+  return null;
+}
+
 /** Resolve default target features for an anomaly type from featureRegistry (sorted by displayOrder). */
 export function resolveDefaultTargets(
   type: AnomalyType,
@@ -148,6 +213,28 @@ export function resolveDefaultTargets(
   if (type === 'multivariate_inconsistent') {
     return selectMultivariateTargets(profile, orderedFeatures, model).targets;
   }
+  if (type === 'label_shift' || type === 'concept_shift') {
+    const lbl = model?.datasetConfig?.labelColumn || model?.scoring?.labelColumn || model?.labelColumn;
+    return lbl ? [lbl] : [];
+  }
+  if (type === 'missing_drift') {
+    const specialCols = new Set([
+      model?.idColumn,
+      model?.dateColumn,
+      model?.labelColumn,
+      model?.scoreColumn,
+    ].filter(Boolean));
+    const imp = findImputableFeature(
+      model?.featureRegistry ?? {},
+      specialCols,
+      orderedFeatures,
+      model?.scoring?.features ?? [],
+    );
+    return imp ? [imp] : [];
+  }
+  if (type === 'mix_shift') {
+    return orderedFeatures.slice(0, 1);
+  }
   return orderedFeatures.slice(0, 1);
 }
 
@@ -159,12 +246,14 @@ export interface InjectionParams {
   targetFeatures?: string[];
   n?: number;                      // default = Reference row count
   seed?: number;                   // default 42
+  magnitude?: number;              // custom magnitude override
 }
 
-export interface InjectionSpec extends Required<InjectionParams> {
+export interface InjectionSpec extends Required<Omit<InjectionParams, 'magnitude'>> {
   referenceId: string;
   kind: InjectionKind;
   injectedCount: number;
+  magnitude?: number;
   skipped?: boolean;
   skipReason?: string;
 }
@@ -183,7 +272,12 @@ export interface InjectionResult {
   rows: Record<string, unknown>[];
   csvText: string;
   groundTruth: GroundTruthRow[];
-  expected: { layer: ExpectedLayer; shouldAlarm: boolean };
+  expected: {
+    layer: ExpectedLayer;
+    section?: DriftSectionName;
+    shouldAlarm: boolean;
+    expectedAction?: TriggerAction | TriggerAction[];
+  };
   spec: InjectionSpec;
   skipped?: boolean;
   skipReason?: string;
@@ -218,9 +312,15 @@ function resolveExpectedLayer(
   idx: number[],
   targetFeatures: string[],
   registry: Record<string, FeatureDefinition>,
-): { layer: ExpectedLayer; shouldAlarm: boolean } {
-  if (type !== 'unit_error') return expectedFor(type, severity);
-  if (idx.length === 0) return expectedFor(type, severity);
+): {
+  layer: ExpectedLayer;
+  section?: DriftSectionName;
+  shouldAlarm: boolean;
+  expectedAction?: TriggerAction | TriggerAction[];
+} {
+  const base = expectedFor(type, severity);
+  if (type !== 'unit_error') return base;
+  if (idx.length === 0) return base;
   let exceededRows = 0;
   for (const i of idx) {
     const rowExceeded = targetFeatures.some(f => {
@@ -235,7 +335,7 @@ function resolveExpectedLayer(
     if (rowExceeded) exceededRows++;
   }
   const layer: ExpectedLayer = exceededRows >= Math.ceil(idx.length / 2) ? 'validation' : 'anomaly';
-  return { layer, shouldAlarm: true };
+  return { ...base, layer };
 }
 
 export function injectAnomaly(model: any, params: InjectionParams): InjectionResult {
@@ -378,12 +478,12 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
       break;
     }
     case 'mean_shift': {
-      const delta = SEVERITY_TABLE.mean_shift[sevKey];
+      const delta = typeof params.magnitude === 'number' ? params.magnitude : SEVERITY_TABLE.mean_shift[sevKey];
       for (const i of idx) { mark(i, snapshot(rows[i], targetFeatures)); for (const f of targetFeatures) rows[i][f] = keepType(rows[i][f], Number(rows[i][f]) * (1 + delta)); }
       break;
     }
     case 'variance_change': {
-      const factor = SEVERITY_TABLE.variance_change[sevKey];
+      const factor = typeof params.magnitude === 'number' ? params.magnitude : SEVERITY_TABLE.variance_change[sevKey];
       const meta = Object.fromEntries(targetFeatures.map(f => {
         const log = registry[f]?.anomalyTransform === 'log1p';
         const vals = (profile.features[f] ?? []).map(v => (log ? Math.log1p(v) : v)).sort((a, b) => a - b);
@@ -398,6 +498,166 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
           const y2 = med + factor * (y - med);
           rows[i][f] = keepType(rows[i][f], log ? Math.expm1(y2) : y2);
         }
+      }
+      break;
+    }
+    case 'label_shift': {
+      const lblCol = (labelColumn && columns.includes(labelColumn)) ? labelColumn : targetFeatures[0];
+      if (!lblCol || !columns.includes(lblCol)) break;
+      const factor = typeof params.magnitude === 'number' ? params.magnitude : SEVERITY_TABLE.label_shift[sevKey];
+
+      const currentBadIndices: number[] = [];
+      const zeroItems: { i: number; risk: number }[] = [];
+
+      const hasScorecard = Boolean(model.scoring?.scorecard && Object.keys(model.scoring.scorecard).length > 0);
+      const scoreCol = scoreColumn && columns.includes(scoreColumn) ? scoreColumn : null;
+      const scoreDir = model.scoreDirection === 'higher_is_riskier' ? 'higher_is_riskier' : 'higher_is_safer';
+
+      for (let i = 0; i < rows.length; i++) {
+        const v = rows[i][lblCol];
+        if (v === 1 || v === '1' || v === true) {
+          currentBadIndices.push(i);
+        } else if (v === 0 || v === '0' || v === false) {
+          let score = 0;
+          if (hasScorecard) {
+            score = calculateAScore(model.scoring, rows[i] as any);
+          } else if (scoreCol) {
+            const sc = Number(rows[i][scoreCol]);
+            score = Number.isFinite(sc) ? sc : 0;
+          } else if (targetFeatures[0] && Number.isFinite(Number(rows[i][targetFeatures[0]]))) {
+            score = Number(rows[i][targetFeatures[0]]);
+          }
+          const risk = scoreDir === 'higher_is_safer' ? -score : score;
+          zeroItems.push({ i, risk });
+        }
+      }
+
+      const p0 = rows.length > 0 ? currentBadIndices.length / rows.length : 0;
+      const refBadRate = profile.labels.length > 0
+        ? profile.labels.filter(l => l === 1).length / profile.labels.length
+        : 0.10;
+      const baseRate = p0 > 0 ? p0 : refBadRate;
+      const pTarget = Math.min(1.0, Math.max(baseRate * factor, p0 * factor));
+      const targetBads = Math.round(pTarget * rows.length);
+      const neededNewBads = Math.max(1, targetBads - currentBadIndices.length);
+
+      const numToFlip = Math.min(neededNewBads, zeroItems.length);
+
+      // Sort by risk descending (highest risk first)
+      zeroItems.sort((a, b) => b.risk - a.risk);
+
+      const N = zeroItems.length;
+      // Exponential risk weights so newly flipped bads reflect true prior drift
+      const weights = zeroItems.map((_, idx) => Math.pow((N - idx) / N, 2.5));
+      const totalW = weights.reduce((a, b) => a + b, 0);
+
+      const chosenIndices = new Set<number>();
+      let attempts = 0;
+      while (chosenIndices.size < numToFlip && attempts < numToFlip * 20) {
+        attempts++;
+        let r = rnd() * totalW;
+        for (let j = 0; j < N; j++) {
+          r -= weights[j];
+          if (r <= 0) {
+            chosenIndices.add(zeroItems[j].i);
+            break;
+          }
+        }
+      }
+
+      if (chosenIndices.size < numToFlip) {
+        for (let j = 0; j < N && chosenIndices.size < numToFlip; j++) {
+          chosenIndices.add(zeroItems[j].i);
+        }
+      }
+
+      for (const i of chosenIndices) {
+        mark(i, snapshot(rows[i], [lblCol]));
+        const orig = rows[i][lblCol];
+        rows[i][lblCol] = typeof orig === 'string' ? '1' : 1;
+      }
+      break;
+    }
+    case 'concept_shift': {
+      const lblCol = (labelColumn && columns.includes(labelColumn)) ? labelColumn : targetFeatures[0];
+      if (!lblCol || !columns.includes(lblCol)) break;
+      const proportion = typeof params.magnitude === 'number' ? params.magnitude : SEVERITY_TABLE.concept_shift[sevKey];
+      const countToShuffle = Math.max(2, Math.round(proportion * rows.length));
+
+      const chosenIndices = pickIndices(rows.length, countToShuffle, rnd);
+      const labelsSubset = chosenIndices.map(i => rows[i][lblCol]);
+
+      for (let j = labelsSubset.length - 1; j > 0; j--) {
+        const swap = Math.floor(rnd() * (j + 1));
+        [labelsSubset[j], labelsSubset[swap]] = [labelsSubset[swap], labelsSubset[j]];
+      }
+
+      for (let j = 0; j < chosenIndices.length; j++) {
+        const rIdx = chosenIndices[j];
+        const newLbl = labelsSubset[j];
+        if (rows[rIdx][lblCol] !== newLbl) {
+          mark(rIdx, snapshot(rows[rIdx], [lblCol]));
+          rows[rIdx][lblCol] = newLbl;
+        }
+      }
+      break;
+    }
+    case 'mix_shift': {
+      const f = targetFeatures[0];
+      if (!f || !columns.includes(f)) break;
+      const deltaShare = typeof params.magnitude === 'number' ? params.magnitude : SEVERITY_TABLE.mix_shift[sevKey];
+
+      const s = sorted(f);
+      if (s.length === 0) break;
+      const p25 = quantile(s, 0.25);
+      const refLowerValues = (profile.features[f] ?? []).filter(v => Number.isFinite(v) && v <= p25);
+      const lowerPool = refLowerValues.length > 0 ? refLowerValues : s.slice(0, Math.max(1, Math.floor(s.length * 0.25)));
+
+      const upperRowIndices: number[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const v = Number(rows[i][f]);
+        if (Number.isFinite(v) && v > p25) {
+          upperRowIndices.push(i);
+        }
+      }
+
+      const numToShift = Math.min(Math.round(deltaShare * rows.length), upperRowIndices.length);
+      const shuffledUpper = upperRowIndices.slice();
+      for (let j = 0; j < numToShift; j++) {
+        const swapIdx = j + Math.floor(rnd() * (shuffledUpper.length - j));
+        [shuffledUpper[j], shuffledUpper[swapIdx]] = [shuffledUpper[swapIdx], shuffledUpper[j]];
+      }
+      const chosenToShift = shuffledUpper.slice(0, numToShift);
+      for (const i of chosenToShift) {
+        mark(i, snapshot(rows[i], [f]));
+        const drawVal = lowerPool[Math.floor(rnd() * lowerPool.length)];
+        rows[i][f] = keepType(rows[i][f], drawVal);
+      }
+      break;
+    }
+    case 'missing_drift': {
+      const f = targetFeatures[0];
+      if (!f || !columns.includes(f)) break;
+      const deltaMissing = typeof params.magnitude === 'number' ? params.magnitude : SEVERITY_TABLE.missing_drift[sevKey];
+
+      const nonEmptyIndices: number[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const v = rows[i][f];
+        if (v !== null && v !== undefined && String(v).trim() !== '') {
+          nonEmptyIndices.push(i);
+        }
+      }
+
+      const numToBlank = Math.min(Math.round(deltaMissing * rows.length), nonEmptyIndices.length);
+      const shuffledNonEmpty = nonEmptyIndices.slice();
+      for (let j = 0; j < numToBlank; j++) {
+        const swapIdx = j + Math.floor(rnd() * (shuffledNonEmpty.length - j));
+        [shuffledNonEmpty[j], shuffledNonEmpty[swapIdx]] = [shuffledNonEmpty[swapIdx], shuffledNonEmpty[j]];
+      }
+      const chosenToBlank = shuffledNonEmpty.slice(0, numToBlank);
+      for (const i of chosenToBlank) {
+        mark(i, snapshot(rows[i], [f]));
+        rows[i][f] = '';
       }
       break;
     }
@@ -462,14 +722,48 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
     }
   }
 
-  const isCategoricalType = type === 'unseen_category' || type === 'category_shift';
-  const hasValidCatTarget =
-    !isCategoricalType ||
-    targetFeatures.some(f => registry[f]?.dataType === 'categorical' || Boolean(profile.categorySpecs?.[f]));
-  const skipped = isCategoricalType && !hasValidCatTarget;
-  const skipReason = skipped
-    ? `โมเดล "${model.id ?? model.modelId ?? 'unknown'}" ไม่มีตัวแปรแบบกลุ่ม (categorical) — ข้ามการฉีด ${type}`
-    : undefined;
+  let skipped = false;
+  let skipReason: string | undefined;
+  const modelIdStr = String(model.id ?? model.modelId ?? 'unknown');
+
+  if (type === 'unseen_category' || type === 'category_shift') {
+    const hasValidCat = targetFeatures.some(
+      f => registry[f]?.dataType === 'categorical' || Boolean(profile.categorySpecs?.[f]),
+    );
+    if (!hasValidCat) {
+      skipped = true;
+      skipReason = `โมเดล "${modelIdStr}" ไม่มีตัวแปรแบบกลุ่ม (categorical) — ข้ามการฉีด ${type}`;
+    }
+  } else if (type === 'label_shift' || type === 'concept_shift') {
+    const hasLabel = Boolean(
+      labelColumn &&
+      columns.includes(labelColumn) &&
+      profile.hasLabels &&
+      profile.labels.some(l => l === 0 || l === 1),
+    );
+    if (!hasLabel) {
+      skipped = true;
+      skipReason = `โมเดล "${modelIdStr}" ไม่มีคอลัมน์ label หรือไม่มีข้อมูล label — ข้ามการฉีด ${type}`;
+    }
+  } else if (type === 'missing_drift') {
+    const hasImputable = targetFeatures.length > 0 && targetFeatures.some(f => {
+      const def = registry[f];
+      if (!def) return false;
+      const strat = def.validation?.missingStrategy || (def as any).missingStrategy;
+      const isImputable = strat && strat !== 'reject' && ['fillMedian', 'fillMean', 'fillMode', 'fillZero', 'fillDefault', 'ignore', 'flagOnly'].includes(strat);
+      const isNullable = def.validation?.allowNull === true && !def.required;
+      return isImputable || isNullable;
+    });
+    if (!hasImputable) {
+      skipped = true;
+      skipReason = `โมเดล "${modelIdStr}" ไม่มีตัวแปรที่ missingStrategy เป็นแบบเติมค่า (หรือรองรับค่าว่าง) — ข้ามการฉีด missing_drift`;
+    }
+  } else if (type === 'mix_shift') {
+    if (targetFeatures.length === 0 || !columns.includes(targetFeatures[0])) {
+      skipped = true;
+      skipReason = `โมเดล "${modelIdStr}" ไม่มีตัวแปรตัวเลขสำหรับทำ mix_shift — ข้ามการฉีด mix_shift`;
+    }
+  }
 
   const injectedCount = gt.filter(g => g.injected).length;
   const expected = resolveExpectedLayer(type, severity, rows, idx, targetFeatures, registry);
@@ -490,6 +784,7 @@ export function injectAnomaly(model: any, params: InjectionParams): InjectionRes
       referenceId,
       kind,
       injectedCount,
+      magnitude: params.magnitude,
       ...(skipped ? { skipped: true, skipReason } : {}),
     },
   };

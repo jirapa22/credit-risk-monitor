@@ -7,7 +7,13 @@ import type { ScoringConfig } from '../types';
 import { buildDatasetProfile, heuristicProvider, niceCeil, niceFloor } from './heuristic';
 import { detectScoreDirection } from './scoreDirection';
 import { AiSuggestionProvider, buildAiPayload, maskSensitiveSample, DEFAULT_AI_MODEL } from './ai';
-import { CombinedSuggestionProvider, clearSuggestionCache, buildCacheKey } from './combined';
+import {
+  CombinedSuggestionProvider,
+  clearSuggestionCache,
+  buildCacheKey,
+  type CombinedStrategy,
+  type CombinedProviderOptions,
+} from './combined';
 import { verifyNumberGrounding, type GroundingCheckResult } from './grounding';
 import { extractScorecardWithAi, type AiScorecardExtractionResult } from './scorecardExtract';
 import type {
@@ -34,6 +40,8 @@ export {
   CombinedSuggestionProvider,
   clearSuggestionCache,
   buildCacheKey,
+  type CombinedStrategy,
+  type CombinedProviderOptions,
   verifyNumberGrounding,
   type GroundingCheckResult,
   extractScorecardWithAi,
@@ -49,6 +57,7 @@ export interface RunSuggestOptions {
   scoring?: ScoringConfig | null;
   provider?: SuggestionProvider;
   providerType?: 'auto' | 'heuristic' | 'ai';
+  combinedStrategy?: CombinedStrategy;
   sha256?: string;
 }
 
@@ -75,7 +84,7 @@ export async function generateSuggestions(
   } else {
     // 'auto' (default): combined provider if Anthropic key is set, else heuristic
     provider = process.env.ANTHROPIC_API_KEY
-      ? new CombinedSuggestionProvider()
+      ? new CombinedSuggestionProvider(undefined, { strategy: options.combinedStrategy ?? 'ai_primary' })
       : heuristicProvider;
   }
 

@@ -35,6 +35,10 @@ const TYPE_INFO: Record<AnomalyType, string> = {
   mean_shift: 'ลูกค้าจริงเปลี่ยน — รายได้เฉลี่ยลดลงทั้งพอร์ต',
   variance_change: 'ลูกค้าจริงเปลี่ยน — การกระจายของรายได้กว้างขึ้น',
   category_shift: 'ลูกค้าจริงเปลี่ยน — สัดส่วนหมวดหมู่เลื่อนจากหมวดหนึ่งไปอีกหมวด',
+  label_shift: 'Prior drift — อัตราหนี้เสีย (Bad rate) เปลี่ยนโดยโครงสร้างตัวแปรไม่เปลี่ยน',
+  concept_shift: 'Concept drift — ความสัมพันธ์ระหว่างตัวแปรกับหนี้เสียเปลี่ยน (AUC ลด)',
+  mix_shift: 'Covariate shift — สัดส่วนกลุ่มเสี่ยงล่างของตัวแปรเพิ่มขึ้นแบบสมจริง',
+  missing_drift: 'Missing drift — สัดส่วนค่าว่างในตัวแปรที่เติมค่าได้เพิ่มขึ้น',
   none: 'ไม่ฉีดอะไรเลย (bootstrap จาก Reference) — ใช้วัดการเตือนผิด',
 };
 const GROUPS: { label: string; types: AnomalyType[] }[] = [

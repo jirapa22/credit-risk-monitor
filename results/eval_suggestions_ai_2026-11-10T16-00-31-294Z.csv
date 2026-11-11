@@ -1,0 +1,12 @@
+provider,suite_group,suite_id,suite_name,actual_provider,total_columns,correct_columns,accuracy_pct,corrections_needed,duration_ms,prompt_tokens,completion_tokens,tokens_used
+ai,development,ascore_v1,A-Score v1 Reference,ai,6,6,100,0,6408,2002,948,2950
+ai,development,ext_model,External PD Model,ai,8,8,100,0,6701,2483,1043,3526
+ai,development,fake_model_1,Fake Model #1 (Standard Scorecard),ai,5,5,100,0,6723,1762,919,2681
+ai,development,fake_model_2,Fake Model #2 (With Categorical City),ai,5,5,100,0,5603,1732,841,2573
+ai,development,fake_model_3,Fake Model #3 (External Score),ai,7,7,100,0,6439,2180,944,3124
+ai,development,tricky_a,Tricky Suite A (Bank Acronyms),ai,7,7,100,0,6292,2201,926,3127
+ai,development,tricky_b,Tricky Suite B (Trap Thai Words),ai,7,7,100,0,5991,2243,990,3233
+ai,development,tricky_c,Tricky Suite C (Blind Names),ai,7,6,85.7,1,6134,2190,959,3149
+ai,heldout,heldout_d1,"Held-out D1 (Numeric ID, Score 300-900, 2+ [0,1] features)",ai,7,7,100,0,6570,2286,1016,3302
+ai,heldout,heldout_d2,"Held-out D2 (Two dates: apply/birth, Thai status_90)",ai,7,7,100,0,6463,2190,1001,3191
+ai,heldout,heldout_d3,"Held-out D3 (Blind names v1..v9, 3 binary variables)",ai,9,8,88.9,1,9565,2572,1456,4028

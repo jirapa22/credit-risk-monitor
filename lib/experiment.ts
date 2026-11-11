@@ -13,7 +13,7 @@
  * File-level: alarm = drift.overallStatus ≠ STABLE (and not blocked).
  * The Isolation Forest seed is fixed at 42; only the injection seed varies.
  */
-import type { AnomalyMethod, AnomalySeverity, AnomalyType, DriftResult, ExpectedLayer, MonitoringRun, TriggerAction } from './types';
+import type { AnomalyMethod, AnomalySeverity, AnomalyType, DriftResult, DriftSectionName, DriftSectionStatus, DriftStatus, ExpectedLayer, MonitoringRun, TriggerAction } from './types';
 import { injectAnomaly, expectedFor, type InjectionParams, type InjectionSpec, type InjectionKind } from './injection';
 import { runMonitoring } from './monitoring';
 
@@ -48,13 +48,21 @@ export interface FileMetrics {
   preserved: boolean | null;      // drift
   routedLayer: ExpectedLayer;     // layer that caught most injected rows (drift: 'drift' if detected)
   routingCorrect: boolean;
+  sectionLeakage?: DriftSectionName[];
+  expectedSection?: DriftSectionName;
+  triggerCorrect?: boolean;
 }
 
 export interface DriftSnapshot { status: string; psi: number; csi: Record<string, number> }
 
 export interface TrialResult {
   spec: InjectionSpec;
-  expected: { layer: ExpectedLayer; shouldAlarm: boolean };
+  expected: {
+    layer: ExpectedLayer;
+    section?: DriftSectionName;
+    shouldAlarm: boolean;
+    expectedAction?: TriggerAction | TriggerAction[];
+  };
   kind: InjectionKind;
   rowCount: number;
   injectedCount: number;
@@ -63,6 +71,8 @@ export interface TrialResult {
   drift: DriftSnapshot | null;
   driftExcludingFlagged: DriftSnapshot | null;
   triggerAction: TriggerAction;
+  sectionLeakage: DriftSectionName[];
+  triggerCorrect: boolean;
   timingMs: number;
 }
 
@@ -135,6 +145,42 @@ export function evaluateTrial(run: MonitoringRun, inj: ReturnType<typeof injectA
     routedLayer = v === 0 && a === 0 ? 'none' : v >= a ? 'validation' : 'anomaly';
   }
 
+  const sectionStatuses: Record<DriftSectionName, DriftSectionStatus> = {
+    covariate: run.driftReport?.covariate?.status ?? 'STABLE',
+    label: run.driftReport?.label?.status ?? 'STABLE',
+    concept: run.driftReport?.concept?.status ?? 'STABLE',
+    missing: run.driftReport?.missing?.status ?? 'STABLE',
+  };
+  const isSectionAlarm = (s: DriftSectionStatus) => s === 'WARNING' || s === 'CRITICAL';
+
+  let routingCorrect: boolean;
+  let sectionLeakage: DriftSectionName[] = [];
+  const expectedSection: DriftSectionName | undefined = expected.section;
+
+  if (kind === 'drift') {
+    if (expected.section) {
+      const expStatus = sectionStatuses[expected.section];
+      routingCorrect = isSectionAlarm(expStatus);
+      sectionLeakage = (['covariate', 'missing', 'label', 'concept'] as DriftSectionName[]).filter(
+        s => s !== expected.section && isSectionAlarm(sectionStatuses[s]),
+      );
+    } else {
+      routingCorrect = alarm;
+    }
+  } else if (kind === 'clean') {
+    routingCorrect = !alarm;
+  } else {
+    routingCorrect = routedLayer === expected.layer;
+  }
+
+  const triggerAction: TriggerAction =
+    run.trigger?.action ?? (blocked ? 'BLOCKED_INVALID_DATA' : 'CONTINUE');
+
+  const expectedActions = Array.isArray(expected.expectedAction)
+    ? expected.expectedAction
+    : [expected.expectedAction];
+  const triggerCorrect = expectedActions.includes(triggerAction);
+
   const file: FileMetrics = {
     blocked, alarm, alarmExcludingFlagged: alarmEx,
     falseAlarm: kind === 'drift' ? null : alarm,
@@ -142,11 +188,11 @@ export function evaluateTrial(run: MonitoringRun, inj: ReturnType<typeof injectA
     detected: kind === 'drift' ? alarm : null,
     preserved: kind === 'drift' ? alarmEx : null,
     routedLayer,
-    routingCorrect: kind === 'drift' ? alarm : routedLayer === expected.layer,
+    routingCorrect,
+    sectionLeakage,
+    expectedSection,
+    triggerCorrect,
   };
-
-  const triggerAction: TriggerAction =
-    run.trigger?.action ?? (blocked ? 'BLOCKED_INVALID_DATA' : 'CONTINUE');
 
   return {
     spec: inj.spec, expected, kind,
@@ -154,6 +200,8 @@ export function evaluateTrial(run: MonitoringRun, inj: ReturnType<typeof injectA
     detectors, file,
     drift: snap(run.drift), driftExcludingFlagged: snap(run.driftExcludingFlagged),
     triggerAction,
+    sectionLeakage,
+    triggerCorrect,
   };
 }
 

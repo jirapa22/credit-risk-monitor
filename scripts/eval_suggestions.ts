@@ -560,8 +560,12 @@ export async function evaluateSuiteGroup(
   };
 }
 
-export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined'): Promise<{
+export async function runEvaluation(
+  providerName: 'heuristic' | 'ai' | 'combined',
+  strategy: 'ai_primary' | 'confidence' = 'ai_primary',
+): Promise<{
   provider: string;
+  strategy: string;
   development: SuiteGroupEvalResult;
   heldout: SuiteGroupEvalResult;
   integrity: FrozenIntegrityCheck;
@@ -593,7 +597,10 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
       console.error('ไม่สามารถรันการประเมินด้วย --provider combined ได้ (หยุดการทำงานทันที)');
       process.exit(1);
     }
-    provider = new CombinedSuggestionProvider(new AiSuggestionProvider({ throwOnError: true }));
+    provider = new CombinedSuggestionProvider(
+      new AiSuggestionProvider({ throwOnError: true }),
+      { strategy },
+    );
   } else {
     provider = heuristicProvider;
   }
@@ -618,6 +625,7 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
   const csvRows = [
     ...development.suites.map(r => ({
       provider: providerName,
+      strategy: providerName === 'combined' ? strategy : 'N/A',
       suite_group: 'development',
       suite_id: r.suiteId,
       suite_name: r.suiteName,
@@ -633,6 +641,7 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
     })),
     ...heldout.suites.map(r => ({
       provider: providerName,
+      strategy: providerName === 'combined' ? strategy : 'N/A',
       suite_group: 'heldout',
       suite_id: r.suiteId,
       suite_name: r.suiteName,
@@ -651,6 +660,7 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
     csvOutPath,
     toCsv(csvRows, [
       'provider',
+      'strategy',
       'suite_group',
       'suite_id',
       'suite_name',
@@ -669,6 +679,7 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
 
   return {
     provider: providerName,
+    strategy: providerName === 'combined' ? strategy : 'N/A',
     development,
     heldout,
     integrity,
@@ -688,11 +699,20 @@ export async function runEvaluation(providerName: 'heuristic' | 'ai' | 'combined
 async function main() {
   const args = process.argv.slice(2);
   let providerArg: 'heuristic' | 'ai' | 'combined' = 'heuristic';
+  let strategyArg: 'ai_primary' | 'confidence' = 'ai_primary';
   const pIdx = args.indexOf('--provider');
   if (pIdx !== -1 && args[pIdx + 1]) {
     const val = args[pIdx + 1].toLowerCase();
     if (val === 'ai' || val === 'combined' || val === 'heuristic') {
       providerArg = val;
+    }
+  }
+
+  const sIdx = args.indexOf('--strategy');
+  if (sIdx !== -1 && args[sIdx + 1]) {
+    const sVal = args[sIdx + 1].toLowerCase();
+    if (sVal === 'ai_primary' || sVal === 'confidence') {
+      strategyArg = sVal;
     }
   }
 
@@ -702,6 +722,9 @@ async function main() {
   console.log(`\n======================================================`);
   console.log(`  Evaluating Suggestions`);
   console.log(`  Provider: ${providerArg}`);
+  if (providerArg === 'combined') {
+    console.log(`  Strategy: ${strategyArg}`);
+  }
   console.log(`  Model: ${providerArg === 'heuristic' ? 'N/A (rule-based)' : modelName}`);
   console.log(`  API key: ${hasKey ? 'พบ' : 'ไม่พบ'}`);
   console.log(`======================================================\n`);
@@ -712,7 +735,7 @@ async function main() {
     process.exit(1);
   }
 
-  const summary = await runEvaluation(providerArg);
+  const summary = await runEvaluation(providerArg, strategyArg);
 
   // ─── Section 1: Development Suites (8 Suites) ───────────────
   console.log(`\n══════════════════════════════════════════════════════════════════`);

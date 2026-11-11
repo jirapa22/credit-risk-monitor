@@ -44,6 +44,7 @@ export async function POST(request: Request) {
       body?.provider === 'heuristic' || body?.provider === 'ai' || body?.provider === 'auto'
         ? body.provider
         : 'auto';
+    const combinedStrategy = body?.strategy === 'confidence' ? 'confidence' : 'ai_primary';
 
     const result = await generateSuggestions({
       referenceId,
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
       scoringFeatures,
       scoring,
       providerType,
+      combinedStrategy,
       sha256: blob.meta.sha256,
     });
 

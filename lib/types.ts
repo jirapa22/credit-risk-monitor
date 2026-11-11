@@ -600,9 +600,15 @@ export type AnomalyType =
   // B: real drift
   | 'mean_shift'
   | 'variance_change'
-  | 'category_shift';
+  | 'category_shift'
+  // Step 11a: new drift scenarios
+  | 'label_shift'
+  | 'concept_shift'
+  | 'mix_shift'
+  | 'missing_drift';
 
 export type ExpectedLayer = 'validation' | 'anomaly' | 'drift' | 'none';
+export type DriftSectionName = 'covariate' | 'label' | 'concept' | 'missing';
 
 export type AnomalySeverity = 'none' | 'low' | 'medium' | 'high';
 
@@ -629,7 +635,20 @@ export interface ExperimentRun {
   /** From lib/experiment.ts runTrial (absent in records created via plain POST). */
   rate?: number;
   metrics?: Record<string, { n: number; TP: number; FP: number; FN: number; TN: number; precision: number | null; recall: number | null; f1: number | null; flagRate: number | null }>;
-  fileMetrics?: { blocked: boolean; alarm: boolean; alarmExcludingFlagged: boolean; falseAlarm: boolean | null; rescued: boolean | null; detected: boolean | null; preserved: boolean | null; routedLayer: ExpectedLayer; routingCorrect: boolean };
+  fileMetrics?: {
+    blocked: boolean;
+    alarm: boolean;
+    alarmExcludingFlagged: boolean;
+    falseAlarm: boolean | null;
+    rescued: boolean | null;
+    detected: boolean | null;
+    preserved: boolean | null;
+    routedLayer: ExpectedLayer;
+    routingCorrect: boolean;
+    sectionLeakage?: DriftSectionName[];
+    expectedSection?: DriftSectionName;
+    triggerCorrect?: boolean;
+  };
   driftExcludingFlagged?: { overallStatus: DriftStatus; psi: number; csi: Record<string, number> } | null;
   triggerAction?: TriggerAction;
   notes?: string;

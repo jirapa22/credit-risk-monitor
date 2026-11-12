@@ -65,6 +65,11 @@
 29. ปัญหาที่พบใน grid (ต้องแก้ใน 11c ก่อนใช้ตัวเลข): (a) ชนิดที่ต้องข้าม (category_shift/missing_drift/unseen_category บน ascore) ถูกนับเป็น trial ที่ล้มเหลว; (b) detected/preserved ของ label/concept ใช้ PSI ทางการ จึงได้ 0 ทั้งที่ section ถูก (routing 0.93/1.00); (c) ข้อมูลผิด 5% (extreme_outlier) ได้ INVESTIGATE_DRIFT 60–80% เพราะ Wasserstein ใน driftReport เตือน แต่กฎ R2 ดูแค่ PSI/CSI ทางการ; (d) ไฟล์สะอาดได้ MONITOR_CLOSELY 25% (ascore)/38% (ext) จาก KS/W fixed ชั่วคราว และ calibrated alarm รวม 30%/55% เพราะทดสอบหลายตัววัดพร้อมกัน (multiple testing) ต้อง calibrate ระดับ family
 30. ext_model (Reference 300 แถว, AUC 0.615): concept_shift routing 0.70, label_shift 0.63 — ต่ำกว่า ascore เพราะ reference เล็กและโมเดลอ่อน
 
+31. 11c (bf78150): กฎ R8b data-quality alert (% ธง > 2× Reference → INVESTIGATE_DATA แม้ drift ไม่เตือน) — extreme_outlier 5%: INVESTIGATE_DATA fixed 90% / calibrated 96.7%, INVESTIGATE_DRIFT 0% / 3.3%; mix_shift high ยังเป็น drift 100%; R8b บนไฟล์สะอาด 0%
+32. Family-wise calibration (Bonferroni, 1,000 resamples) + calibrate concept/label จาก null: ไฟล์สะอาด 100 seed ascore_v1 → action ≠ CONTINUE: fixed 4% / calibrated 7% (เดิม 30%); covariate 0% / 2%; concept 3% / 3%; label 3% / 3%; ความไวยังคง concept_shift high 100%, label_shift high 100%
+33. ขีดจำกัดของ concept drift เมื่อหนี้เสียน้อย (Reference 80 bad): เกณฑ์ calibrated Gini ลดลง (relative) warning n=250 = 57%, n=1000 = 27% → ตรวจได้เฉพาะการเสื่อมรุนแรง; label: bad rate เปลี่ยน ≥ 37% (n=250), ≥ 21% (n=1000)
+34. ตัดสินใจออกแบบ: โหมด fixed = PSI/CSI ตามมาตรฐานอุตสาหกรรมเท่านั้น (KS/W/JS เป็น informational) — ค่าเริ่มต้น; calibrated = ทุกตัววัดแบบ family-wise (เลือกได้ต่อ Baseline). fixed ไม่ไวกับ mean_shift −10% (บันทึกเป็นข้อจำกัดใน test)
+
 ## หมายเหตุสำหรับผลการทดลอง
 - ผล grid 25f37be มีข้อบกพร่องการนับ (ข้อ 29) → ใช้ตัวเลขหลังแก้ 11c เท่านั้น; power_ext_model 15-00 เป็นรุ่นก่อนแก้บั๊ก ใช้ 15-08
 - ผล grid เต็ม 926868a (3,895 trial) ใช้นิยาม multivariate_inconsistent แบบเดิม (3 ตัวแปรคงที่) → ต้องรัน grid ใหม่ใน Step 11 ก่อนใช้ตัวเลขในเล่ม

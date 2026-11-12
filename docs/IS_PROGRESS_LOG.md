@@ -59,7 +59,14 @@
 24. Power (quick) mix_shift รายได้: n=1000 ที่ +10 จุด% → CSI fixed 0% vs calibrated 100%; ที่ +15 → CSI fixed 30%. เกณฑ์ PSI/CSI มาตรฐานไม่ไวกับ drift ระดับกลางในไฟล์ขนาดใหญ่ ส่วน calibrated ไวมาก
 25. ประเด็นอภิปราย: calibrated = มีนัยสำคัญทางสถิติ แต่ที่ n ใหญ่จะเตือน shift เล็กที่อาจไม่มีผลทางธุรกิจ (PSI 0.018) → เสนอโหมด hybrid: เตือนเมื่อเกินเกณฑ์ calibrated และมีขนาดผลขั้นต่ำ (เช่น PSI ≥ 0.05) — ทำใน Step 13 หรือเป็นงานอนาคต
 
+26. Grid เต็ม 25f37be (ascore_v1 4,795 trial / ext_model, a344d31): ข้อมูลผิดทุกชนิด all_layers recall = 1 (ยกเว้น swapped_columns ascore 0.61, multivariate ext 0.86); precision ของ all_layers ที่ rate 5% = 0.59 (ascore) / 0.75 (ext) เพราะธงพื้นฐาน ~4% บนแถวปกติ
+27. LOF vs IF ขึ้นกับข้อมูล: multivariate_inconsistent ascore LOF 1.00 / IF 0.23 แต่ ext_model IF 0.78 / LOF 0.65 → เหตุผลที่ต้องใช้คู่กัน (all_layers 0.86)
+28. ระดับไฟล์: ข้อมูลผิด 5% แทบไม่ทำให้ PSI/CSI ทางการเตือน (alarm 0–3%); ที่ 20% เตือน 90–100% และ rescued 90–100% → trigger INVESTIGATE_DATA 90–100% (extreme_outlier, swapped, multivariate, unseen_category)
+29. ปัญหาที่พบใน grid (ต้องแก้ใน 11c ก่อนใช้ตัวเลข): (a) ชนิดที่ต้องข้าม (category_shift/missing_drift/unseen_category บน ascore) ถูกนับเป็น trial ที่ล้มเหลว; (b) detected/preserved ของ label/concept ใช้ PSI ทางการ จึงได้ 0 ทั้งที่ section ถูก (routing 0.93/1.00); (c) ข้อมูลผิด 5% (extreme_outlier) ได้ INVESTIGATE_DRIFT 60–80% เพราะ Wasserstein ใน driftReport เตือน แต่กฎ R2 ดูแค่ PSI/CSI ทางการ; (d) ไฟล์สะอาดได้ MONITOR_CLOSELY 25% (ascore)/38% (ext) จาก KS/W fixed ชั่วคราว และ calibrated alarm รวม 30%/55% เพราะทดสอบหลายตัววัดพร้อมกัน (multiple testing) ต้อง calibrate ระดับ family
+30. ext_model (Reference 300 แถว, AUC 0.615): concept_shift routing 0.70, label_shift 0.63 — ต่ำกว่า ascore เพราะ reference เล็กและโมเดลอ่อน
+
 ## หมายเหตุสำหรับผลการทดลอง
+- ผล grid 25f37be มีข้อบกพร่องการนับ (ข้อ 29) → ใช้ตัวเลขหลังแก้ 11c เท่านั้น; power_ext_model 15-00 เป็นรุ่นก่อนแก้บั๊ก ใช้ 15-08
 - ผล grid เต็ม 926868a (3,895 trial) ใช้นิยาม multivariate_inconsistent แบบเดิม (3 ตัวแปรคงที่) → ต้องรัน grid ใหม่ใน Step 11 ก่อนใช้ตัวเลขในเล่ม
 
 ## ค่าสำคัญของระบบ

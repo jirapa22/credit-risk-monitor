@@ -11,7 +11,7 @@ loadEnvConfig(process.cwd());
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { calibrateThresholds } from '../lib/calibration';
+import { calibrateThresholds, getNearestSize } from '../lib/calibration';
 import { injectAnomaly } from '../lib/injection';
 import { resolveCsiFeatures } from '../lib/drift';
 import { psiForCategories, psiWithBoundaries, jensenShannonDistance } from '../lib/stats';
@@ -72,7 +72,9 @@ async function main() {
 
   // 1. Ensure calibration is available
   console.log('Calibrating null thresholds...');
-  const calibrated = model.calibratedThresholds ?? calibrateThresholds(profile, model, { sizes: SIZES });
+  const calibrated = (model.calibratedThresholds && model.calibratedThresholds.bySizeUnadjusted)
+    ? model.calibratedThresholds
+    : calibrateThresholds(profile, model, { sizes: SIZES, resamples: quick ? 200 : 1000 });
   console.log('✓ Null calibration ready.\n');
 
   const registry = model.featureRegistry ?? {};
@@ -100,7 +102,9 @@ async function main() {
     console.log(`Analyzing power curve for "${typeKey}"...`);
 
     for (const n of SIZES) {
-      const calThr = calibrated.bySize[n];
+      const nearestN = getNearestSize(calibrated.sizes, n);
+      const calThr = calibrated.bySize[nearestN] ?? (calibrated.bySize as any)[String(nearestN)];
+      const calThrUnadj = calibrated.bySizeUnadjusted?.[nearestN] ?? (calibrated.bySizeUnadjusted as any)?.[String(nearestN)] ?? calThr;
 
       for (const mag of shiftSpec.magnitudes) {
         const metricHits: Record<string, { fixed: number; calibrated: number }> = {};
@@ -121,6 +125,10 @@ async function main() {
 
           if (inj.skipped) continue;
 
+          let familyHitFixed = false;
+          let familyHitCalibrated = false;
+          initMetric('family');
+
           if (typeKey === 'mix_shift' || typeKey === 'mean_shift') {
             const fKey = inj.spec.targetFeatures?.[0] || Object.keys(registry)[0];
             targetCol = fKey;
@@ -133,26 +141,35 @@ async function main() {
             initMetric('csi');
             const csiVal = psiWithBoundaries(refVals, actVals, bins).value;
             const fixedCsiWarn = thresholds.csi_features?.[fKey]?.threshold ?? fDef?.csiThreshold ?? 0.10;
-            const calCsiWarn = calThr?.csi?.[fKey]?.warning ?? fixedCsiWarn;
-            if (csiVal >= fixedCsiWarn) metricHits.csi.fixed++;
-            if (csiVal >= calCsiWarn) metricHits.csi.calibrated++;
+            const calCsiWarnUnadj = calThrUnadj?.csi?.[fKey]?.warning ?? fixedCsiWarn;
+            const calCsiWarnFamily = calThr?.csi?.[fKey]?.warning ?? fixedCsiWarn;
+            if (csiVal >= fixedCsiWarn) {
+              metricHits.csi.fixed++;
+              familyHitFixed = true;
+            }
+            if (csiVal >= calCsiWarnUnadj) metricHits.csi.calibrated++;
+            if (csiVal >= calCsiWarnFamily) familyHitCalibrated = true;
 
             // KS D
             initMetric('ks');
             const ksVal = ksTwoSample(refVals, actVals).d;
             const fixedKsWarn = model.driftConfig?.ksWarning ?? 0.10;
-            const calKsWarn = calThr?.ks?.[fKey]?.warning ?? fixedKsWarn;
+            const calKsWarnUnadj = calThrUnadj?.ks?.[fKey]?.warning ?? fixedKsWarn;
+            const calKsWarnFamily = calThr?.ks?.[fKey]?.warning ?? fixedKsWarn;
             if (ksVal >= fixedKsWarn) metricHits.ks.fixed++;
-            if (ksVal >= calKsWarn) metricHits.ks.calibrated++;
+            if (ksVal >= calKsWarnUnadj) metricHits.ks.calibrated++;
+            if (ksVal >= calKsWarnFamily) familyHitCalibrated = true;
 
             // Wasserstein
             initMetric('wasserstein');
             const transform = (fDef?.anomalyTransform ?? 'none') as AnomalyTransform;
             const wassVal = wassersteinScaled(refVals, actVals, transform).scaled;
             const fixedWassWarn = model.driftConfig?.wassersteinWarning ?? 0.10;
-            const calWassWarn = calThr?.wasserstein?.[fKey]?.warning ?? fixedWassWarn;
+            const calWassWarnUnadj = calThrUnadj?.wasserstein?.[fKey]?.warning ?? fixedWassWarn;
+            const calWassWarnFamily = calThr?.wasserstein?.[fKey]?.warning ?? fixedWassWarn;
             if (wassVal >= fixedWassWarn) metricHits.wasserstein.fixed++;
-            if (wassVal >= calWassWarn) metricHits.wasserstein.calibrated++;
+            if (wassVal >= calWassWarnUnadj) metricHits.wasserstein.calibrated++;
+            if (wassVal >= calWassWarnFamily) familyHitCalibrated = true;
 
             // PSI on score
             if (hasScore) {
@@ -169,11 +186,19 @@ async function main() {
               if (actScores.length > 0) {
                 const psiVal = psiWithBoundaries(profile.scores, actScores, profile.scoreBoundaries).value;
                 const fixedPsiWarn = thresholds.psi_warning ?? 0.10;
-                const calPsiWarn = calThr?.psi?.warning ?? fixedPsiWarn;
-                if (psiVal >= fixedPsiWarn) metricHits.psi.fixed++;
-                if (psiVal >= calPsiWarn) metricHits.psi.calibrated++;
+                const calPsiWarnUnadj = calThrUnadj?.psi?.warning ?? fixedPsiWarn;
+                const calPsiWarnFamily = calThr?.psi?.warning ?? fixedPsiWarn;
+                if (psiVal >= fixedPsiWarn) {
+                  metricHits.psi.fixed++;
+                  familyHitFixed = true;
+                }
+                if (psiVal >= calPsiWarnUnadj) metricHits.psi.calibrated++;
+                if (psiVal >= calPsiWarnFamily) familyHitCalibrated = true;
               }
             }
+
+            if (familyHitFixed) metricHits.family.fixed++;
+            if (familyHitCalibrated) metricHits.family.calibrated++;
           } else if (typeKey === 'label_shift') {
             const lblCol = model.labelColumn || model.columns?.labelColumn || 'default_flag';
             targetCol = lblCol;
@@ -199,6 +224,8 @@ async function main() {
             if (isAlarm) {
               metricHits.label_rate.fixed++;
               metricHits.label_rate.calibrated++;
+              metricHits.family.fixed++;
+              metricHits.family.calibrated++;
             }
           } else if (typeKey === 'category_shift') {
             const catSpec = csiFeatures.find(cf => cf.dataType === 'categorical' && !cf.skipped);
@@ -211,9 +238,14 @@ async function main() {
               initMetric('csi');
               const catPsi = psiForCategories(refCats, actCats, catSpec.categories ?? []);
               const fixedCsiWarn = thresholds.csi_features?.[catSpec.key]?.threshold ?? 0.10;
-              const calCsiWarn = calThr?.csi?.[catSpec.key]?.warning ?? fixedCsiWarn;
-              if (catPsi.value >= fixedCsiWarn) metricHits.csi.fixed++;
-              if (catPsi.value >= calCsiWarn) metricHits.csi.calibrated++;
+              const calCsiWarnUnadj = calThrUnadj?.csi?.[catSpec.key]?.warning ?? fixedCsiWarn;
+              const calCsiWarnFamily = calThr?.csi?.[catSpec.key]?.warning ?? fixedCsiWarn;
+              if (catPsi.value >= fixedCsiWarn) {
+                metricHits.csi.fixed++;
+                familyHitFixed = true;
+              }
+              if (catPsi.value >= calCsiWarnUnadj) metricHits.csi.calibrated++;
+              if (catPsi.value >= calCsiWarnFamily) familyHitCalibrated = true;
 
               // JS Distance
               initMetric('js');
@@ -221,9 +253,14 @@ async function main() {
               const actualCounts = catPsi.bins.map(b => b.actualCount);
               const jsDist = jensenShannonDistance(expectedCounts, actualCounts).distance;
               const fixedJsWarn = model.driftConfig?.jsWarning ?? 0.10;
-              const calJsWarn = calThr?.js?.[catSpec.key]?.warning ?? fixedJsWarn;
+              const calJsWarnUnadj = calThrUnadj?.js?.[catSpec.key]?.warning ?? fixedJsWarn;
+              const calJsWarnFamily = calThr?.js?.[catSpec.key]?.warning ?? fixedJsWarn;
               if (jsDist >= fixedJsWarn) metricHits.js.fixed++;
-              if (jsDist >= calJsWarn) metricHits.js.calibrated++;
+              if (jsDist >= calJsWarnUnadj) metricHits.js.calibrated++;
+              if (jsDist >= calJsWarnFamily) familyHitCalibrated = true;
+
+              if (familyHitFixed) metricHits.family.fixed++;
+              if (familyHitCalibrated) metricHits.family.calibrated++;
             }
           }
         }

@@ -32,6 +32,7 @@ describe('Step 11b — Calibration, Power Curve, and Ext Model', () => {
       sizes: [250],
       resamples: 300,
       seed: 42,
+      k: 1,
     });
 
     const incomeKey = resolveModelColumns(ascoreModel).dateColumn ? 'monthly_income' : 'monthly_income';

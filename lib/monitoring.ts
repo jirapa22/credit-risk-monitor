@@ -222,6 +222,7 @@ export function runMonitoring(input: MonitoringInput) {
     anomaly: null,
     driftExcludingFlagged: null,
     driftReport: null,
+    driftReportExcludingFlagged: null,
     trigger: null,
     excludedRows: [],
     uploadSummary,
@@ -305,6 +306,12 @@ export function runMonitoring(input: MonitoringInput) {
       const refKept = referenceWithout(reference, referenceFlaggedIndices(reference, model));
       const frozen = freezeCsiBins(registry, thresholds, reference, driftOpts);
       run.driftExcludingFlagged = driftFor(refKept, kept, keptScores, registry, frozen, driftOpts).drift;
+      run.driftReportExcludingFlagged = buildDriftReport(refKept, model, {
+        cleanRows: kept,
+        rawRows: rows,
+        driftResult: run.driftExcludingFlagged,
+        actualScores: keptScores,
+      });
     }
   }
 

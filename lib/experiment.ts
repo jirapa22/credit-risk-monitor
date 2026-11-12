@@ -46,7 +46,8 @@ export interface FileMetrics {
   statusCalibrated?: DriftStatus | 'BLOCKED';
   falseAlarm: boolean | null;     // data_error / none
   rescued: boolean | null;        // data_error
-  detected: boolean | null;       // drift
+  detected: boolean | null;       // drift (fixed)
+  detectedCalibrated?: boolean | null; // drift (calibrated)
   preserved: boolean | null;      // drift
   routedLayer: ExpectedLayer;     // layer that caught most injected rows (drift: 'drift' if detected)
   routingCorrect: boolean;
@@ -188,14 +189,35 @@ export function evaluateTrial(run: MonitoringRun, inj: ReturnType<typeof injectA
   const statusFixed: DriftStatus | 'BLOCKED' = blocked ? 'BLOCKED' : (run.driftReport?.statusFixed ?? run.drift?.overallStatus ?? 'STABLE');
   const statusCalibrated: DriftStatus | 'BLOCKED' = blocked ? 'BLOCKED' : (run.driftReport?.statusCalibrated ?? run.drift?.overallStatus ?? 'STABLE');
 
+  const expSec = expected.section;
+  let detected: boolean | null = null;
+  let detectedCalibrated: boolean | null = null;
+  let preserved: boolean | null = null;
+
+  if (kind === 'drift') {
+    const secRep = expSec && run.driftReport ? (run.driftReport as any)[expSec] : null;
+    const secRepExcl = expSec && run.driftReportExcludingFlagged
+      ? (run.driftReportExcludingFlagged as any)[expSec]
+      : secRep;
+
+    const sFixed = secRep?.statusFixed ?? secRep?.status ?? (alarm ? 'WARNING' : 'STABLE');
+    const sCal = secRep?.statusCalibrated ?? secRep?.status ?? (alarm ? 'WARNING' : 'STABLE');
+    const sExclFixed = secRepExcl?.statusFixed ?? secRepExcl?.status ?? (alarmEx ? 'WARNING' : 'STABLE');
+
+    detected = !blocked && (sFixed === 'WARNING' || sFixed === 'CRITICAL');
+    detectedCalibrated = !blocked && (sCal === 'WARNING' || sCal === 'CRITICAL');
+    preserved = !blocked && (sExclFixed === 'WARNING' || sExclFixed === 'CRITICAL');
+  }
+
   const file: FileMetrics = {
     blocked, alarm, alarmExcludingFlagged: alarmEx,
     statusFixed,
     statusCalibrated,
     falseAlarm: kind === 'drift' ? null : alarm,
     rescued: kind === 'data_error' ? alarm && !alarmEx : null,
-    detected: kind === 'drift' ? alarm : null,
-    preserved: kind === 'drift' ? alarmEx : null,
+    detected,
+    detectedCalibrated,
+    preserved,
     routedLayer,
     routingCorrect,
     sectionLeakage,

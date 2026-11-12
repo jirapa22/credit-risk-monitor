@@ -39,7 +39,7 @@ import {
 } from '../reference';
 import { DEFAULT_DATE_COLUMN, DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from '../defaults';
 import { validateBaseline } from '../baselineValidation';
-import { calibrateThresholds } from '../calibration';
+import { calibrateThresholds, DEFAULT_CALIBRATION_RESAMPLES, type CalibrateOptions } from '../calibration';
 import { computeDistributionStats } from '../driftReport';
 import { calculateAUC, calculateGini, calculateKS, type DataPoint } from '../stats';
 
@@ -596,7 +596,7 @@ export async function createDraftBaselineVersion(
       csi_features: {},
     },
     ...(input.anomalyConfig ? { anomalyConfig: input.anomalyConfig } : {}),
-    ...(input.driftConfig ? { driftConfig: input.driftConfig } : {}),
+    driftConfig: input.driftConfig ?? { thresholdMode: 'fixed' },
     ...(input.triggerConfig ? { triggerConfig: input.triggerConfig } : {}),
     ...(input.riskGrades ? { riskGrades: input.riskGrades } : {}),
     ...(input.experimentConfig ? { experimentConfig: input.experimentConfig } : {}),
@@ -629,7 +629,13 @@ export async function createDraftBaselineVersion(
 export async function validateBaselineVersion(
   modelId: string,
   version: string,
-  opts: { by?: string; note?: string; dryRun?: boolean } = {},
+  opts: {
+    by?: string;
+    note?: string;
+    dryRun?: boolean;
+    calibrationResamples?: number;
+    calibrationOptions?: CalibrateOptions;
+  } = {},
 ): Promise<{ ok: boolean; version: BaselineVersion; report: BaselineValidationReport }> {
   if (isBuiltInBaselineVersion(modelId, version) && !opts.dryRun) {
     throw new BuiltInProtectedError(
@@ -699,7 +705,9 @@ export async function validateBaselineVersion(
   if (report.ok) {
     try {
       const profile = await loadReferenceProfile(target.referenceDatasetId, target);
-      calibratedThresholds = calibrateThresholds(profile, target);
+      const resamples = opts.calibrationResamples ?? (process.env.VITEST ? 200 : DEFAULT_CALIBRATION_RESAMPLES);
+      const calOpts: CalibrateOptions = opts.calibrationOptions ?? { resamples };
+      calibratedThresholds = calibrateThresholds(profile, target, calOpts);
     } catch {
       // non-blocking
     }

@@ -17,6 +17,7 @@ import { getReferenceProfile, getReferenceRows, registerReferenceDataset } from 
 import { injectAnomaly } from '../lib/injection';
 import { runMonitoring } from '../lib/monitoring';
 import { evaluateTrigger, resolveTriggerRules } from '../lib/trigger';
+import { calibrateThresholds } from '../lib/calibration';
 import { mulberry32 } from '../lib/random';
 import { createMemoryStore, setStore } from '../lib/storage/store';
 import { GET as getTriggersRoute } from '../app/api/triggers/route';
@@ -223,16 +224,35 @@ describe('Step 9 — Trigger Rules & Review Workflow (tests/trigger.test.ts)', (
       severity: 'low',
       seed: 42,
     });
-    // Under default rules, low mean_shift produces covariate WARNING (or CRITICAL -> INVESTIGATE_DRIFT)
+    // In fixed mode (CSI only), mean_shift -10% does not exceed CSI 0.10
     const { run: defaultRun } = runMonitoring({
       model: baseModel,
-      fileName: 'custom_rule_test.csv',
+      fileName: 'custom_rule_test_fixed.csv',
       csvText: inj.csvText,
       history: [],
     });
 
+    // บันทึกข้อจำกัดของเกณฑ์อุตสาหกรรม: CSI ไม่ไวต่อ drift ระดับนี้
+    expect(defaultRun.driftReport?.covariate.status).toBe('STABLE');
+    expect(defaultRun.trigger?.action).toBe('CONTINUE');
+
+    // Run sensitivity assertion under calibrated mode (which uses null distribution including KS/Wasserstein)
+    const cal = calibrateThresholds(refProfile, baseModel, { sizes: [855], resamples: 200, seed: 42 });
+    const calModel = {
+      ...baseModel,
+      driftConfig: { ...baseModel.driftConfig, thresholdMode: 'calibrated' },
+      calibratedThresholds: cal,
+    };
+    const { run: calRun } = runMonitoring({
+      model: calModel,
+      fileName: 'custom_rule_test_cal.csv',
+      csvText: inj.csvText,
+      history: [],
+    });
+    expect(calRun.driftReport?.covariate.status).not.toBe('STABLE');
+
     const customModel = {
-      ...structuredClone(baseModel),
+      ...structuredClone(calModel),
       triggerConfig: {
         rules: [
           {
@@ -257,10 +277,10 @@ describe('Step 9 — Trigger Rules & Review Workflow (tests/trigger.test.ts)', (
       },
     };
 
-    const customDecision = evaluateTrigger(defaultRun, customModel, []);
+    const customDecision = evaluateTrigger(calRun, customModel, []);
     recordRow('(7) custom rule override', customDecision);
 
-    expect(defaultRun.trigger!.action).not.toBe('CONSIDER_RETRAIN');
+    expect(calRun.trigger!.action).not.toBe('CONSIDER_RETRAIN');
     expect(customDecision.action).toBe('CONSIDER_RETRAIN');
     expect(customDecision.matchedRuleId).toBe('CUSTOM_COV_WARN');
   });
@@ -295,7 +315,7 @@ describe('Step 9 — Trigger Rules & Review Workflow (tests/trigger.test.ts)', (
     const resolved = resolveTriggerRules(badModel);
     expect(resolved.warnings.length).toBeGreaterThan(0);
     expect(resolved.warnings[0]).toContain('DUP_ID');
-    expect(resolved.rules.map(r => r.id)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9']);
+    expect(resolved.rules.map(r => r.id)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8b', 'R8', 'R9']);
 
     const inj = injectAnomaly(baseModel, { type: 'none', seed: 101 });
     const { run } = runMonitoring({

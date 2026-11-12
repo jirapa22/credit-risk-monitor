@@ -585,6 +585,8 @@ export interface MonitoringRun {
   anomaly?: AnomalyResult | null;
   /** What-if: drift with every flagged row removed. null when nothing was flagged. */
   driftExcludingFlagged?: DriftResult | null;
+  /** Full drift report with every flagged row removed (symmetric). null when nothing was flagged. */
+  driftReportExcludingFlagged?: DriftReport | null;
   /** Full 5-section drift report (covariate / missing / label / concept / summary). Optional for backward compatibility. */
   driftReport?: DriftReport | null;
   /** MLOps trigger decision (Step 9). Optional for backward compatibility. */
@@ -735,6 +737,15 @@ export interface CalibratedMetricThresholds {
   ks: Record<string, CalibratedThresholdPair>;
   wasserstein: Record<string, CalibratedThresholdPair>;
   js: Record<string, CalibratedThresholdPair>;
+  concept?: {
+    giniDrop?: CalibratedThresholdPair;
+    worstBinRatio?: CalibratedThresholdPair;
+    nullP95GiniDrop?: number;
+    nullP99GiniDrop?: number;
+  };
+  label?: {
+    badRateRelChange?: CalibratedThresholdPair;
+  };
 }
 
 export interface CalibratedThresholds {
@@ -742,7 +753,12 @@ export interface CalibratedThresholds {
   resamples: number;
   seed: number;
   sizes: number[];
+  /** Number of decision metrics in the family used for Bonferroni adjustment. */
+  k?: number;
+  /** Family-wise calibrated thresholds (Bonferroni-adjusted: 1 - 0.05/k, 1 - 0.01/k). */
   bySize: Record<number | string, CalibratedMetricThresholds>;
+  /** Unadjusted individual calibrated thresholds (p95, p99). */
+  bySizeUnadjusted?: Record<number | string, CalibratedMetricThresholds>;
 }
 
 export interface BaselineVersion {

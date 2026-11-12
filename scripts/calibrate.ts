@@ -49,6 +49,8 @@ async function main() {
   const calibrated = calibrateThresholds(profile, model, { resamples });
   const elapsedMs = Date.now() - t0;
 
+  console.log(`  Family metrics (k): ${calibrated.k}`);
+  console.log(`  Bonferroni percentiles: warning = ${(100 * (1 - 0.05 / (calibrated.k || 1))).toFixed(2)}%, critical = ${(100 * (1 - 0.01 / (calibrated.k || 1))).toFixed(2)}%`);
   console.log(`✓ Completed in ${(elapsedMs / 1000).toFixed(2)}s\n`);
 
   // Print comparison table for n = 250 and 1000
@@ -119,6 +121,42 @@ async function main() {
         'Fixed Critical': (model.driftConfig?.jsCritical ?? 0.20).toFixed(4),
       });
     }
+
+    if (byN.concept?.giniDrop) {
+      rowsToDisplay.push({
+        'Size (n)': n,
+        'Metric': 'GiniDrop',
+        'Feature/Score': 'concept',
+        'Calibrated Warning': byN.concept.giniDrop.warning.toFixed(4),
+        'Calibrated Critical': byN.concept.giniDrop.critical.toFixed(4),
+        'Fixed Warning': (model.driftConfig?.giniRelDropWarning ?? 0.10).toFixed(4),
+        'Fixed Critical': (model.driftConfig?.giniRelDropCritical ?? 0.25).toFixed(4),
+      });
+    }
+
+    if (byN.concept?.worstBinRatio) {
+      rowsToDisplay.push({
+        'Size (n)': n,
+        'Metric': 'WorstBinRatio',
+        'Feature/Score': 'concept',
+        'Calibrated Warning': byN.concept.worstBinRatio.warning.toFixed(4),
+        'Calibrated Critical': byN.concept.worstBinRatio.critical.toFixed(4),
+        'Fixed Warning': 'N/A',
+        'Fixed Critical': 'N/A',
+      });
+    }
+
+    if (byN.label?.badRateRelChange) {
+      rowsToDisplay.push({
+        'Size (n)': n,
+        'Metric': 'BadRateRelChange',
+        'Feature/Score': 'label',
+        'Calibrated Warning': byN.label.badRateRelChange.warning.toFixed(4),
+        'Calibrated Critical': byN.label.badRateRelChange.critical.toFixed(4),
+        'Fixed Warning': (model.driftConfig?.labelRelChangeWarning ?? 0.20).toFixed(4),
+        'Fixed Critical': (model.driftConfig?.labelRelChangeCritical ?? 0.50).toFixed(4),
+      });
+    }
   }
 
   console.table(rowsToDisplay);
@@ -177,6 +215,36 @@ async function main() {
         feature: feat,
         warning: pair.warning,
         critical: pair.critical,
+      });
+    }
+    if (byN.concept?.giniDrop) {
+      csvRows.push({
+        model_id: modelId,
+        n,
+        metric: 'gini_drop',
+        feature: 'concept',
+        warning: byN.concept.giniDrop.warning,
+        critical: byN.concept.giniDrop.critical,
+      });
+    }
+    if (byN.concept?.worstBinRatio) {
+      csvRows.push({
+        model_id: modelId,
+        n,
+        metric: 'worst_bin_ratio',
+        feature: 'concept',
+        warning: byN.concept.worstBinRatio.warning,
+        critical: byN.concept.worstBinRatio.critical,
+      });
+    }
+    if (byN.label?.badRateRelChange) {
+      csvRows.push({
+        model_id: modelId,
+        n,
+        metric: 'bad_rate_rel_change',
+        feature: 'label',
+        warning: byN.label.badRateRelChange.warning,
+        critical: byN.label.badRateRelChange.critical,
       });
     }
   }

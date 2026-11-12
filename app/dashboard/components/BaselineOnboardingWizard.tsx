@@ -124,6 +124,7 @@ export default function BaselineOnboardingWizard({
     anomalyTransform?: 'none' | 'log1p';
     outOfBoundCount?: number;
   }>>({});
+  const [thresholdMode, setThresholdMode] = useState<'fixed' | 'calibrated'>('fixed');
 
   // Step 5: Validation state
   const [isValidating, setIsValidating] = useState<boolean>(false);
@@ -465,6 +466,7 @@ export default function BaselineOnboardingWizard({
             labelColumn: labelCol,
             scoreColumn: scoreCol,
           },
+          driftConfig: { thresholdMode },
           featureRegistry: registryPayload,
           ...(mode === 'scorecard' && scorecardConfig ? { scoring: scorecardConfig } : {}),
           onboardingLog: columnSuggestions.map(cs => ({
@@ -1032,6 +1034,41 @@ export default function BaselineOnboardingWizard({
                 <p className="text-[11px] text-slate-400">
                   ระบบเสนอค่าขอบเขต Min/Max ที่ปัดเศษสวยงาม และกลยุทธ์ค่าว่าง สามารถแก้ไขได้ทุกตัว
                 </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-200">โหมดเกณฑ์ตรวจจับ Drift (Threshold Mode)</h4>
+                    <p className="text-[11px] text-slate-400">
+                      เลือกเกณฑ์มาตรฐานอุตสาหกรรม (Fixed) หรือเกณฑ์ที่ปรับตามขนาดชุดข้อมูลด้วย Null Bootstrap (Calibrated)
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 p-1 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setThresholdMode('fixed')}
+                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                        thresholdMode === 'fixed'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Fixed (มาตรฐานอุตสาหกรรม)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setThresholdMode('calibrated')}
+                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                        thresholdMode === 'calibrated'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Calibrated (Null Bootstrap)
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-3">

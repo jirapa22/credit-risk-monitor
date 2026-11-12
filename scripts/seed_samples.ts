@@ -83,6 +83,7 @@ export async function seedSampleModels(): Promise<{ modelId: string; version: st
   const valRes = await validateBaselineVersion(modelId, version, {
     by: 'seeder',
     note: 'Validated seeded external sample model',
+    calibrationResamples: 200,
   });
   if (!valRes.ok) {
     throw new Error(`Validation failed for "${modelId}@${version}": ${JSON.stringify(valRes.report.errors)}`);

@@ -560,14 +560,11 @@ export function buildDriftReport(
     const calWassWarn = calThr?.wasserstein?.[key]?.warning ?? fixedWassWarn;
     const calWassCrit = calThr?.wasserstein?.[key]?.critical ?? fixedWassCrit;
 
-    const fixedStatuses: DriftStatus[] = [
-      classify(ks.d, fixedKsWarn, fixedKsCrit),
-      classify(wasserstein.scaled, fixedWassWarn, fixedWassCrit),
-    ];
+    // Fixed mode: status decided from CSI only. KS and Wasserstein are informational only.
+    let fStatusFixed: DriftStatus = 'STABLE';
     if (csiEntry && csiEntry.status !== 'NOT_AVAILABLE') {
-      fixedStatuses.push(classify(csiEntry.value, fixedCsiWarn, fixedCsiCrit));
+      fStatusFixed = classify(csiEntry.value, fixedCsiWarn, fixedCsiCrit);
     }
-    const fStatusFixed = worstStatus(fixedStatuses);
 
     const calStatuses: DriftStatus[] = [
       classify(ks.d, calKsWarn, calKsCrit),
@@ -704,13 +701,11 @@ export function buildDriftReport(
     const calJsWarn = calThr?.js?.[key]?.warning ?? fixedJsWarn;
     const calJsCrit = calThr?.js?.[key]?.critical ?? fixedJsCrit;
 
-    const fixedStatuses: DriftStatus[] = [
-      classify(jsRaw.distance, fixedJsWarn, fixedJsCrit),
-    ];
+    // Fixed mode: status decided from CSI only. JS is informational only.
+    let fStatusFixed: DriftStatus = 'STABLE';
     if (csiEntry && csiEntry.status !== 'NOT_AVAILABLE') {
-      fixedStatuses.push(classify(catPsi.value, fixedCsiWarn, fixedCsiCrit));
+      fStatusFixed = classify(catPsi.value, fixedCsiWarn, fixedCsiCrit);
     }
-    const fStatusFixed = worstStatus(fixedStatuses);
 
     const calStatuses: DriftStatus[] = [
       classify(jsRaw.distance, calJsWarn, calJsCrit),
@@ -792,23 +787,17 @@ export function buildDriftReport(
     const calWassWarn = calThr?.wasserstein?.score?.warning ?? fixedWassWarn;
     const calWassCrit = calThr?.wasserstein?.score?.critical ?? fixedWassCrit;
 
-    const fixedStatuses: DriftStatus[] = [
-      classify(ks.d, fixedKsWarn, fixedKsCrit),
-      classify(wasserstein.scaled, fixedWassWarn, fixedWassCrit),
-    ];
+    // Fixed mode: status decided from PSI only. KS and Wasserstein are informational only.
+    let sStatusFixed: DriftStatus = 'STABLE';
     if (psiEntry.status !== 'NOT_AVAILABLE') {
-      fixedStatuses.unshift(classify(psiEntry.value, fixedPsiWarn, fixedPsiCrit));
+      sStatusFixed = classify(psiEntry.value, fixedPsiWarn, fixedPsiCrit);
     }
-    const sStatusFixed = worstStatus(fixedStatuses);
 
-    const calStatuses: DriftStatus[] = [
-      classify(ks.d, calKsWarn, calKsCrit),
-      classify(wasserstein.scaled, calWassWarn, calWassCrit),
-    ];
+    const calStatuses: DriftStatus[] = [];
     if (psiEntry.status !== 'NOT_AVAILABLE') {
-      calStatuses.unshift(classify(psiEntry.value, calPsiWarn, calPsiCrit));
+      calStatuses.push(classify(psiEntry.value, calPsiWarn, calPsiCrit));
     }
-    const sStatusCalibrated = worstStatus(calStatuses);
+    const sStatusCalibrated = calStatuses.length > 0 ? worstStatus(calStatuses) : 'STABLE';
 
     const sStatus = thresholdMode === 'calibrated' ? sStatusCalibrated : sStatusFixed;
 
@@ -891,7 +880,7 @@ export function buildDriftReport(
 
       let imputedCount = 0;
       for (const r of cleanRows) {
-        if (r.imputed.includes(key)) imputedCount++;
+        if (r.imputed?.includes(key)) imputedCount++;
       }
       const imputedRate = cleanTotal > 0 ? imputedCount / cleanTotal : 0;
 
@@ -964,12 +953,24 @@ export function buildDriftReport(
     const zStat = se > 1e-12 ? (actBadRate - refBadRate) / se : 0;
     const pValue = se > 1e-12 ? normalTwoSidedPValue(zStat) : 1;
 
-    let lStatus: DriftStatus = 'STABLE';
+    let lStatusFixed: DriftStatus = 'STABLE';
+    const absRel = relativeChange !== null ? Math.abs(relativeChange) : 0;
     if (relativeChange !== null && pValue < dc.labelPValueThreshold) {
-      const absRel = Math.abs(relativeChange);
-      if (absRel >= dc.labelRelChangeCritical) lStatus = 'CRITICAL';
-      else if (absRel >= dc.labelRelChangeWarning) lStatus = 'WARNING';
+      if (absRel >= dc.labelRelChangeCritical) lStatusFixed = 'CRITICAL';
+      else if (absRel >= dc.labelRelChangeWarning) lStatusFixed = 'WARNING';
     }
+
+    const calLabel = calThr?.label;
+    const calLabelWarn = calLabel?.badRateRelChange?.warning ?? dc.labelRelChangeWarning;
+    const calLabelCrit = calLabel?.badRateRelChange?.critical ?? dc.labelRelChangeCritical;
+
+    let lStatusCalibrated: DriftStatus = 'STABLE';
+    if (relativeChange !== null) {
+      if (absRel >= calLabelCrit) lStatusCalibrated = 'CRITICAL';
+      else if (absRel >= calLabelWarn) lStatusCalibrated = 'WARNING';
+    }
+
+    const lStatus: DriftStatus = thresholdMode === 'calibrated' ? lStatusCalibrated : lStatusFixed;
 
     const relPctStr = relativeChange !== null ? `${(relativeChange * 100).toFixed(1)}%` : 'N/A';
     const lReason =
@@ -1115,13 +1116,25 @@ export function buildDriftReport(
           });
         }
 
+        let fConceptStatus: DriftStatus = 'STABLE';
+        if (thresholdMode === 'calibrated' && calThr?.concept?.worstBinRatio && maxBinRatio !== null) {
+          if (maxBinRatio >= calThr.concept.worstBinRatio.critical) {
+            fConceptStatus = 'CRITICAL';
+          } else if (maxBinRatio >= calThr.concept.worstBinRatio.warning) {
+            fConceptStatus = 'WARNING';
+          }
+        }
+
         conceptFeatures[f.key] = {
           key: f.key,
           displayName: f.displayName,
           bins,
           maxBinRatio,
-          status: 'STABLE',
-          reason: `คำนวณ Bad Rate รายหมวดของ "${f.displayName}" เทียบกับ Reference เรียบร้อยแล้ว`,
+          status: fConceptStatus,
+          reason:
+            fConceptStatus !== 'STABLE'
+              ? `สัดส่วน Bad Rate รายหมวดของ "${f.displayName}" เบี่ยงเบนเกินเกณฑ์ (${maxBinRatio?.toFixed(2)}x)`
+              : `คำนวณ Bad Rate รายหมวดของ "${f.displayName}" เทียบกับ Reference เรียบร้อยแล้ว`,
         };
         continue;
       }
@@ -1182,13 +1195,25 @@ export function buildDriftReport(
         });
       }
 
+      let fConceptStatus: DriftStatus = 'STABLE';
+      if (thresholdMode === 'calibrated' && calThr?.concept?.worstBinRatio && maxBinRatio !== null) {
+        if (maxBinRatio >= calThr.concept.worstBinRatio.critical) {
+          fConceptStatus = 'CRITICAL';
+        } else if (maxBinRatio >= calThr.concept.worstBinRatio.warning) {
+          fConceptStatus = 'WARNING';
+        }
+      }
+
       conceptFeatures[f.key] = {
         key: f.key,
         displayName: f.displayName,
         bins,
         maxBinRatio,
-        status: 'STABLE',
-        reason: `คำนวณ Bad Rate ราย Bin ของ "${f.displayName}" เทียบกับ Reference เรียบร้อยแล้ว`,
+        status: fConceptStatus,
+        reason:
+          fConceptStatus !== 'STABLE'
+            ? `สัดส่วน Bad Rate ราย Bin ของ "${f.displayName}" เบี่ยงเบนเกินเกณฑ์ (${maxBinRatio?.toFixed(2)}x)`
+            : `คำนวณ Bad Rate ราย Bin ของ "${f.displayName}" เทียบกับ Reference เรียบร้อยแล้ว`,
       };
     }
 
@@ -1241,27 +1266,57 @@ export function buildDriftReport(
 
       // Relative Gini drop (positive value means Gini decreased vs Reference)
       const giniDrop = relGini !== null ? -relGini : 0;
-      let perfStatus: DriftStatus = 'STABLE';
-      const reasons: string[] = [];
+      const calConcept = calThr?.concept;
+      const nullP95Gini = calConcept?.nullP95GiniDrop ?? 0.15;
+      const nullP99Gini = calConcept?.nullP99GiniDrop ?? 0.25;
 
-      if (giniDrop >= dc.giniRelDropCritical || actGini < spec.thresholds.gini_min) {
-        perfStatus = 'CRITICAL';
-        reasons.push(
-          `Gini ลดลง ${(giniDrop * 100).toFixed(1)}% (Reference ${refGini.toFixed(3)} → ใหม่ ${actGini.toFixed(3)}, เกณฑ์ขั้นต่ำ ${spec.thresholds.gini_min})`,
-        );
-      } else if (giniDrop >= dc.giniRelDropWarning) {
-        perfStatus = 'WARNING';
-        reasons.push(
-          `Gini ลดลง ${(giniDrop * 100).toFixed(1)}% (Reference ${refGini.toFixed(3)} → ใหม่ ${actGini.toFixed(3)})`,
-        );
+      const calGiniWarn = calConcept?.giniDrop?.warning ?? dc.giniRelDropWarning;
+      const calGiniCrit = calConcept?.giniDrop?.critical ?? dc.giniRelDropCritical;
+
+      // Fixed mode: alarm when exceeding original relative threshold AND exceeding natural null variation (p95)
+      let perfStatusFixed: DriftStatus = 'STABLE';
+      if ((giniDrop >= dc.giniRelDropCritical && giniDrop > nullP99Gini) || actGini < spec.thresholds.gini_min) {
+        perfStatusFixed = 'CRITICAL';
+      } else if (giniDrop >= dc.giniRelDropWarning && giniDrop > nullP95Gini) {
+        perfStatusFixed = 'WARNING';
       }
       if (actAuc < spec.thresholds.auc_min) {
-        perfStatus = 'CRITICAL';
-        reasons.push(`AUC (${actAuc.toFixed(3)}) ต่ำกว่าเกณฑ์ขั้นต่ำ (${spec.thresholds.auc_min})`);
+        perfStatusFixed = 'CRITICAL';
       }
       if (actKs < spec.thresholds.ks_min) {
-        perfStatus = worstStatus([perfStatus, 'WARNING']);
-        reasons.push(`KS (${actKs.toFixed(3)}) ต่ำกว่าเกณฑ์ขั้นต่ำ (${spec.thresholds.ks_min})`);
+        perfStatusFixed = worstStatus([perfStatusFixed, 'WARNING']);
+      }
+
+      // Calibrated mode: family percentile (Bonferroni per section)
+      let perfStatusCalibrated: DriftStatus = 'STABLE';
+      if (giniDrop >= calGiniCrit || actGini < spec.thresholds.gini_min) {
+        perfStatusCalibrated = 'CRITICAL';
+      } else if (giniDrop >= calGiniWarn) {
+        perfStatusCalibrated = 'WARNING';
+      }
+      if (actAuc < spec.thresholds.auc_min) {
+        perfStatusCalibrated = 'CRITICAL';
+      }
+      if (actKs < spec.thresholds.ks_min) {
+        perfStatusCalibrated = worstStatus([perfStatusCalibrated, 'WARNING']);
+      }
+
+      let perfStatus = thresholdMode === 'calibrated' ? perfStatusCalibrated : perfStatusFixed;
+      const reasons: string[] = [];
+
+      if (perfStatus !== 'STABLE') {
+        const activeWarnThr = thresholdMode === 'calibrated' ? calGiniWarn : dc.giniRelDropWarning;
+        if (giniDrop >= activeWarnThr) {
+          reasons.push(
+            `Gini ลดลง ${(giniDrop * 100).toFixed(1)}% (Reference ${refGini.toFixed(3)} → ใหม่ ${actGini.toFixed(3)}${actGini < spec.thresholds.gini_min ? `, เกณฑ์ขั้นต่ำ ${spec.thresholds.gini_min}` : ''})`,
+          );
+        }
+        if (actAuc < spec.thresholds.auc_min) {
+          reasons.push(`AUC (${actAuc.toFixed(3)}) ต่ำกว่าเกณฑ์ขั้นต่ำ (${spec.thresholds.auc_min})`);
+        }
+        if (actKs < spec.thresholds.ks_min) {
+          reasons.push(`KS (${actKs.toFixed(3)}) ต่ำกว่าเกณฑ์ขั้นต่ำ (${spec.thresholds.ks_min})`);
+        }
       }
 
       // Cap at WARNING if metric is unreliable (e.g., too few bads)
@@ -1312,16 +1367,22 @@ export function buildDriftReport(
       };
     }
 
+    const worstFeatStatus = worstStatus(Object.values(conceptFeatures).map(f => f.status));
     const conceptStatus: DriftSectionStatus =
       performance.status !== 'NOT_AVAILABLE'
-        ? performance.status
+        ? worstStatus([performance.status, worstFeatStatus])
         : Object.keys(conceptFeatures).length > 0
-          ? 'STABLE'
+          ? worstFeatStatus
           : 'NOT_AVAILABLE';
     const conceptReason =
-      performance.status !== 'NOT_AVAILABLE'
-        ? performance.reason
-        : 'คำนวณ Bad Rate ราย Bin เรียบร้อยแล้ว (ส่วนประสิทธิภาพ AUC/Gini/KS ไม่มีข้อมูลเนื่องจากโมเดลไม่มีคะแนนรวม)';
+      conceptStatus !== 'STABLE'
+        ? [
+            performance.status !== 'STABLE' && performance.status !== 'NOT_AVAILABLE' ? performance.reason : null,
+            ...Object.values(conceptFeatures).filter(f => f.status !== 'STABLE').map(f => f.reason),
+          ].filter(Boolean).join(' | ')
+        : performance.status !== 'NOT_AVAILABLE'
+          ? performance.reason
+          : 'คำนวณ Bad Rate ราย Bin เรียบร้อยแล้ว (ส่วนประสิทธิภาพ AUC/Gini/KS ไม่มีข้อมูลเนื่องจากโมเดลไม่มีคะแนนรวม)';
 
     conceptSection = {
       status: conceptStatus,

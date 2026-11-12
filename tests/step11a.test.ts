@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { injectAnomaly, SEVERITY_TABLE } from '../lib/injection';
 import { runMonitoring } from '../lib/monitoring';
 import { runSequence } from '../lib/sequence';
-import { getEffectiveModel } from '../lib/storage/repositories';
+import { getEffectiveModel, loadReferenceProfile } from '../lib/storage/repositories';
+import { calibrateThresholds } from '../lib/calibration';
 import { CombinedSuggestionProvider } from '../lib/suggest/combined';
 import { AiSuggestionProvider } from '../lib/suggest/ai';
 import { buildDatasetProfile } from '../lib/suggest/heuristic';
@@ -163,7 +164,29 @@ describe('Step 11a — New Drift Scenarios and Multi-Month Sequence Simulation',
 
   // ── (5) sequence sudden mean_shift −20% เริ่มเดือน 6 → กฎ persistence ──
   it('(5) sequence sudden mean_shift -20% starting month 6: no alarm before month 6, alarms month 6/7, CONSIDER_RETRAIN on 2nd alarm', async () => {
-    const result = await runSequence('ascore_v1', {
+    const baseModel = await getEffectiveModel('ascore_v1');
+
+    // บันทึกข้อจำกัดของเกณฑ์อุตสาหกรรม: CSI ไม่ไวต่อ drift ระดับนี้
+    const fixedResult = await runSequence(baseModel, {
+      type: 'mean_shift',
+      pattern: 'sudden',
+      startMonth: 6,
+      endMagnitude: -0.10,
+      seed: 42,
+      monthsCount: 12,
+    });
+    expect(fixedResult.months[5].covariateStatus).toBe('STABLE');
+
+    // Sensitivity assertion in calibrated mode
+    const refProfile = await loadReferenceProfile(baseModel.referenceDatasetId, baseModel);
+    const cal = calibrateThresholds(refProfile, baseModel, { sizes: [855], resamples: 200, seed: 42 });
+    const calModel = {
+      ...baseModel,
+      driftConfig: { ...baseModel.driftConfig, thresholdMode: 'calibrated' },
+      calibratedThresholds: cal,
+    };
+
+    const result = await runSequence(calModel, {
       type: 'mean_shift',
       pattern: 'sudden',
       startMonth: 6,

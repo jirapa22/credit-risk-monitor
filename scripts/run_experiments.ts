@@ -199,12 +199,17 @@ async function main() {
     raw.push({
       modelId: model.id, configVersion: model.configVersion, referenceId: model.referenceDatasetId,
       type: cell.type, kind: t.kind, severity: cell.severity, rate: cell.rate, seed: cell.seed,
+      skipped: t.spec.skipped ? 'true' : 'false',
+      skip_reason: t.spec.skipReason ?? '',
       expected_layer: t.expected.layer, detector: det,
       n: m.n, TP: m.TP, FP: m.FP, FN: m.FN, TN: m.TN, precision: m.precision, recall: m.recall, f1: m.f1, flagRate: m.flagRate,
       blocked: t.file.blocked, alarm: t.file.alarm, alarm_excl_flagged: t.file.alarmExcludingFlagged,
       status_fixed: t.file.statusFixed ?? t.drift?.status ?? (t.file.blocked ? 'BLOCKED' : 'STABLE'),
       status_calibrated: t.file.statusCalibrated ?? t.drift?.status ?? (t.file.blocked ? 'BLOCKED' : 'STABLE'),
-      falseAlarm: t.file.falseAlarm, rescued: t.file.rescued, detected: t.file.detected, preserved: t.file.preserved,
+      falseAlarm: t.file.falseAlarm, rescued: t.file.rescued,
+      detected: t.file.detected,
+      detected_calibrated: t.file.detectedCalibrated,
+      preserved: t.file.preserved,
       routed_layer: t.file.routedLayer, routingCorrect: t.file.routingCorrect,
       trigger_action: t.triggerAction,
       status: t.drift?.status ?? 'BLOCKED', psi: t.drift?.psi, ...csiCols('', t.drift),
@@ -214,10 +219,20 @@ async function main() {
   }
   writeCsv(`${prefix}_trials_raw.csv`, raw);
 
-  // ── summary.csv ──
+  // ── summary.csv (exclude skipped trials) ──
+  const unskippedResults = results.filter(r => !r.t.spec.skipped);
+  const skippedTrialsCount = results.length - unskippedResults.length;
+  const skippedReasons: Record<string, number> = {};
+  for (const { t } of results) {
+    if (t.spec.skipped) {
+      const reason = t.spec.skipReason || 'unknown';
+      skippedReasons[reason] = (skippedReasons[reason] ?? 0) + 1;
+    }
+  }
+
   const groupKey = (c: Cell) => `${c.type}|${c.severity}|${c.rate}`;
   const groups = new Map<string, { cell: Cell; ts: TrialResult[] }>();
-  for (const { cell, t } of results) {
+  for (const { cell, t } of unskippedResults) {
     const g = groups.get(groupKey(cell)) ?? { cell, ts: [] };
     g.ts.push(t); groups.set(groupKey(cell), g);
   }
@@ -245,8 +260,8 @@ async function main() {
       expected_section: ts[0].expected.section ?? 'none',
       trials: ts.length,
     };
-    for (const f of ['blocked', 'alarm', 'falseAlarm', 'rescued', 'detected', 'preserved', 'routingCorrect'] as const) {
-      const s = rateStat(ts.map(t => t.file[f] as boolean | null));
+    for (const f of ['blocked', 'alarm', 'falseAlarm', 'rescued', 'detected', 'detectedCalibrated', 'preserved', 'routingCorrect'] as const) {
+      const s = rateStat(ts.map(t => (t.file as any)[f] as boolean | null));
       Object.assign(row, { [`${f}_rate`]: s.mean, [`${f}_ci_low`]: s.ciLow, [`${f}_ci_high`]: s.ciHigh });
     }
     const calAlarm = rateStat(ts.map(t => (t.file.statusCalibrated === 'WARNING' || t.file.statusCalibrated === 'CRITICAL')));
@@ -260,7 +275,12 @@ async function main() {
 
   // ── run_meta.json ──
   writeFileSync(`${prefix}_run_meta.json`, JSON.stringify({
-    commit, startedAt: new Date(t0).toISOString(), elapsedSec, trials: grid.length, msPerTrial: (elapsedSec * 1000) / grid.length,
+    commit, startedAt: new Date(t0).toISOString(), elapsedSec,
+    trials: grid.length,
+    executedTrials: unskippedResults.length,
+    skippedTrials: skippedTrialsCount,
+    skippedReasons,
+    msPerTrial: (elapsedSec * 1000) / grid.length,
     quick, grid: { severities: SEV, rates: RATES, seeds: { groupA: seeds(30).length, schema_break: seeds(5).length, drift: seeds(30).length, none: seeds(100).length } },
     modelId: model.id, configVersion: model.configVersion, referenceId: model.referenceDatasetId,
     anomalyConfig: model.anomalyConfig ?? null, forestSeed: 42,
@@ -336,6 +356,7 @@ async function main() {
     falseAlarm_rate: round4(b.falseAlarm_rate),
     rescued_rate: round4(b.rescued_rate),
     detected_rate: round4(b.detected_rate),
+    detected_calibrated_rate: round4((b as any).detectedCalibrated_rate),
     preserved_rate: round4(b.preserved_rate),
     routingCorrect_rate: round4(b.routingCorrect_rate),
     alarm_calibrated_rate: round4(b.alarm_calibrated_rate),
@@ -343,7 +364,6 @@ async function main() {
 
   const publicDir = join(process.cwd(), 'public', 'experiments');
   mkdirSync(publicDir, { recursive: true });
-  const pubFile = join(publicDir, quick ? 'latest_summary_quick.json' : 'latest_summary.json');
   const pubContent = JSON.stringify({
     meta: {
       modelId: model.id,
@@ -351,6 +371,8 @@ async function main() {
       startedAt: new Date(t0).toISOString(),
       elapsedSec,
       trials: grid.length,
+      executedTrials: unskippedResults.length,
+      skippedTrials: skippedTrialsCount,
       msPerTrial: (elapsedSec * 1000) / Math.max(1, trialsExecuted),
       quick,
       severities: SEV,
@@ -361,8 +383,11 @@ async function main() {
     batch: publicBatch,
   });
 
-  writeFileSync(pubFile, pubContent + '\n', 'utf8');
-  console.log(`\nWeb UI summary written to: ${pubFile} (${(Buffer.byteLength(pubContent) / 1024).toFixed(1)} KB)`);
+  const pubFileModel = join(publicDir, `latest_summary_${model.id}.json`);
+  const pubFileDefault = join(publicDir, 'latest_summary.json');
+  writeFileSync(pubFileModel, pubContent + '\n', 'utf8');
+  writeFileSync(pubFileDefault, pubContent + '\n', 'utf8');
+  console.log(`\nWeb UI summary written to: ${pubFileModel} and ${pubFileDefault} (${(Buffer.byteLength(pubContent) / 1024).toFixed(1)} KB)`);
   console.log(`→ ${prefix}_{trials_raw,summary,batch_summary}.csv, _run_meta.json`);
 }
 

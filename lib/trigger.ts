@@ -65,7 +65,6 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
     priority: 2,
     when: [
       { type: 'driftResolvedByExclusion' },
-      { type: 'flaggedPctAbove', multiplierOfReference: 2 },
     ],
     action: 'INVESTIGATE_DATA',
     severity: 'warning',
@@ -147,8 +146,20 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
     ],
   },
   {
-    id: 'R8',
+    id: 'R8b',
     priority: 8,
+    when: [{ type: 'flaggedPctAbove', multiplierOfReference: 2 }],
+    action: 'INVESTIGATE_DATA',
+    severity: 'warning',
+    message: 'พบแถวผิดปกติมากกว่าปกติ แม้ยังไม่กระทบตัวชี้วัด drift — ตรวจแถวที่โดนธงก่อนใช้ข้อมูลรอบนี้',
+    recommendedSteps: [
+      'ตรวจสอบรายการแถวที่ถูกปักธงในชั้น Anomaly Screening',
+      'ยืนยันความถูกต้องของข้อมูลกับระบบต้นทางก่อนนำผลคะแนนรอบนี้ไปใช้งาน',
+    ],
+  },
+  {
+    id: 'R8',
+    priority: 9,
     when: [{ type: 'sectionStatus', section: 'overall', atLeast: 'WARNING' }],
     action: 'MONITOR_CLOSELY',
     severity: 'info',
@@ -160,7 +171,7 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
   },
   {
     id: 'R9',
-    priority: 9,
+    priority: 10,
     when: [],
     action: 'CONTINUE',
     severity: 'info',
@@ -348,13 +359,35 @@ function evaluateCondition(
         return { matched: false, reason: 'ยังไม่มีผลคำนวณ Drift ทางการ' };
       }
       const officialStatus = run.drift.overallStatus;
-      const exclStatus = run.driftExcludingFlagged?.overallStatus ?? null;
-      const matched = officialStatus !== 'STABLE' && exclStatus === 'STABLE';
+      const covStatus = run.driftReport?.covariate?.status ?? 'STABLE';
+      const officialAlarm = officialStatus !== 'STABLE';
+      const covAlarm = covStatus === 'WARNING' || covStatus === 'CRITICAL';
+      const alarmBefore = officialAlarm || covAlarm;
+
+      if (!alarmBefore) {
+        return {
+          matched: false,
+          reason: `ทั้ง Drift ทางการ (${officialStatus}) และ DriftReport Covariate (${covStatus}) ปกติ ไม่ได้เตือนก่อนตัดแถว`,
+        };
+      }
+
+      const hasFlags = Boolean(run.anomaly && run.anomaly.flaggedRows && run.anomaly.flaggedRows.length > 0);
+      if (!hasFlags) {
+        return { matched: false, reason: 'ไม่มีแถวที่โดนปักธง จึงไม่สามารถตัดแถวเพื่อแก้ drift ได้' };
+      }
+
+      const officialExclStatus = run.driftExcludingFlagged?.overallStatus ?? 'STABLE';
+      const covExclStatus = run.driftReportExcludingFlagged?.covariate?.status ?? 'STABLE';
+
+      const officialStableAfter = officialExclStatus === 'STABLE';
+      const covStableAfter = covExclStatus === 'STABLE';
+
+      const matched = officialStableAfter && covStableAfter;
       return {
         matched,
         reason: matched
-          ? `Drift ทางการแจ้งเตือนระดับ ${officialStatus} (PSI=${run.drift.psi.value.toFixed(4)}, triggered=[${run.drift.triggered.join(', ')}]) แต่เมื่อตัดแถวที่โดนธงออกแล้วกลับเป็น STABLE (PSI=${(run.driftExcludingFlagged?.psi.value ?? 0).toFixed(4)})`
-          : `Drift ทางการ=${officialStatus}, หลังตัดแถวที่โดนธง=${exclStatus ?? 'ไม่มีแถวโดนธง'}`,
+          ? `Drift ก่อนตัดแถวแจ้งเตือน (ทางการ=${officialStatus}, Covariate=${covStatus}) แต่เมื่อตัดแถวที่โดนธงออกแล้วกลับเป็น STABLE ทั้งคู่ (ทางการ=${officialExclStatus}, Covariate=${covExclStatus})`
+          : `ก่อนตัดแถว: ทางการ=${officialStatus}, Covariate=${covStatus} | หลังตัดแถว: ทางการ=${officialExclStatus}, Covariate=${covExclStatus} (ยังไม่ STABLE ทั้งคู่)`,
       };
     }
 
@@ -492,8 +525,14 @@ export function evaluateTrigger(
   for (const rule of rules) {
     const evals = rule.when.map(cond => evaluateCondition(cond, run, history));
     if (evals.every(e => e.matched)) {
+      let ruleMessage = rule.message;
+      if (rule.id === 'R8b' && run.anomaly) {
+        const actualPct = run.anomaly.flaggedPct.toFixed(1);
+        const refPct = getReferenceFlaggedPct(run).toFixed(1);
+        ruleMessage = `พบแถวผิดปกติมากกว่าปกติ ${actualPct}% (ปกติ ${refPct}%) แม้ยังไม่กระทบตัวชี้วัด drift — ตรวจแถวที่โดนธงก่อนใช้ข้อมูลรอบนี้`;
+      }
       const reasons: string[] = [
-        `[${rule.id}] ${rule.message}`,
+        `[${rule.id}] ${ruleMessage}`,
         ...evals.map(e => e.reason),
       ];
       if (rule.when.length === 0 && run.driftReport) {

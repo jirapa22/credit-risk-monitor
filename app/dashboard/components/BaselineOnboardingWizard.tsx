@@ -132,12 +132,27 @@ export default function BaselineOnboardingWizard({
   const [validationError, setValidationError] = useState<string>('');
   const [isActivating, setIsActivating] = useState<boolean>(false);
   const [openMonitoringImmediately, setOpenMonitoringImmediately] = useState<boolean>(true);
+  const [upstreamChangeWarning, setUpstreamChangeWarning] = useState<string>('');
 
   // ── Step 1: File selection and initial parsing ──
   const handleFileChange = async (selected: File) => {
+    const isChangingFile = Boolean(file || referenceId || Object.keys(columnMapping).length > 0);
     setFile(selected);
     setFileName(selected.name);
     setUploadError('');
+
+    if (isChangingFile) {
+      setValidationReport(null);
+      setValidationError('');
+      setAiExplanation('');
+      setReferenceId('');
+      setDatasetProfile(null);
+      setColumnSuggestions([]);
+      setColumnMapping({});
+      setFeatureDefs({});
+      setScorecardConfig(null);
+      setUpstreamChangeWarning('มีการเปลี่ยนไฟล์ข้อมูลต้นทาง ระบบได้ล้างผลการวิเคราะห์และผลตรวจสอบเดิมแล้ว กรุณากด "วิเคราะห์ข้อมูลและสร้างข้อเสนอแนะ" เพื่อเริ่มต้นใหม่');
+    }
 
     // Quick client-side preview of the first few rows (if CSV)
     if (selected.name.toLowerCase().endsWith('.csv')) {
@@ -274,6 +289,11 @@ export default function BaselineOnboardingWizard({
 
   // Update role of a column
   const setColRole = (col: string, newRole: ColumnRole) => {
+    if (validationReport) {
+      setValidationReport(null);
+      setAiExplanation('');
+      setUpstreamChangeWarning('มีการเปลี่ยนบทบาทคอลัมน์ — ผลการตรวจสอบ Baseline เดิมถูกยกเลิกแล้ว คุณจะต้องทำการตรวจสอบใหม่อีกครั้งในขั้นตอนที่ 5 ก่อนบันทึก');
+    }
     setColumnMapping(prev => ({
       ...prev,
       [col]: { ...prev[col], role: newRole },
@@ -524,6 +544,10 @@ export default function BaselineOnboardingWizard({
 
   // ── Step 5: Activate Baseline ──
   const handleActivate = async () => {
+    if (!validationReport?.ok) {
+      setValidationError('ไม่สามารถบันทึกหรือเปิดใช้งานได้เนื่องจากผลตรวจสอบยังไม่ผ่านหรือล้าสมัย กรุณากดตรวจสอบ Baseline ใหม่อีกครั้ง');
+      return;
+    }
     setIsActivating(true);
     setValidationError('');
 
@@ -640,6 +664,15 @@ export default function BaselineOnboardingWizard({
           ══════════════════════════════════════════════════════════ */}
           {step === 1 && (
             <div className="space-y-6">
+              {upstreamChangeWarning && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span>⚠️</span>
+                    <span>{upstreamChangeWarning}</span>
+                  </div>
+                  <button type="button" onClick={() => setUpstreamChangeWarning('')} className="text-amber-400 hover:text-amber-200 text-xs ml-2">✕</button>
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Mode Selector */}
                 <div
@@ -1301,6 +1334,22 @@ export default function BaselineOnboardingWizard({
               {validationError && (
                 <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
                   ❌ {validationError}
+                </div>
+              )}
+
+              {!validationReport && !isValidating && (
+                <div className="p-6 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs space-y-3 text-center">
+                  <div className="text-base font-bold">⚠️ ยังไม่มีผลการตรวจสอบ Baseline หรือผลตรวจสอบเดิมถูกยกเลิกเนื่องจากมีการแก้ไขข้อมูลต้นน้ำ</div>
+                  <p className="text-slate-400 max-w-lg mx-auto">
+                    ระบบป้องกันการเปิดใช้งาน Baseline ที่มีผลตรวจสอบล้าสมัย กรุณากดปุ่มด้านล่างเพื่อเริ่มการตรวจสอบ Baseline (Validation) อีกครั้ง
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleValidate}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition shadow-lg inline-flex items-center gap-2"
+                  >
+                    🔍 เริ่มการตรวจสอบ Baseline
+                  </button>
                 </div>
               )}
 

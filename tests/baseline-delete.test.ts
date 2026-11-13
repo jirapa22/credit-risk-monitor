@@ -16,6 +16,7 @@ import {
   saveTriggerEvent,
   setDefaultModelId,
   updateBaselineVersion,
+  activateBaselineVersion,
   BuiltInProtectedError,
   RegistryError,
 } from '../lib/storage/repositories';
@@ -28,6 +29,7 @@ import {
 } from '../app/api/registry/models/[modelId]/versions/[version]/route';
 import { DELETE as deleteModelRoute } from '../app/api/registry/models/[modelId]/route';
 import { GET as getAuditRoute } from '../app/api/registry/audit/route';
+import { POST as activateVersionRoute } from '../app/api/registry/models/[modelId]/versions/[version]/activate/route';
 import type { MonitoringRun, TriggerEvent } from '../lib/types';
 
 describe('Step 2: Baseline Deletion, Impact Analysis & Guards', () => {
@@ -356,5 +358,44 @@ describe('Step 2: Baseline Deletion, Impact Analysis & Guards', () => {
     const patchData = await patchRes.json();
     expect(patchData.ok).toBe(true);
     expect(patchData.baseline.name).toBe('Patched Model Name');
+  });
+
+  it('Part (D) Upstream change invalidation: reverts VALIDATED to DRAFT and blocks activation if stale', async () => {
+    // 1. Manually transition to VALIDATED
+    const all = await listBaselineVersions(customModelId);
+    all[0].status = 'VALIDATED';
+
+    // 2. Perform upstream structural edit (change scoreDirection or columns)
+    const updated = await updateBaselineVersion(customModelId, customVersion, {
+      scoreDirection: 'higher_is_riskier',
+      columns: { idColumn: 'new_id_col' },
+    });
+
+    // Verification: status reverted to DRAFT
+    expect(updated.status).toBe('DRAFT');
+
+    // 3. Attempting to activate via repository function directly MUST fail
+    await expect(activateBaselineVersion(customModelId, customVersion)).rejects.toThrowError(
+      /ต้องเป็น "VALIDATED" เท่านั้น/
+    );
+
+    // 4. Attempting to activate via API route MUST return HTTP 400
+    const actRes = await activateVersionRoute(
+      new Request('http://localhost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: 'test-runner' }),
+      }),
+      { params: { modelId: customModelId, version: customVersion } }
+    );
+    const actData = await actRes.json();
+    expect(actRes.status).toBe(400);
+    expect(actData.error).toMatch(/ต้องเป็น "VALIDATED" เท่านั้น/);
+
+    // 5. If validated again, activation succeeds
+    const stored = await listBaselineVersions(customModelId);
+    stored[0].status = 'VALIDATED';
+    const activated = await activateBaselineVersion(customModelId, customVersion);
+    expect(activated.status).toBe('ACTIVE');
   });
 });

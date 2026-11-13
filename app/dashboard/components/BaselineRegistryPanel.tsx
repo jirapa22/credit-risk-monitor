@@ -10,7 +10,7 @@
  *   - Launch Onboarding Wizard (+ New Model / + New Version)
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { BaselineMode, BaselineStatus, BaselineVersion, DeletionAuditEntry } from '@/lib/types';
+import type { BaselineMode, BaselineStatus, BaselineVersion, DeletionAuditEntry, ScoreDirection } from '@/lib/types';
 import BaselineOnboardingWizard from './BaselineOnboardingWizard';
 
 function isBuiltInModel(id: string): boolean {
@@ -112,6 +112,11 @@ export default function BaselineRegistryPanel({
     version: BaselineVersion | null;
     name: string;
     description: string;
+    scoreDirection: ScoreDirection;
+    idColumn: string;
+    dateColumn: string;
+    labelColumn: string;
+    scoreColumn: string;
     isProcessing: boolean;
     errorMessage: string;
   }>({
@@ -119,6 +124,11 @@ export default function BaselineRegistryPanel({
     version: null,
     name: '',
     description: '',
+    scoreDirection: 'higher_is_safer',
+    idColumn: '',
+    dateColumn: '',
+    labelColumn: '',
+    scoreColumn: '',
     isProcessing: false,
     errorMessage: '',
   });
@@ -261,6 +271,11 @@ export default function BaselineRegistryPanel({
       version: v,
       name: v.name || '',
       description: v.description || '',
+      scoreDirection: (v.scoreDirection as ScoreDirection) || 'higher_is_safer',
+      idColumn: v.columns?.idColumn || '',
+      dateColumn: v.columns?.dateColumn || '',
+      labelColumn: v.columns?.labelColumn || '',
+      scoreColumn: v.columns?.scoreColumn || '',
       isProcessing: false,
       errorMessage: '',
     });
@@ -272,6 +287,11 @@ export default function BaselineRegistryPanel({
       version: null,
       name: '',
       description: '',
+      scoreDirection: 'higher_is_safer',
+      idColumn: '',
+      dateColumn: '',
+      labelColumn: '',
+      scoreColumn: '',
       isProcessing: false,
       errorMessage: '',
     });
@@ -283,22 +303,59 @@ export default function BaselineRegistryPanel({
 
     setEditModal(prev => ({ ...prev, isProcessing: true, errorMessage: '' }));
     try {
+      const isStructuralEdit = v.status !== 'ACTIVE' && (
+        editModal.scoreDirection !== v.scoreDirection ||
+        editModal.idColumn !== (v.columns?.idColumn || '') ||
+        editModal.dateColumn !== (v.columns?.dateColumn || '') ||
+        editModal.labelColumn !== (v.columns?.labelColumn || '') ||
+        editModal.scoreColumn !== (v.columns?.scoreColumn || '')
+      );
+
+      const patchPayload: Record<string, any> = {
+        name: editModal.name.trim() || v.name,
+        description: editModal.description.trim(),
+      };
+
+      if (v.status !== 'ACTIVE') {
+        patchPayload.scoreDirection = editModal.scoreDirection;
+        patchPayload.columns = {
+          idColumn: editModal.idColumn.trim() || undefined,
+          dateColumn: editModal.dateColumn.trim() || undefined,
+          labelColumn: editModal.labelColumn.trim() || undefined,
+          scoreColumn: editModal.scoreColumn.trim() || undefined,
+        };
+      }
+
+      // 1. PATCH baseline metadata & structure
       const res = await fetch(`/api/registry/models/${v.modelId}/versions/${v.version}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editModal.name.trim() || v.name,
-          description: editModal.description.trim(),
-        }),
+        body: JSON.stringify(patchPayload),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error(data.error || 'แก้ไข Baseline ไม่สำเร็จ');
       }
 
+      // 2. If structural change made on DRAFT/VALIDATED, automatically re-validate!
+      if (isStructuralEdit) {
+        const valRes = await fetch(`/api/registry/models/${v.modelId}/versions/${v.version}/validate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actor: 'registry-edit' }),
+        });
+        const valData = await valRes.json();
+        if (!valRes.ok || !valData.ok) {
+          closeEditModal();
+          await loadRegistry();
+          alert(`⚠️ บันทึกการแก้ไขแล้ว แต่การตรวจสอบ (Validate) พบข้อผิดพลาด: ${valData.error || 'ไม่ผ่านเกณฑ์'} (สถานะเป็น DRAFT)`);
+          return;
+        }
+      }
+
       closeEditModal();
       await loadRegistry();
-      alert(`✅ แก้ไขข้อมูล Baseline v${v.version} สำเร็จ`);
+      alert(`✅ แก้ไขข้อมูล Baseline v${v.version} สำเร็จ${isStructuralEdit ? ' และผ่านการ Re-validate (สถานะ: VALIDATED) อัตโนมัติ' : ''}`);
     } catch (err: unknown) {
       setEditModal(prev => ({
         ...prev,
@@ -967,16 +1024,18 @@ export default function BaselineRegistryPanel({
       {/* Edit Baseline Modal */}
       {editModal.isOpen && editModal.version && (() => {
         const v = editModal.version;
+        const isActive = v.status === 'ACTIVE';
+
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
                 <div>
                   <h3 className="text-sm font-bold text-slate-100">
                     แก้ไขข้อมูล Baseline v{v.version}
                   </h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    โมเดล: <span className="font-mono text-indigo-300">{v.modelId}</span> · สถานะ: {v.status}
+                    โมเดล: <span className="font-mono text-indigo-300">{v.modelId}</span> · สถานะปัจจุบัน: <span className="font-bold text-indigo-400">{v.status}</span>
                   </p>
                 </div>
                 <button
@@ -991,6 +1050,16 @@ export default function BaselineRegistryPanel({
               {editModal.errorMessage && (
                 <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
                   ❌ {editModal.errorMessage}
+                </div>
+              )}
+
+              {isActive ? (
+                <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs">
+                  🔒 <strong>เวอร์ชันนี้มีสถานะ ACTIVE:</strong> แก้ไขได้เฉพาะชื่อและคำอธิบายเท่านั้น เพื่อรักษาความสมบูรณ์ของประวัติการติดตาม หากต้องการปรับบทบาทคอลัมน์หรือทิศทางคะแนน กรุณาใช้ปุ่ม <strong>"สร้างเวอร์ชันใหม่"</strong>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs">
+                  ⚡ <strong>โหมดแก้ไขสถานะ {v.status}:</strong> สามารถปรับเปลี่ยนบทบาทคอลัมน์และทิศทางคะแนนได้ โดยระบบจะทำการตรวจสอบ Baseline (Re-validate) ให้อัตโนมัติเมื่อกดบันทึก
                 </div>
               )}
 
@@ -1013,13 +1082,82 @@ export default function BaselineRegistryPanel({
                     คำอธิบาย (Description)
                   </label>
                   <textarea
-                    rows={3}
+                    rows={2}
                     value={editModal.description}
                     onChange={e => setEditModal(prev => ({ ...prev, description: e.target.value }))}
                     placeholder="คำอธิบายโมเดลและรายละเอียดเพิ่มเติม"
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
                   />
                 </div>
+
+                {!isActive && (
+                  <>
+                    <div className="space-y-1 pt-1 border-t border-slate-800">
+                      <label className="text-xs text-slate-300 font-semibold block">
+                        ทิศทางคะแนน (Score Direction)
+                      </label>
+                      <select
+                        value={editModal.scoreDirection}
+                        onChange={e => setEditModal(prev => ({ ...prev, scoreDirection: e.target.value as ScoreDirection }))}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500"
+                      >
+                        <option value="higher_is_safer">คะแนนสูง = เสี่ยงต่ำ (ลูกหนี้ชั้นดี เช่น A-Score)</option>
+                        <option value="higher_is_riskier">คะแนนสูง = เสี่ยงสูง (โอกาสผิดนัดชำระหนี้ เช่น PD Score)</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-300 font-semibold block">
+                          Score Column
+                        </label>
+                        <input
+                          type="text"
+                          value={editModal.scoreColumn}
+                          onChange={e => setEditModal(prev => ({ ...prev, scoreColumn: e.target.value }))}
+                          placeholder="เช่น score, prob_default"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-300 font-semibold block">
+                          Label Column
+                        </label>
+                        <input
+                          type="text"
+                          value={editModal.labelColumn}
+                          onChange={e => setEditModal(prev => ({ ...prev, labelColumn: e.target.value }))}
+                          placeholder="เช่น label, target"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-300 font-semibold block">
+                          ID Column
+                        </label>
+                        <input
+                          type="text"
+                          value={editModal.idColumn}
+                          onChange={e => setEditModal(prev => ({ ...prev, idColumn: e.target.value }))}
+                          placeholder="เช่น id, contract_no"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-300 font-semibold block">
+                          Date Column
+                        </label>
+                        <input
+                          type="text"
+                          value={editModal.dateColumn}
+                          onChange={e => setEditModal(prev => ({ ...prev, dateColumn: e.target.value }))}
+                          placeholder="เช่น app_dt, event_date"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
@@ -1035,7 +1173,7 @@ export default function BaselineRegistryPanel({
                   disabled={editModal.isProcessing}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-indigo-500/20 transition"
                 >
-                  {editModal.isProcessing ? 'กำลังบันทึก...' : '💾 บันทึกการแก้ไข'}
+                  {editModal.isProcessing ? 'กำลังบันทึกและตรวจซ้ำ...' : (isActive ? '💾 บันทึกการแก้ไข' : '💾 บันทึกและตรวจซ้ำ')}
                 </button>
               </div>
             </div>

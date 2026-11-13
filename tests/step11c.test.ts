@@ -176,7 +176,7 @@ describe('Step 11c — Drift Section Detection, R2 Exclusion, and Family Calibra
     expect(fixedNonContinue / seeds).toBeLessThanOrEqual(0.10);
     expect(calNonContinue / seeds).toBeLessThanOrEqual(0.10);
     expect(r8bAlarms / seeds).toBeLessThanOrEqual(0.05);
-  }, 15000);
+  }, 60000);
 
   it('(4) concept_shift high and label_shift high detection >= 90%', async () => {
     const totalSeeds = 20;

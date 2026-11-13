@@ -65,7 +65,28 @@ export function computeRowsSha256(
 }
 
 // ─── 1. Vercel Blob REST Adapter ─────────────────────────────────────────────
-class VercelBlobStore implements ReferenceBlobStore {
+export function getBlobAccess(): 'private' | 'public' {
+  const envAccess = process.env.BLOB_ACCESS?.trim().toLowerCase();
+  return envAccess === 'public' ? 'public' : 'private';
+}
+
+export async function extractErrorSnippet(res: Response, token?: string): Promise<string> {
+  try {
+    let text = await res.text();
+    if (!text) return '';
+    if (token && token.length > 5) {
+      text = text.replaceAll(token, '[REDACTED_TOKEN]');
+    }
+    text = text.replace(/vercel_blob_[a-zA-Z0-9_\-]+/g, '[REDACTED_TOKEN]');
+    text = text.replace(/Bearer\s+[a-zA-Z0-9_\-\.]+/gi, 'Bearer [REDACTED_TOKEN]');
+    const clean = text.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    return clean.length > 300 ? clean.slice(0, 300) : clean;
+  } catch {
+    return '';
+  }
+}
+
+export class VercelBlobStore implements ReferenceBlobStore {
   kind: BlobStoreKind = 'vercel-blob';
   persistent = true;
   private baseUrl = 'https://blob.vercel-storage.com';
@@ -78,6 +99,7 @@ class VercelBlobStore implements ReferenceBlobStore {
 
   async put(referenceId: string, blob: ReferenceDatasetBlob): Promise<void> {
     const pathname = this.blobPath(referenceId);
+    const access = getBlobAccess();
     const res = await fetch(`${this.baseUrl}/${pathname}`, {
       method: 'PUT',
       headers: {
@@ -85,12 +107,16 @@ class VercelBlobStore implements ReferenceBlobStore {
         'content-type': 'application/json',
         'x-add-random-suffix': '0',
         'x-cache-control-max-age': '60',
+        'x-vercel-blob-access': access,
       },
       body: JSON.stringify(blob),
       cache: 'no-store',
     });
     if (!res.ok) {
-      throw new Error(`Vercel Blob PUT "${referenceId}" failed: HTTP ${res.status}`);
+      const snippet = await extractErrorSnippet(res, this.token);
+      throw new Error(
+        `Vercel Blob PUT "${referenceId}" failed: HTTP ${res.status}${snippet ? `: ${snippet}` : ''}`,
+      );
     }
   }
 
@@ -103,18 +129,31 @@ class VercelBlobStore implements ReferenceBlobStore {
         cache: 'no-store',
       },
     );
-    if (!listRes.ok) return null;
+    if (!listRes.ok) {
+      if (listRes.status === 404) return null;
+      const snippet = await extractErrorSnippet(listRes, this.token);
+      throw new Error(
+        `Vercel Blob GET "${referenceId}" list failed: HTTP ${listRes.status}${snippet ? `: ${snippet}` : ''}`,
+      );
+    }
     const listBody = (await listRes.json()) as {
       blobs?: { pathname: string; url: string; downloadUrl?: string }[];
     };
     const match = listBody.blobs?.find(b => b.pathname === prefix);
     if (!match) return null;
 
-    const dlRes = await fetch(match.downloadUrl || match.url, {
+    const dlUrl = match.downloadUrl || match.url;
+    const dlRes = await fetch(dlUrl, {
       headers: { Authorization: `Bearer ${this.token}` },
       cache: 'no-store',
     });
-    if (!dlRes.ok) return null;
+    if (!dlRes.ok) {
+      if (dlRes.status === 404) return null;
+      const snippet = await extractErrorSnippet(dlRes, this.token);
+      throw new Error(
+        `Vercel Blob GET "${referenceId}" download failed: HTTP ${dlRes.status}${snippet ? `: ${snippet}` : ''}`,
+      );
+    }
     return (await dlRes.json()) as ReferenceDatasetBlob;
   }
 
@@ -127,11 +166,17 @@ class VercelBlobStore implements ReferenceBlobStore {
         cache: 'no-store',
       },
     );
-    if (!listRes.ok) return;
+    if (!listRes.ok) {
+      if (listRes.status === 404) return;
+      const snippet = await extractErrorSnippet(listRes, this.token);
+      throw new Error(
+        `Vercel Blob DELETE "${referenceId}" list failed: HTTP ${listRes.status}${snippet ? `: ${snippet}` : ''}`,
+      );
+    }
     const listBody = (await listRes.json()) as { blobs?: { url: string }[] };
     const urls = (listBody.blobs ?? []).map(b => b.url);
     if (urls.length === 0) return;
-    await fetch(`${this.baseUrl}/delete`, {
+    const delRes = await fetch(`${this.baseUrl}/delete`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -140,6 +185,12 @@ class VercelBlobStore implements ReferenceBlobStore {
       body: JSON.stringify({ urls }),
       cache: 'no-store',
     });
+    if (!delRes.ok) {
+      const snippet = await extractErrorSnippet(delRes, this.token);
+      throw new Error(
+        `Vercel Blob DELETE "${referenceId}" failed: HTTP ${delRes.status}${snippet ? `: ${snippet}` : ''}`,
+      );
+    }
   }
 
   async list(): Promise<ReferenceDatasetMeta[]> {
@@ -147,12 +198,21 @@ class VercelBlobStore implements ReferenceBlobStore {
       headers: { Authorization: `Bearer ${this.token}` },
       cache: 'no-store',
     });
-    if (!listRes.ok) return [];
-    const listBody = (await listRes.json()) as { blobs?: { url: string }[] };
+    if (!listRes.ok) {
+      if (listRes.status === 404) return [];
+      const snippet = await extractErrorSnippet(listRes, this.token);
+      throw new Error(
+        `Vercel Blob LIST failed: HTTP ${listRes.status}${snippet ? `: ${snippet}` : ''}`,
+      );
+    }
+    const listBody = (await listRes.json()) as {
+      blobs?: { url: string; downloadUrl?: string }[];
+    };
     const metas: ReferenceDatasetMeta[] = [];
     for (const b of listBody.blobs ?? []) {
       try {
-        const r = await fetch(b.url, {
+        const dlUrl = b.downloadUrl || b.url;
+        const r = await fetch(dlUrl, {
           headers: { Authorization: `Bearer ${this.token}` },
           cache: 'no-store',
         });

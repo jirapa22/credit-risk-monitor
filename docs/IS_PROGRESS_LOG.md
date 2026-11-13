@@ -76,6 +76,11 @@
 38. ช่องว่าง: ข้อมูลผิดที่ชั้น validation ตัดทิ้ง (unit_error ×100, negative, type_error, duplicate) ได้ action CONTINUE 100% แม้ตัดแถวไป 5–20% → ต้องมีกฎ R1b (rejected/duplicate สูงกว่าเกณฑ์ → INVESTIGATE_DATA)
 39. variance_change medium (ascore): ได้ INVESTIGATE_DATA เพราะหางที่ยืดถูกติดธง → ความกำกวมระหว่าง drift การกระจายกับ outlier เป็นข้อจำกัดที่ต้องอภิปราย
 
+40. 11d (c23ec95, 660d5c0): กฎ R1b (validation ตัด/เตือน > 1% → INVESTIGATE_DATA) — unit_error/negative/type_error/duplicate 5% → INVESTIGATE_DATA 100%, ไฟล์สะอาด 0%. Demo pack ใน samples/demo/ (ascore 9 ไฟล์ + 12 เดือน, ext 4 ไฟล์, new_model_auto_loan baseline AUC 0.729) ตรวจผลจริงใน README
+41. Demo sequence mix_shift (12 เดือน): fixed ไม่เคยแนะนำ retrain (MONITOR_CLOSELY ที่ M10–12) vs calibrated INVESTIGATE_DRIFT M9 → CONSIDER_RETRAIN M10–12 — ภาพสาธิตข้อจำกัดของเกณฑ์อุตสาหกรรม
+42. ช่องว่างที่พบ (ทำ 11e): new_model monitor_drift (ลูกค้าเสี่ยงขึ้น → bad rate ขึ้น) โหมด fixed ได้ RECALIBRATE เพราะ R5 ดูแค่ label CRITICAL — แต่ถ้าคะแนนขยับตามแล้ว bad rate ที่เพิ่มเป็นสิ่งที่โมเดลคาดไว้ ไม่ต้อง recalibrate → ต้องเทียบ bad rate จริงกับ bad rate คาดการณ์จากการกระจายคะแนน (calibration-in-the-large, ใช้ decile ของคะแนนใน Reference จึงไม่ขึ้นกับชนิดโมเดล)
+43. แก้บั๊ก Vercel Blob Reference upload (HTTP 400): เพิ่ม header `x-vercel-blob-access: private` (ตั้งได้ผ่าน `BLOB_ACCESS`), แสดง snippet ของ response body ใน error (ตัดไม่เกิน 300 ตัวอักษรและ redact token), ยืนยัน Authorization header บน download/list สำหรับ private store พร้อม unit tests 14 ข้อผ่าน 100%
+
 ## หมายเหตุสำหรับผลการทดลอง
 - ผล grid 25f37be มีข้อบกพร่องการนับ (ข้อ 29) → ใช้ตัวเลขหลังแก้ 11c เท่านั้น; power_ext_model 15-00 เป็นรุ่นก่อนแก้บั๊ก ใช้ 15-08
 - ผล grid เต็ม 926868a (3,895 trial) ใช้นิยาม multivariate_inconsistent แบบเดิม (3 ตัวแปรคงที่) → ต้องรัน grid ใหม่ใน Step 11 ก่อนใช้ตัวเลขในเล่ม

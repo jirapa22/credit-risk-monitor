@@ -14,6 +14,7 @@ import type {
   BaselineStatus,
   BaselineValidationReport,
   BaselineVersion,
+  DeletionAuditEntry,
   ExperimentRun,
   ModelMetadata,
   ModelVersionRef,
@@ -52,6 +53,8 @@ const knownEventModelIds = new Set<string>(Object.keys((modelConfigJson as any).
 // ─── Storage Keys ───────────────────────────────────────────────────────────
 const REGISTRY_MODELS_KEY = 'registry:models';
 const REGISTRY_DEFAULT_KEY = 'registry:default';
+const REGISTRY_DELETION_AUDIT_KEY = 'registry:deletion_audit';
+const MAX_AUDIT_LOGS = 200;
 const registryVersionsKey = (modelId: string) => `registry:model:${modelId}:versions`;
 const overrideKey = (modelId: string) => `config:${modelId}:override`;
 const runsKey = (kind: StoredRun['kind'], modelId: string) => `runs:${kind}:${modelId}`;
@@ -342,6 +345,35 @@ export async function getStoredVersions(modelId: string): Promise<BaselineVersio
 export async function saveStoredVersions(modelId: string, versions: BaselineVersion[]): Promise<void> {
   await getStore().set(registryVersionsKey(modelId), versions);
   knownEventModelIds.add(modelId);
+}
+
+export async function recordDeletionAudit(
+  entry: Omit<DeletionAuditEntry, 'id' | 'timestamp'> & { id?: string; timestamp?: string },
+): Promise<DeletionAuditEntry> {
+  const store = getStore();
+  const existing = (await store.get<DeletionAuditEntry[]>(REGISTRY_DELETION_AUDIT_KEY)) ?? [];
+  const fullEntry: DeletionAuditEntry = {
+    id: entry.id || `audit_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: entry.timestamp || new Date().toISOString(),
+    action: entry.action,
+    actor: entry.actor || 'system',
+    modelId: entry.modelId,
+    version: entry.version,
+    previousStatus: entry.previousStatus,
+    clearedCounts: entry.clearedCounts,
+    referenceDatasetId: entry.referenceDatasetId,
+    blobDeleted: Boolean(entry.blobDeleted),
+    note: entry.note,
+  };
+  const nextList = [fullEntry, ...existing].slice(0, MAX_AUDIT_LOGS);
+  await store.set(REGISTRY_DELETION_AUDIT_KEY, nextList);
+  return fullEntry;
+}
+
+export async function listDeletionAuditLogs(limit = 100): Promise<DeletionAuditEntry[]> {
+  const store = getStore();
+  const logs = (await store.get<DeletionAuditEntry[]>(REGISTRY_DELETION_AUDIT_KEY)) ?? [];
+  return logs.slice(0, limit);
 }
 
 /**
@@ -854,6 +886,25 @@ export async function archiveBaselineVersion(
   const nextList = [...stored];
   nextList[idx] = updated;
   await saveStoredVersions(modelId, nextList);
+
+  await recordDeletionAudit({
+    action: 'archive_version',
+    actor: by,
+    modelId,
+    version,
+    previousStatus: current.status,
+    clearedCounts: {
+      monitoringRuns: 0,
+      sandboxRuns: 0,
+      events: 0,
+      reviews: 0,
+      total: 0,
+    },
+    referenceDatasetId: current.referenceDatasetId,
+    blobDeleted: false,
+    note: opts.note || `Archived version ${version}`,
+  });
+
   return updated;
 }
 
@@ -921,7 +972,12 @@ export async function getBaselineVersionImpact(
 export async function deleteBaselineVersion(
   modelId: string,
   version: string,
-  opts: { purgeBlob?: boolean } = { purgeBlob: true },
+  opts: {
+    purgeBlob?: boolean;
+    actor?: string;
+    note?: string;
+    deleteModelIfEmpty?: boolean;
+  } = { purgeBlob: true },
 ): Promise<{
   deleted: boolean;
   modelId: string;
@@ -930,6 +986,7 @@ export async function deleteBaselineVersion(
   blobDeleted: boolean;
   clearedRunsCount: number;
   clearedEventsCount: number;
+  modelDeleted: boolean;
 }> {
   if (isBuiltInModelId(modelId) || isBuiltInBaselineVersion(modelId, version)) {
     throw new BuiltInProtectedError(
@@ -957,6 +1014,8 @@ export async function deleteBaselineVersion(
 
   // 2. Remove associated runs from KV
   let clearedRunsCount = 0;
+  let clearedMonitoringCount = 0;
+  let clearedSandboxCount = 0;
   const targetRefId = target.referenceDatasetId;
   const matchVersion = (vObj?: { version?: string; configVersion?: string }, refId?: string) => {
     return vObj?.version === version || vObj?.configVersion === version || Boolean(targetRefId && refId === targetRefId);
@@ -966,7 +1025,10 @@ export async function deleteBaselineVersion(
     const key = runsKey(kind, modelId);
     const runs = (await getStore().get<StoredRun[]>(key)) ?? [];
     const remainingRuns = runs.filter(r => !matchVersion(r.model, r.referenceId));
-    clearedRunsCount += runs.length - remainingRuns.length;
+    const cleared = runs.length - remainingRuns.length;
+    if (kind === 'monitoring') clearedMonitoringCount = cleared;
+    else clearedSandboxCount = cleared;
+    clearedRunsCount += cleared;
     if (remainingRuns.length !== runs.length) {
       await getStore().set(key, remainingRuns);
     }
@@ -977,6 +1039,7 @@ export async function deleteBaselineVersion(
   const events = (await getStore().get<TriggerEvent[]>(evKey)) ?? [];
   const remainingEvents = events.filter(ev => !matchVersion(ev.model, ev.referenceId));
   const clearedEventsCount = events.length - remainingEvents.length;
+  const targetReviewsCount = events.filter(ev => matchVersion(ev.model, ev.referenceId) && ev.review !== null).length;
   if (remainingEvents.length !== events.length) {
     await getStore().set(evKey, remainingEvents);
   }
@@ -1008,6 +1071,37 @@ export async function deleteBaselineVersion(
     }
   }
 
+  // 5. Clean up model metadata if this was the last version and deleteModelIfEmpty requested
+  let modelDeleted = false;
+  if (opts.deleteModelIfEmpty && nextList.length === 0 && !isBuiltInModelId(modelId)) {
+    const storedModels = (await getStore().get<ModelMetadata[]>(REGISTRY_MODELS_KEY)) ?? [];
+    const remainingModels = storedModels.filter(m => m.modelId !== modelId);
+    await getStore().set(REGISTRY_MODELS_KEY, remainingModels);
+    await getStore().del(registryVersionsKey(modelId));
+    await getStore().del(overrideKey(modelId));
+    knownEventModelIds.delete(modelId);
+    modelDeleted = true;
+  }
+
+  // 6. Record Deletion Audit Log
+  await recordDeletionAudit({
+    action: 'delete_version',
+    actor: opts.actor || 'user',
+    modelId,
+    version,
+    previousStatus: target.status,
+    clearedCounts: {
+      monitoringRuns: clearedMonitoringCount,
+      sandboxRuns: clearedSandboxCount,
+      events: clearedEventsCount,
+      reviews: targetReviewsCount,
+      total: clearedRunsCount + clearedEventsCount,
+    },
+    referenceDatasetId: target.referenceDatasetId,
+    blobDeleted,
+    note: opts.note || `Deleted baseline version ${version}${modelDeleted ? ' (and cleaned up empty model)' : ''}`,
+  });
+
   return {
     deleted: true,
     modelId,
@@ -1016,7 +1110,219 @@ export async function deleteBaselineVersion(
     blobDeleted,
     clearedRunsCount,
     clearedEventsCount,
+    modelDeleted,
   };
+}
+
+export async function deleteRegistryModel(
+  modelId: string,
+  opts: { actor?: string; purgeBlobs?: boolean; note?: string } = {},
+): Promise<{
+  deleted: boolean;
+  modelId: string;
+  clearedVersionsCount: number;
+  clearedRunsCount: number;
+  clearedEventsCount: number;
+  blobsDeletedCount: number;
+}> {
+  if (isBuiltInModelId(modelId)) {
+    throw new BuiltInProtectedError(
+      `ไม่สามารถลบโมเดลมาตรฐาน (Built-in) "${modelId}" ได้`,
+    );
+  }
+
+  const defaultId = await getDefaultModelId();
+  if (modelId === defaultId) {
+    throw new RegistryError(
+      `ไม่สามารถลบโมเดลที่เป็นค่าเริ่มต้น (Default) "${modelId}" ได้ กรุณาเปลี่ยนโมเดลค่าเริ่มต้นไปเป็นโมเดลอื่นก่อน`,
+      400,
+    );
+  }
+
+  const vers = await getStoredVersions(modelId);
+  const activeVer = vers.find(v => v.status === 'ACTIVE');
+  if (activeVer) {
+    throw new RegistryError(
+      `ไม่สามารถลบโมเดล "${modelId}" ได้เนื่องจากมีเวอร์ชัน ACTIVE (v${activeVer.version}) อยู่ กรุณาเปลี่ยนสถานะเป็น ARCHIVED ก่อน หรือเปิดใช้งานโมเดลอื่นแทน`,
+      400,
+    );
+  }
+
+  // 1. Delete blobs for references not used by any other model
+  let blobsDeletedCount = 0;
+  if (opts.purgeBlobs !== false) {
+    const { models: allRegModels } = await listRegistryModels();
+    const otherModels = allRegModels.filter(m => m.modelId !== modelId);
+    const deletedBlobIds = new Set<string>();
+
+    for (const v of vers) {
+      const refId = v.referenceDatasetId;
+      if (refId && !isBuiltInReferenceId(refId) && !deletedBlobIds.has(refId)) {
+        let inUseByOther = false;
+        for (const om of otherModels) {
+          const omVers = await listBaselineVersions(om.modelId);
+          if (omVers.some(ov => ov.referenceDatasetId === refId)) {
+            inUseByOther = true;
+            break;
+          }
+        }
+        if (!inUseByOther) {
+          try {
+            await getBlobStore().del(refId);
+            unregisterReferenceDataset(refId);
+            deletedBlobIds.add(refId);
+            blobsDeletedCount++;
+          } catch (err) {
+            console.warn(`Failed to delete blob "${refId}":`, err);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Clear KV runs
+  let clearedRunsCount = 0;
+  for (const kind of ['monitoring', 'sandbox'] as const) {
+    const key = runsKey(kind, modelId);
+    const runs = (await getStore().get<StoredRun[]>(key)) ?? [];
+    clearedRunsCount += runs.length;
+    await getStore().del(key);
+  }
+
+  // 3. Clear KV events
+  const evKey = eventsKey(modelId);
+  const events = (await getStore().get<TriggerEvent[]>(evKey)) ?? [];
+  const clearedEventsCount = events.length;
+  await getStore().del(evKey);
+
+  // 4. Delete versions list and override config
+  await getStore().del(registryVersionsKey(modelId));
+  await getStore().del(overrideKey(modelId));
+
+  // 5. Remove model metadata from stored models
+  const storedModels = (await getStore().get<ModelMetadata[]>(REGISTRY_MODELS_KEY)) ?? [];
+  const remainingModels = storedModels.filter(m => m.modelId !== modelId);
+  await getStore().set(REGISTRY_MODELS_KEY, remainingModels);
+  knownEventModelIds.delete(modelId);
+
+  // 6. Record audit log
+  await recordDeletionAudit({
+    action: 'delete_model',
+    actor: opts.actor || 'user',
+    modelId,
+    clearedCounts: {
+      monitoringRuns: clearedRunsCount,
+      sandboxRuns: 0,
+      events: clearedEventsCount,
+      reviews: 0,
+      total: clearedRunsCount + clearedEventsCount,
+    },
+    blobDeleted: blobsDeletedCount > 0,
+    note: opts.note || `Deleted entire model with ${vers.length} versions and ${blobsDeletedCount} blobs`,
+  });
+
+  return {
+    deleted: true,
+    modelId,
+    clearedVersionsCount: vers.length,
+    clearedRunsCount,
+    clearedEventsCount,
+    blobsDeletedCount,
+  };
+}
+
+export async function updateBaselineVersion(
+  modelId: string,
+  version: string,
+  input: {
+    name?: string;
+    description?: string;
+    columns?: Partial<BaselineVersion['columns']>;
+    featureRegistry?: Record<string, any>;
+    scoreDirection?: any;
+    thresholds?: MonitoringThresholds;
+    driftConfig?: BaselineVersion['driftConfig'];
+  },
+  opts: { by?: string; note?: string } = {},
+): Promise<BaselineVersion> {
+  if (isBuiltInModelId(modelId) || isBuiltInBaselineVersion(modelId, version)) {
+    throw new BuiltInProtectedError(
+      `ไม่สามารถแก้ไขเวอร์ชันมาตรฐาน (Built-in) "${modelId}@${version}" ได้`,
+    );
+  }
+
+  const stored = await getStoredVersions(modelId);
+  const idx = stored.findIndex(v => v.version === version);
+  if (idx === -1) {
+    throw new RegistryError(`ไม่พบเวอร์ชัน "${version}" ของโมเดล "${modelId}"`, 404);
+  }
+
+  const current = stored[idx];
+  const now = new Date().toISOString();
+  const by = opts.by || 'user';
+
+  // Check if structural changes are made
+  const hasStructuralChange = Boolean(
+    input.columns !== undefined ||
+    input.featureRegistry !== undefined ||
+    input.scoreDirection !== undefined
+  );
+
+  if (hasStructuralChange && current.status === 'ACTIVE') {
+    throw new RegistryError(
+      `ไม่สามารถเปลี่ยนโครงสร้างคอลัมน์ของเวอร์ชัน ACTIVE ได้ กรุณาสร้างเป็นเวอร์ชันใหม่`,
+      400,
+    );
+  }
+
+  // If validated and structural changes occur, revert to DRAFT
+  let nextStatus: BaselineStatus = current.status;
+  if (hasStructuralChange && current.status === 'VALIDATED') {
+    nextStatus = 'DRAFT';
+  }
+
+  const updated: BaselineVersion = {
+    ...current,
+    name: input.name !== undefined ? input.name : current.name,
+    description: input.description !== undefined ? input.description : current.description,
+    status: nextStatus,
+    columns: input.columns ? { ...current.columns, ...input.columns } : current.columns,
+    featureRegistry: input.featureRegistry !== undefined ? input.featureRegistry : current.featureRegistry,
+    scoreDirection: input.scoreDirection !== undefined ? input.scoreDirection : current.scoreDirection,
+    thresholds: input.thresholds !== undefined ? input.thresholds : current.thresholds,
+    driftConfig: input.driftConfig !== undefined ? input.driftConfig : current.driftConfig,
+    validationReport: hasStructuralChange ? null : current.validationReport,
+    statusHistory: [
+      ...current.statusHistory,
+      {
+        from: current.status,
+        to: nextStatus,
+        at: now,
+        by,
+        note: opts.note || (hasStructuralChange ? 'Updated schema/features (reverted to DRAFT)' : 'Updated baseline metadata'),
+      },
+    ],
+  };
+
+  const nextList = [...stored];
+  nextList[idx] = updated;
+  await saveStoredVersions(modelId, nextList);
+
+  // If model name or description updated, update ModelMetadata too
+  if (input.name || input.description !== undefined) {
+    const models = (await getStore().get<ModelMetadata[]>(REGISTRY_MODELS_KEY)) ?? [];
+    const mIdx = models.findIndex(m => m.modelId === modelId);
+    if (mIdx !== -1) {
+      models[mIdx] = {
+        ...models[mIdx],
+        name: input.name || models[mIdx].name,
+        description: input.description !== undefined ? input.description : models[mIdx].description,
+      };
+      await getStore().set(REGISTRY_MODELS_KEY, models);
+    }
+  }
+
+  return updated;
 }
 
 export async function exportBaselineVersion(

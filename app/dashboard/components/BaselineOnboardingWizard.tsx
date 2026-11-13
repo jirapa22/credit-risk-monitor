@@ -603,20 +603,33 @@ export default function BaselineOnboardingWizard({
               { s: 3, title: '3. ข้อมูลโมเดล' },
               { s: 4, title: '4. ตั้งค่าตัวแปร' },
               { s: 5, title: '5. ตรวจสอบ & บันทึก' },
-            ].map(({ s, title }) => (
-              <div
-                key={s}
-                className={`py-1.5 px-2 rounded-lg border text-xs font-semibold transition-all ${
-                  step === s
-                    ? 'bg-indigo-600/20 border-indigo-500/60 text-indigo-300'
-                    : step > s
-                    ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/5'
-                    : 'border-slate-800 text-slate-500'
-                }`}
-              >
-                {title}
-              </div>
-            ))}
+            ].map(({ s, title }) => {
+              const hasFile = Boolean(referenceId || columnSuggestions.length > 0);
+              const canClick = s === 1 || (hasFile && (s <= 4 || Object.keys(columnMapping).length > 0));
+              const isActive = step === s;
+              const isPast = step > s;
+
+              return (
+                <button
+                  type="button"
+                  key={s}
+                  disabled={!canClick}
+                  onClick={() => canClick && setStep(s)}
+                  title={canClick ? `ไปที่ขั้นที่ ${s}` : 'กรุณาอัปโหลดไฟล์ในขั้นที่ 1 ก่อน'}
+                  className={`py-1.5 px-2 rounded-lg border text-xs font-semibold transition-all text-left ${
+                    isActive
+                      ? 'bg-indigo-600/20 border-indigo-500/60 text-indigo-300 shadow-sm'
+                      : isPast
+                      ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/5 hover:border-emerald-400 cursor-pointer'
+                      : canClick
+                      ? 'border-slate-700 text-slate-300 hover:border-indigo-400 hover:text-indigo-200 cursor-pointer'
+                      : 'border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  {title}
+                </button>
+              );
+            })}
           </div>
         </div>
 

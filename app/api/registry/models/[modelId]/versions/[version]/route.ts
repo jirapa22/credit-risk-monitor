@@ -18,6 +18,7 @@ import {
   deleteBaselineVersion,
   getBaselineVersionImpact,
   RegistryError,
+  updateBaselineVersion,
 } from '../../../../../../../lib/storage/repositories';
 
 export const dynamic = 'force-dynamic';
@@ -41,6 +42,32 @@ export async function GET(
   }
 }
 
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ modelId: string; version: string }> | { modelId: string; version: string } },
+) {
+  try {
+    const resolved = await Promise.resolve(context.params);
+    const modelId = decodeURIComponent(resolved.modelId || '');
+    const version = decodeURIComponent(resolved.version || '');
+    const body = await request.json();
+
+    const updated = await updateBaselineVersion(modelId, version, body, {
+      by: 'api-user',
+      note: body?.note,
+    });
+    return NextResponse.json({ ok: true, baseline: updated });
+  } catch (error) {
+    if (error instanceof BuiltInProtectedError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 403 });
+    }
+    if (error instanceof RegistryError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ ok: false, error: String(error) }, { status: 500 });
+  }
+}
+
 export async function DELETE(
   request: Request,
   context: { params: Promise<{ modelId: string; version: string }> | { modelId: string; version: string } },
@@ -51,9 +78,11 @@ export async function DELETE(
     const version = decodeURIComponent(resolved.version || '');
 
     let action: 'delete' | 'archive' = 'delete';
+    let deleteModelIfEmpty = false;
     try {
       const body = await request.json();
       if (body?.action === 'archive') action = 'archive';
+      if (body?.deleteModelIfEmpty) deleteModelIfEmpty = true;
     } catch {
       // Body is optional, default action is delete
     }
@@ -63,7 +92,11 @@ export async function DELETE(
       return NextResponse.json({ ok: true, action: 'archived', baseline: updated });
     }
 
-    const result = await deleteBaselineVersion(modelId, version, { purgeBlob: true });
+    const result = await deleteBaselineVersion(modelId, version, {
+      purgeBlob: true,
+      deleteModelIfEmpty,
+      actor: 'api-user',
+    });
     return NextResponse.json({ ok: true, action: 'deleted', ...result });
   } catch (error) {
     if (error instanceof BuiltInProtectedError) {
@@ -75,3 +108,4 @@ export async function DELETE(
     return NextResponse.json({ ok: false, error: String(error) }, { status: 500 });
   }
 }
+

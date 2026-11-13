@@ -129,3 +129,24 @@
 - (เดิม) รอ: วัดผล ai / combined บน held-out ด้วย API key จริง (AI ตามที่ออกแบบไว้ก่อน = ผลหลัก; ถ้าเพิ่มสถิติความสัมพันธ์ระหว่างคอลัมน์ให้ AI ภายหลัง ต้องรายงานแยกเป็น post-hoc)
 - ยังไม่ทราบวันนำเสนอ Final
 - เขียนเล่ม บทที่ 1–5 + สไลด์ Final
+
+## Step 10c+ / Baseline Registry & Deletion Capabilities
+- **Audit Log ของการลบ (Deletion Audit Log)**:
+  - เพิ่ม `DeletionAuditEntry` ใน `lib/types.ts` และจัดเก็บใน KV key `registry:deletion_audit` (แยกต่างหาก ข้อมูลอยู่รอดหลังโมเดล/เวอร์ชันถูกลบถาวร)
+  - ห้ามเก็บข้อมูลลูกค้า บันทึกเฉพาะ: modelId, version, action (ARCHIVE / DELETE / DELETE_MODEL), previousStatus, clearedRunsCount, clearedEventsCount, deletedReferenceId, operator, timestamp
+  - มี API `GET /api/registry/audit` และ UI แสดงประวัติการลบและเก็บถาวรแบบ accordion ยุบ/ขยายได้ใน Baseline Registry
+- **การลบทั้งโมเดล (Delete Entire Model)**:
+  - ฟังก์ชัน `deleteRegistryModel` ใน `lib/storage/repositories.ts` และ `DELETE /api/registry/models/[modelId]`
+  - Guards: ห้ามลบ built-in model, ห้ามลบ default model (ต้องเปลี่ยน default ก่อน), ห้ามลบโมเดลที่มี ACTIVE version
+  - เมื่อลบเวอร์ชันสุดท้าย มีตัวเลือก `deleteModelIfEmpty` ให้ผู้ใช้เลือกได้ว่าจะลบตัวโมเดลทิ้งด้วยหรือไม่
+  - ยืนยันการลบโมเดลด้วยการพิมพ์ชื่อ modelId
+- **การแก้ไข Baseline (Edit Baseline Metadata)**:
+  - ฟังก์ชัน `updateBaselineVersion` และ `PATCH /api/registry/models/[modelId]/versions/[version]`
+  - แก้ไขชื่อที่แสดง (name) และคำอธิบาย (description) ได้
+  - หากมีการแก้ไขโครงสร้าง schema จะไม่อนุญาตบนสถานะ ACTIVE และหากเป็น VALIDATED จะปรับกลับเป็น DRAFT อัตโนมัติเพื่อบังคับ re-validate
+- **Onboarding Wizard Stepper Navigation**:
+  - Stepper ด้านบนของ Baseline Onboarding Wizard คลิกเพื่อย้อนกลับหรือข้ามไปยังขั้นตอนที่ปลดล็อกแล้วได้ทันที
+- **Tests**:
+  - เพิ่ม `tests/baseline-delete.test.ts` (9/9 tests pass)
+  - `tests/no-hardcode.test.ts` (pass 0 violations)
+  - `npx tsc --noEmit` ผ่าน 0 errors

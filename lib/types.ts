@@ -820,3 +820,23 @@ export interface DetectedColumnSchema {
   warning?: string;
 }
 
+export interface DeletionAuditEntry {
+  id: string;
+  action: 'delete_version' | 'archive_version' | 'delete_model';
+  actor: string;
+  timestamp: string;
+  modelId: string;
+  version?: string;
+  previousStatus?: BaselineStatus;
+  clearedCounts: {
+    monitoringRuns: number;
+    sandboxRuns: number;
+    events: number;
+    reviews: number;
+    total: number;
+  };
+  referenceDatasetId?: string;
+  blobDeleted: boolean;
+  note?: string;
+}
+

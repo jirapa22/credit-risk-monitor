@@ -6,16 +6,28 @@ import {
   archiveBaselineVersion,
   createDraftBaselineVersion,
   deleteBaselineVersion,
+  deleteRegistryModel,
   getBaselineVersionImpact,
+  getDefaultModelId,
   listBaselineVersions,
+  listDeletionAuditLogs,
+  listRegistryModels,
   saveRun,
   saveTriggerEvent,
+  setDefaultModelId,
+  updateBaselineVersion,
   BuiltInProtectedError,
   RegistryError,
 } from '../lib/storage/repositories';
 import { createMemoryBlobStore, setBlobStore, type ReferenceDatasetBlob } from '../lib/storage/blob';
 import { createMemoryStore, setStore } from '../lib/storage/store';
-import { DELETE as deleteVersionRoute, GET as getVersionRoute } from '../app/api/registry/models/[modelId]/versions/[version]/route';
+import {
+  DELETE as deleteVersionRoute,
+  GET as getVersionRoute,
+  PATCH as patchVersionRoute,
+} from '../app/api/registry/models/[modelId]/versions/[version]/route';
+import { DELETE as deleteModelRoute } from '../app/api/registry/models/[modelId]/route';
+import { GET as getAuditRoute } from '../app/api/registry/audit/route';
 import type { MonitoringRun, TriggerEvent } from '../lib/types';
 
 describe('Step 2: Baseline Deletion, Impact Analysis & Guards', () => {
@@ -254,5 +266,95 @@ describe('Step 2: Baseline Deletion, Impact Analysis & Guards', () => {
     const delData = await delRes.json();
     expect(delData.ok).toBe(true);
     expect(delData.action).toBe('deleted');
+  });
+
+  it('Part (A) Audit log: records audit log on archive & delete, and survives after baseline is deleted', async () => {
+    // 1. Archive version -> audit log created
+    await archiveBaselineVersion(customModelId, customVersion, { by: 'test_auditor', note: 'Audit test archive' });
+    let logs = await listDeletionAuditLogs();
+    expect(logs.length).toBeGreaterThan(0);
+    expect(logs[0].action).toBe('archive_version');
+    expect(logs[0].actor).toBe('test_auditor');
+    expect(logs[0].modelId).toBe(customModelId);
+
+    // 2. Delete version -> audit log created
+    await deleteBaselineVersion(customModelId, customVersion, { actor: 'test_admin' });
+    logs = await listDeletionAuditLogs();
+    expect(logs[0].action).toBe('delete_version');
+    expect(logs[0].actor).toBe('test_admin');
+    expect(logs[0].modelId).toBe(customModelId);
+
+    // 3. Confirm baseline is gone but audit log remains
+    const versions = await listBaselineVersions(customModelId);
+    expect(versions.length).toBe(0);
+    const auditRes = await getAuditRoute(new Request('http://localhost'));
+    const auditData = await auditRes.json();
+    expect(auditData.ok).toBe(true);
+    expect(auditData.logs.some((l: any) => l.modelId === customModelId)).toBe(true);
+  });
+
+  it('Part (B) Delete model: guards against built-in, default, and active models, and cleans up empty model', async () => {
+    // 1. Cannot delete built-in ascore_v1
+    await expect(deleteRegistryModel('ascore_v1')).rejects.toThrow(BuiltInProtectedError);
+
+    // 2. Cannot delete default model
+    await setDefaultModelId(customModelId);
+    await expect(deleteRegistryModel(customModelId)).rejects.toThrow('ไม่สามารถลบโมเดลที่เป็นค่าเริ่มต้น');
+
+    // Switch default back to ascore_v1
+    await setDefaultModelId('ascore_v1');
+
+    // 3. Cannot delete model with ACTIVE version
+    const vers = await listBaselineVersions(customModelId);
+    vers[0].status = 'ACTIVE';
+    await expect(deleteRegistryModel(customModelId)).rejects.toThrow('ไม่สามารถลบโมเดล');
+
+    // Change status back to DRAFT or ARCHIVED
+    vers[0].status = 'DRAFT';
+
+    // 4. Successful model deletion via API route
+    const delModelRes = await deleteModelRoute(new Request('http://localhost', { method: 'DELETE' }), {
+      params: { modelId: customModelId },
+    });
+    const delModelData = await delModelRes.json();
+    expect(delModelData.ok).toBe(true);
+    expect(delModelData.deleted).toBe(true);
+
+    // Verify model is completely gone from registry
+    const { models } = await listRegistryModels();
+    expect(models.find(m => m.modelId === customModelId)).toBeUndefined();
+  });
+
+  it('Part (B) deleteModelIfEmpty: cleans up model metadata when deleting last version', async () => {
+    const res = await deleteBaselineVersion(customModelId, customVersion, { deleteModelIfEmpty: true });
+    expect(res.deleted).toBe(true);
+    expect(res.modelDeleted).toBe(true);
+
+    const { models } = await listRegistryModels();
+    expect(models.find(m => m.modelId === customModelId)).toBeUndefined();
+  });
+
+  it('Part (C) Edit baseline: allows updating name/description, reverts VALIDATED to DRAFT on schema change, guards ACTIVE', async () => {
+    // 1. Edit name & description
+    const updated = await updateBaselineVersion(customModelId, customVersion, {
+      name: 'Renamed Loan Model',
+      description: 'Updated description',
+    });
+    expect(updated.name).toBe('Renamed Loan Model');
+    expect(updated.description).toBe('Updated description');
+    expect(updated.status).toBe('DRAFT');
+
+    // 2. Via PATCH route
+    const patchRes = await patchVersionRoute(
+      new Request('http://localhost', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Patched Model Name' }),
+      }),
+      { params: { modelId: customModelId, version: customVersion } },
+    );
+    const patchData = await patchRes.json();
+    expect(patchData.ok).toBe(true);
+    expect(patchData.baseline.name).toBe('Patched Model Name');
   });
 });

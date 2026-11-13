@@ -10,8 +10,12 @@
  *   - Launch Onboarding Wizard (+ New Model / + New Version)
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { BaselineMode, BaselineStatus, BaselineVersion } from '@/lib/types';
+import type { BaselineMode, BaselineStatus, BaselineVersion, DeletionAuditEntry } from '@/lib/types';
 import BaselineOnboardingWizard from './BaselineOnboardingWizard';
+
+function isBuiltInModel(id: string): boolean {
+  return id === 'ascore_v1';
+}
 
 interface ModelRegistryEntry {
   id: string;
@@ -55,7 +59,12 @@ export default function BaselineRegistryPanel({
   const [showWizard, setShowWizard] = useState<boolean>(false);
   const [wizardInitialData, setWizardInitialData] = useState<any>(undefined);
 
-  // Delete modal state
+  // Audit logs state
+  const [auditLogs, setAuditLogs] = useState<DeletionAuditEntry[]>([]);
+  const [showAuditLogs, setShowAuditLogs] = useState<boolean>(false);
+
+  // Delete version modal state
+  const [deleteModelIfEmpty, setDeleteModelIfEmpty] = useState<boolean>(true);
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
     version: BaselineVersion | null;
@@ -82,7 +91,40 @@ export default function BaselineRegistryPanel({
     errorMessage: '',
   });
 
+  // Delete whole model modal state
+  const [deleteModelModal, setDeleteModelModal] = useState<{
+    isOpen: boolean;
+    model: ModelRegistryEntry | null;
+    confirmInput: string;
+    isProcessing: boolean;
+    errorMessage: string;
+  }>({
+    isOpen: false,
+    model: null,
+    confirmInput: '',
+    isProcessing: false,
+    errorMessage: '',
+  });
+
+  // Edit baseline modal state
+  const [editModal, setEditModal] = useState<{
+    isOpen: boolean;
+    version: BaselineVersion | null;
+    name: string;
+    description: string;
+    isProcessing: boolean;
+    errorMessage: string;
+  }>({
+    isOpen: false,
+    version: null,
+    name: '',
+    description: '',
+    isProcessing: false,
+    errorMessage: '',
+  });
+
   const openDeleteModal = async (v: BaselineVersion) => {
+    setDeleteModelIfEmpty(true);
     setDeleteModal({
       isOpen: true,
       version: v,
@@ -141,7 +183,7 @@ export default function BaselineRegistryPanel({
       const res = await fetch(`/api/registry/models/${v.modelId}/versions/${v.version}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, deleteModelIfEmpty }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -167,17 +209,122 @@ export default function BaselineRegistryPanel({
     }
   };
 
+  const openDeleteModelModal = (m: ModelRegistryEntry) => {
+    setDeleteModelModal({
+      isOpen: true,
+      model: m,
+      confirmInput: '',
+      isProcessing: false,
+      errorMessage: '',
+    });
+  };
+
+  const closeDeleteModelModal = () => {
+    setDeleteModelModal({
+      isOpen: false,
+      model: null,
+      confirmInput: '',
+      isProcessing: false,
+      errorMessage: '',
+    });
+  };
+
+  const handleDeleteModelSubmit = async () => {
+    const m = deleteModelModal.model;
+    if (!m) return;
+
+    setDeleteModelModal(prev => ({ ...prev, isProcessing: true, errorMessage: '' }));
+    try {
+      const res = await fetch(`/api/registry/models/${m.modelId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'ลบโมเดลไม่สำเร็จ');
+      }
+
+      closeDeleteModelModal();
+      await loadRegistry();
+      alert(`🗑️ ลบโมเดล "${m.name}" (${m.modelId}) และข้อมูลทั้งหมดเรียบร้อยแล้ว`);
+    } catch (err: unknown) {
+      setDeleteModelModal(prev => ({
+        ...prev,
+        isProcessing: false,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      }));
+    }
+  };
+
+  const openEditModal = (v: BaselineVersion) => {
+    setEditModal({
+      isOpen: true,
+      version: v,
+      name: v.name || '',
+      description: v.description || '',
+      isProcessing: false,
+      errorMessage: '',
+    });
+  };
+
+  const closeEditModal = () => {
+    setEditModal({
+      isOpen: false,
+      version: null,
+      name: '',
+      description: '',
+      isProcessing: false,
+      errorMessage: '',
+    });
+  };
+
+  const handleEditSubmit = async () => {
+    const v = editModal.version;
+    if (!v) return;
+
+    setEditModal(prev => ({ ...prev, isProcessing: true, errorMessage: '' }));
+    try {
+      const res = await fetch(`/api/registry/models/${v.modelId}/versions/${v.version}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editModal.name.trim() || v.name,
+          description: editModal.description.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'แก้ไข Baseline ไม่สำเร็จ');
+      }
+
+      closeEditModal();
+      await loadRegistry();
+      alert(`✅ แก้ไขข้อมูล Baseline v${v.version} สำเร็จ`);
+    } catch (err: unknown) {
+      setEditModal(prev => ({
+        ...prev,
+        isProcessing: false,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      }));
+    }
+  };
+
   // Load models and default
   const loadRegistry = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [modelsRes, defRes] = await Promise.all([
+      const [modelsRes, defRes, auditRes] = await Promise.all([
         fetch('/api/registry/models', { cache: 'no-store' }),
         fetch('/api/registry/default', { cache: 'no-store' }),
+        fetch('/api/registry/audit', { cache: 'no-store' }),
       ]);
       const modelsData = await modelsRes.json();
       const defData = await defRes.json();
+      const auditData = await auditRes.json();
+
+      if (auditRes.ok && Array.isArray(auditData.logs)) {
+        setAuditLogs(auditData.logs);
+      }
 
       if (modelsRes.ok && Array.isArray(modelsData.models)) {
         setModels(modelsData.models);
@@ -414,13 +561,24 @@ export default function BaselineRegistryPanel({
                       <p className="text-xs text-slate-400 mt-1">{activeModel.description || 'ไม่มีคำอธิบาย'}</p>
                     </div>
 
-                    <button
-                      onClick={() => handleSetDefault(activeModel.modelId)}
-                      disabled={isSettingDefault || activeModel.modelId === defaultModelId}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition disabled:opacity-40"
-                    >
-                      {activeModel.modelId === defaultModelId ? '⭐ เป็นค่าเริ่มต้นอยู่แล้ว' : '⭐ ตั้งเป็นค่าเริ่มต้น'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleSetDefault(activeModel.modelId)}
+                        disabled={isSettingDefault || activeModel.modelId === defaultModelId}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition disabled:opacity-40"
+                      >
+                        {activeModel.modelId === defaultModelId ? '⭐ เป็นค่าเริ่มต้นอยู่แล้ว' : '⭐ ตั้งเป็นค่าเริ่มต้น'}
+                      </button>
+                      {!isBuiltInModel(activeModel.modelId) && (
+                        <button
+                          onClick={() => openDeleteModelModal(activeModel)}
+                          title="ลบโมเดลทั้งหมดออกจาก Registry"
+                          className="px-3 py-1.5 hover:bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-semibold rounded-xl transition"
+                        >
+                          🗑️ ลบโมเดล
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -506,6 +664,15 @@ export default function BaselineRegistryPanel({
                                       className="px-2 py-0.5 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded text-[10px] transition"
                                     >
                                       CSV
+                                    </button>
+                                  )}
+                                  {!v.builtIn && (
+                                    <button
+                                      onClick={() => openEditModal(v)}
+                                      title="แก้ไขชื่อและคำอธิบาย Baseline"
+                                      className="px-2 py-0.5 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded text-[10px] transition"
+                                    >
+                                      แก้ไข
                                     </button>
                                   )}
                                   {!v.builtIn && (
@@ -751,6 +918,18 @@ export default function BaselineRegistryPanel({
                     />
                   </div>
 
+                  {activeModel && activeModel.versions?.length === 1 && !isBuiltInModel(activeModel.modelId) && (
+                    <label className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={deleteModelIfEmpty}
+                        onChange={e => setDeleteModelIfEmpty(e.target.checked)}
+                        className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0"
+                      />
+                      <span>ลบโมเดล <strong>{activeModel.name} ({activeModel.modelId})</strong> ออกด้วยเนื่องจากเป็นเวอร์ชันสุดท้าย</span>
+                    </label>
+                  )}
+
                   {/* Modal Action buttons */}
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800">
                     <button
@@ -785,6 +964,270 @@ export default function BaselineRegistryPanel({
           </div>
         );
       })()}
+      {/* Edit Baseline Modal */}
+      {editModal.isOpen && editModal.version && (() => {
+        const v = editModal.version;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+              <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-100">
+                    แก้ไขข้อมูล Baseline v{v.version}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    โมเดล: <span className="font-mono text-indigo-300">{v.modelId}</span> · สถานะ: {v.status}
+                  </p>
+                </div>
+                <button
+                  onClick={closeEditModal}
+                  disabled={editModal.isProcessing}
+                  className="text-slate-400 hover:text-slate-200 text-lg leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {editModal.errorMessage && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                  ❌ {editModal.errorMessage}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-300 font-semibold block">
+                    ชื่อ Baseline (Display Name)
+                  </label>
+                  <input
+                    type="text"
+                    value={editModal.name}
+                    onChange={e => setEditModal(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="เช่น โมเดลสินเชื่อบุคคลภายนอก v1"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-300 font-semibold block">
+                    คำอธิบาย (Description)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={editModal.description}
+                    onChange={e => setEditModal(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="คำอธิบายโมเดลและรายละเอียดเพิ่มเติม"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  onClick={closeEditModal}
+                  disabled={editModal.isProcessing}
+                  className="px-4 py-2 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded-xl text-xs transition"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleEditSubmit}
+                  disabled={editModal.isProcessing}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-indigo-500/20 transition"
+                >
+                  {editModal.isProcessing ? 'กำลังบันทึก...' : '💾 บันทึกการแก้ไข'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Delete Model Modal */}
+      {deleteModelModal.isOpen && deleteModelModal.model && (() => {
+        const m = deleteModelModal.model;
+        const isBuiltIn = isBuiltInModel(m.modelId);
+        const isDefault = m.modelId === defaultModelId;
+        const activeVer = m.versions?.find(v => v.status === 'ACTIVE');
+        const canDelete = !isBuiltIn && !isDefault && !activeVer;
+        const isMatch = deleteModelModal.confirmInput.trim() === m.modelId;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
+              <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">⚠️</span>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-100">
+                      ยืนยันการลบโมเดล: {m.name} ({m.modelId})
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      การลบโมเดลจะลบประวัติการรันและเวอร์ชัน Baseline ทั้งหมด ({m.versions?.length ?? 0} เวอร์ชัน)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={closeDeleteModelModal}
+                  disabled={deleteModelModal.isProcessing}
+                  className="text-slate-400 hover:text-slate-200 text-lg leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {deleteModelModal.errorMessage && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                  ❌ {deleteModelModal.errorMessage}
+                </div>
+              )}
+
+              {isBuiltIn ? (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs">
+                  ⚠️ ไม่สามารถลบโมเดลมาตรฐาน (Built-in) ของระบบได้
+                </div>
+              ) : isDefault ? (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-1">
+                  <p className="font-bold">⚠️ โมเดลนี้ถูกตั้งเป็นค่าเริ่มต้น (Default) ของระบบ</p>
+                  <p className="text-[11px] text-amber-200/80">
+                    กรุณาเลือกโมเดลอื่นและคลิก "⭐ ตั้งเป็นค่าเริ่มต้น" ก่อน จึงจะสามารถลบโมเดลนี้ได้
+                  </p>
+                </div>
+              ) : activeVer ? (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-1">
+                  <p className="font-bold">⚠️ โมเดลนี้ยังมีเวอร์ชัน ACTIVE อยู่ (v{activeVer.version})</p>
+                  <p className="text-[11px] text-amber-200/80">
+                    ตามนโยบาย MLOps Governance: ต้อง Archive หรือเปลี่ยนสถานะเวอร์ชัน ACTIVE ก่อนจึงจะลบโมเดลได้
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-xs space-y-2">
+                    <p className="font-bold text-rose-300">
+                      การดำเนินการนี้ไม่สามารถย้อนกลับได้:
+                    </p>
+                    <ul className="list-disc list-inside text-[11px] text-rose-200/90 space-y-0.5">
+                      <li>เวอร์ชัน Baseline ทั้งหมด {m.versions?.length ?? 0} เวอร์ชันจะถูกลบถาวร</li>
+                      <li>ประวัติการรัน Monitoring, Sandbox และ Event ใน KV จะถูกลบออก</li>
+                      <li>ไฟล์ Reference ใน Blob Storage ที่ไม่ได้ถูกใช้ร่วมกับโมเดลอื่นจะถูกลบออก</li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-xs text-slate-300 font-semibold block">
+                      พิมพ์รหัสโมเดล <span className="font-mono text-amber-300 font-bold select-all">"{m.modelId}"</span> เพื่อยืนยันการลบโมเดลทั้งหมด:
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteModelModal.confirmInput}
+                      onChange={e => setDeleteModelModal(prev => ({ ...prev, confirmInput: e.target.value }))}
+                      placeholder={`พิมพ์ "${m.modelId}"`}
+                      disabled={deleteModelModal.isProcessing}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 outline-none focus:border-rose-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  onClick={closeDeleteModelModal}
+                  disabled={deleteModelModal.isProcessing}
+                  className="px-4 py-2 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded-xl text-xs transition"
+                >
+                  ยกเลิก
+                </button>
+                {canDelete && (
+                  <button
+                    onClick={handleDeleteModelSubmit}
+                    disabled={!isMatch || deleteModelModal.isProcessing}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:hover:bg-rose-600 text-white font-bold rounded-xl text-xs shadow-lg shadow-rose-500/20 transition"
+                  >
+                    {deleteModelModal.isProcessing ? 'กำลังลบ...' : '🗑️ ยืนยันลบโมเดลถาวร'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Deletion Audit Logs Section */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">📋</span>
+            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+              ประวัติการลบและเก็บถาวร (Deletion Audit Logs)
+            </h3>
+            <span className="text-[10px] font-mono px-2 py-0.2 rounded bg-slate-800 text-slate-400">
+              {auditLogs.length} รายการ
+            </span>
+          </div>
+          <button
+            onClick={() => setShowAuditLogs(!showAuditLogs)}
+            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-lg text-xs transition"
+          >
+            {showAuditLogs ? '▲ ซ่อนประวัติ' : '▼ แสดงประวัติ'}
+          </button>
+        </div>
+
+        {showAuditLogs && (
+          <div className="pt-2">
+            {auditLogs.length === 0 ? (
+              <p className="text-xs text-slate-500 py-4 text-center">ยังไม่มีประวัติการลบหรือเก็บถาวร</p>
+            ) : (
+              <div className="border border-slate-800 rounded-xl overflow-x-auto bg-slate-950/40">
+                <table className="w-full text-xs text-left">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400 bg-slate-900/60 text-[11px]">
+                      <th className="py-2 px-3">วันที่ / เวลา</th>
+                      <th className="py-2 px-3">การกระทำ</th>
+                      <th className="py-2 px-3">โมเดล</th>
+                      <th className="py-2 px-3">เวอร์ชัน</th>
+                      <th className="py-2 px-3">ผู้ดำเนินการ</th>
+                      <th className="py-2 px-3">รายการที่ลบ</th>
+                      <th className="py-2 px-3">หมายเหตุ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLogs.map(log => (
+                      <tr key={log.id} className="border-b border-slate-800/40 hover:bg-slate-900/40">
+                        <td className="py-2 px-3 font-mono text-[10px] text-slate-400 whitespace-nowrap">
+                          {new Date(log.timestamp).toLocaleString('th-TH')}
+                        </td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                              log.action === 'delete_version' || log.action === 'delete_model'
+                                ? 'border-rose-500/40 text-rose-300 bg-rose-500/10'
+                                : 'border-amber-500/40 text-amber-300 bg-amber-500/10'
+                            }`}
+                          >
+                            {log.action}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 font-mono text-slate-200">{log.modelId}</td>
+                        <td className="py-2 px-3 font-mono text-slate-400">{log.version ? `v${log.version}` : '—'}</td>
+                        <td className="py-2 px-3 text-slate-400">{log.actor}</td>
+                        <td className="py-2 px-3 text-[11px] text-slate-300">
+                          {log.clearedCounts.total > 0 ? (
+                            <span>{log.clearedCounts.total} รายการ (Runs/Events)</span>
+                          ) : (
+                            <span className="text-slate-500">—</span>
+                          )}
+                          {log.blobDeleted && <span className="ml-1 text-emerald-400">(Blob)</span>}
+                        </td>
+                        <td className="py-2 px-3 text-[11px] text-slate-400 truncate max-w-xs">{log.note || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -14,6 +14,7 @@
     "sequence": "tsx scripts/run_sequence.ts",
     "calibrate": "tsx scripts/calibrate.ts",
     "power": "tsx scripts/power_curve.ts",
+    "demo:pack": "tsx scripts/make_demo_pack.ts",
     "seed:samples": "tsx scripts/seed_samples.ts"
   },
   "dependencies": {

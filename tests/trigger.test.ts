@@ -117,7 +117,7 @@ describe('Step 9 — Trigger Rules & Review Workflow (tests/trigger.test.ts)', (
     });
 
     expect(decision.action).toBe('INVESTIGATE_DATA');
-    expect(decision.matchedRuleId).toBe('R2');
+    expect(['R1b', 'R2']).toContain(decision.matchedRuleId);
   });
 
   it('(4) mean_shift high → INVESTIGATE_DRIFT และเมื่อรันซ้ำครั้งที่ 2 (มีครั้งแรกใน history) → CONSIDER_RETRAIN', () => {
@@ -315,7 +315,7 @@ describe('Step 9 — Trigger Rules & Review Workflow (tests/trigger.test.ts)', (
     const resolved = resolveTriggerRules(badModel);
     expect(resolved.warnings.length).toBeGreaterThan(0);
     expect(resolved.warnings[0]).toContain('DUP_ID');
-    expect(resolved.rules.map(r => r.id)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8b', 'R8', 'R9']);
+    expect(resolved.rules.map(r => r.id)).toEqual(['R1', 'R1b', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8b', 'R8', 'R9']);
 
     const inj = injectAnomaly(baseModel, { type: 'none', seed: 101 });
     const { run } = runMonitoring({

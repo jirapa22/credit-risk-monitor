@@ -28,6 +28,7 @@ const STATUS_RANK: Record<DriftStatus, number> = {
 
 const KNOWN_CONDITION_TYPES = new Set([
   'validationBlocked',
+  'validationIssuesAbove',
   'sectionStatus',
   'driftResolvedByExclusion',
   'flaggedPctAbove',
@@ -61,8 +62,21 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
     ],
   },
   {
-    id: 'R2',
+    id: 'R1b',
     priority: 2,
+    when: [{ type: 'validationIssuesAbove', rejectedPct: 1, warningRowPct: 1 }],
+    action: 'INVESTIGATE_DATA',
+    severity: 'warning',
+    message: 'ชั้นตรวจข้อมูลตัดแถวไป X แถว (Y%) / พบแถวซ้ำ Z แถว — ผล drift คำนวณจากแถวที่เหลือ ตรวจระบบต้นทางก่อนใช้ผล',
+    recommendedSteps: [
+      'ตรวจสอบข้อผิดพลาดและคำเตือนในส่วน Data Validation',
+      'ยืนยันกับระบบต้นทางเกี่ยวกับแถวที่ถูกตัดทิ้งหรือแถวซ้ำก่อนนำผล Drift ไปใช้',
+      'แก้ไขข้อมูลที่ต้นทางหรือนำเข้าไฟล์ใหม่ที่ตัดแถวผิดปกติเรียบร้อยแล้ว',
+    ],
+  },
+  {
+    id: 'R2',
+    priority: 3,
     when: [
       { type: 'driftResolvedByExclusion' },
     ],
@@ -77,7 +91,7 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
   },
   {
     id: 'R3',
-    priority: 3,
+    priority: 4,
     when: [{ type: 'sectionStatus', section: 'missing', atLeast: 'CRITICAL' }],
     action: 'INVESTIGATE_DATA',
     severity: 'warning',
@@ -90,7 +104,7 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
   },
   {
     id: 'R4',
-    priority: 4,
+    priority: 5,
     when: [{ type: 'sectionStatus', section: 'concept', atLeast: 'CRITICAL' }],
     action: 'CONSIDER_RETRAIN',
     severity: 'critical',
@@ -103,7 +117,7 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
   },
   {
     id: 'R5',
-    priority: 5,
+    priority: 6,
     when: [
       { type: 'sectionStatus', section: 'label', atLeast: 'CRITICAL' },
       {
@@ -122,7 +136,7 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
   },
   {
     id: 'R6',
-    priority: 6,
+    priority: 7,
     when: [{ type: 'persistence', section: 'covariate', atLeast: 'CRITICAL', runs: 2 }],
     action: 'CONSIDER_RETRAIN',
     severity: 'critical',
@@ -135,7 +149,7 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
   },
   {
     id: 'R7',
-    priority: 7,
+    priority: 8,
     when: [{ type: 'sectionStatus', section: 'covariate', atLeast: 'CRITICAL' }],
     action: 'INVESTIGATE_DRIFT',
     severity: 'warning',
@@ -147,7 +161,7 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
   },
   {
     id: 'R8b',
-    priority: 8,
+    priority: 9,
     when: [{ type: 'flaggedPctAbove', multiplierOfReference: 2 }],
     action: 'INVESTIGATE_DATA',
     severity: 'warning',
@@ -159,7 +173,7 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
   },
   {
     id: 'R8',
-    priority: 9,
+    priority: 10,
     when: [{ type: 'sectionStatus', section: 'overall', atLeast: 'WARNING' }],
     action: 'MONITOR_CLOSELY',
     severity: 'info',
@@ -171,7 +185,7 @@ export const DEFAULT_TRIGGER_RULES: TriggerRule[] = [
   },
   {
     id: 'R9',
-    priority: 10,
+    priority: 11,
     when: [],
     action: 'CONTINUE',
     severity: 'info',
@@ -194,6 +208,14 @@ function validateCondition(cond: unknown, ruleId: string): string | null {
   switch (c.type) {
     case 'validationBlocked':
     case 'driftResolvedByExclusion':
+      return null;
+    case 'validationIssuesAbove':
+      if (c.rejectedPct !== undefined && (typeof c.rejectedPct !== 'number' || !Number.isFinite(c.rejectedPct) || c.rejectedPct < 0)) {
+        return `กฎ "${ruleId}" ต้องระบุ rejectedPct เป็นตัวเลข >= 0`;
+      }
+      if (c.warningRowPct !== undefined && (typeof c.warningRowPct !== 'number' || !Number.isFinite(c.warningRowPct) || c.warningRowPct < 0)) {
+        return `กฎ "${ruleId}" ต้องระบุ warningRowPct เป็นตัวเลข >= 0`;
+      }
       return null;
     case 'sectionStatus':
       if (!KNOWN_SECTIONS.has(c.section as TriggerSectionName)) {
@@ -345,6 +367,33 @@ function evaluateCondition(
       };
     }
 
+    case 'validationIssuesAbove': {
+      const rejPct = run.validation.rejectedPct ?? 0;
+      let warnPct = run.validation.warningRowPct;
+      if (warnPct === undefined) {
+        const warnRows = new Set(
+          (run.validation.issues ?? [])
+            .filter(i => i.severity === 'warning' && i.row !== undefined)
+            .map(i => i.row!)
+        ).size;
+        warnPct = run.validation.totalRows > 0 ? (warnRows / run.validation.totalRows) * 100 : 0;
+      }
+
+      const rejThreshold = cond.rejectedPct ?? 1;
+      const warnThreshold = cond.warningRowPct ?? 1;
+
+      const rejMatched = cond.rejectedPct !== undefined ? rejPct > rejThreshold : rejPct > 1;
+      const warnMatched = cond.warningRowPct !== undefined ? warnPct > warnThreshold : warnPct > 1;
+      const matched = rejMatched || warnMatched;
+
+      return {
+        matched,
+        reason: matched
+          ? `ชั้นตรวจข้อมูลพบปัญหา: แถวถูกตัด ${run.validation.rejectedRows} แถว (${rejPct.toFixed(1)}%${rejMatched ? ` > ${rejThreshold}%` : ''}), แถวมีข้อเตือน ${run.validation.warningRows ?? 0} แถว (${warnPct.toFixed(1)}%${warnMatched ? ` > ${warnThreshold}%` : ''})`
+          : `ชั้นตรวจข้อมูลปกติ: แถวถูกตัด ${rejPct.toFixed(1)}% (<= ${rejThreshold}%), แถวมีข้อเตือน ${warnPct.toFixed(1)}% (<= ${warnThreshold}%)`,
+      };
+    }
+
     case 'sectionStatus': {
       const status = getSectionStatus(run, cond.section);
       const matched = sectionMeetsAtLeast(status, cond.atLeast);
@@ -481,6 +530,8 @@ function buildEvidence(run: MonitoringRun): TriggerEvidence {
       validRows: run.validation.validRows,
       rejectedRows: run.validation.rejectedRows,
       rejectedPct: run.validation.rejectedPct,
+      warningRows: run.validation.warningRows ?? 0,
+      warningRowPct: run.validation.warningRowPct ?? 0,
       blockingErrorCount: run.validation.blockingErrors.length,
     },
     anomaly: run.anomaly
@@ -526,7 +577,13 @@ export function evaluateTrigger(
     const evals = rule.when.map(cond => evaluateCondition(cond, run, history));
     if (evals.every(e => e.matched)) {
       let ruleMessage = rule.message;
-      if (rule.id === 'R8b' && run.anomaly) {
+      if (rule.id === 'R1b' && run.validation) {
+        const x = run.validation.rejectedRows;
+        const y = run.validation.rejectedPct.toFixed(1);
+        const z = run.validation.groups?.find(g => g.type === 'DUPLICATE_ID')?.count ??
+                  run.validation.issues?.filter(i => i.type === 'DUPLICATE_ID').length ?? 0;
+        ruleMessage = `ชั้นตรวจข้อมูลตัดแถวไป ${x} แถว (${y}%) / พบแถวซ้ำ ${z} แถว — ผล drift คำนวณจากแถวที่เหลือ ตรวจระบบต้นทางก่อนใช้ผล`;
+      } else if (rule.id === 'R8b' && run.anomaly) {
         const actualPct = run.anomaly.flaggedPct.toFixed(1);
         const refPct = getReferenceFlaggedPct(run).toFixed(1);
         ruleMessage = `พบแถวผิดปกติมากกว่าปกติ ${actualPct}% (ปกติ ${refPct}%) แม้ยังไม่กระทบตัวชี้วัด drift — ตรวจแถวที่โดนธงก่อนใช้ข้อมูลรอบนี้`;

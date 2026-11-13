@@ -144,6 +144,8 @@ export interface ValidationResult {
   validRows: number;
   rejectedRows: number;
   rejectedPct: number;
+  warningRows?: number;
+  warningRowPct?: number;
   blockingErrors: ValidationIssue[];   // file-level problems (e.g. missing required column)
   warnings: ValidationIssue[];         // file-level, non-blocking (e.g. optional column missing, small sample)
   groups: ValidationIssueGroup[];      // row-level problems, grouped for display
@@ -484,6 +486,7 @@ export type TriggerSectionName = 'covariate' | 'missing' | 'label' | 'concept' |
 
 export type TriggerCondition =
   | { type: 'validationBlocked' }
+  | { type: 'validationIssuesAbove'; rejectedPct?: number; warningRowPct?: number }
   | { type: 'sectionStatus'; section: TriggerSectionName; atLeast: 'WARNING' | 'CRITICAL' }
   | { type: 'driftResolvedByExclusion' }
   | { type: 'flaggedPctAbove'; multiplierOfReference: number }
@@ -511,6 +514,8 @@ export interface TriggerEvidence {
     validRows: number;
     rejectedRows: number;
     rejectedPct: number;
+    warningRows?: number;
+    warningRowPct?: number;
     blockingErrorCount: number;
   } | null;
   anomaly?: {

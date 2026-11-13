@@ -70,6 +70,12 @@
 33. ขีดจำกัดของ concept drift เมื่อหนี้เสียน้อย (Reference 80 bad): เกณฑ์ calibrated Gini ลดลง (relative) warning n=250 = 57%, n=1000 = 27% → ตรวจได้เฉพาะการเสื่อมรุนแรง; label: bad rate เปลี่ยน ≥ 37% (n=250), ≥ 21% (n=1000)
 34. ตัดสินใจออกแบบ: โหมด fixed = PSI/CSI ตามมาตรฐานอุตสาหกรรมเท่านั้น (KS/W/JS เป็น informational) — ค่าเริ่มต้น; calibrated = ทุกตัววัดแบบ family-wise (เลือกได้ต่อ Baseline). fixed ไม่ไวกับ mean_shift −10% (บันทึกเป็นข้อจำกัดใน test)
 
+35. Power (e9650c4, ascore_v1, 30 seed): PSI ของคะแนนแบบ fixed ที่ n=100 เตือนผิด 47% (PSI มีอคติขึ้นเมื่อ n เล็ก) — calibrated 0%. mix_shift +10 จุด%: n=1000 CSI fixed 0% vs calibrated 100%; +5: n=2500 calibrated 100%; fixed CSI เริ่มจับที่ +20 (100%), +15 = 27–30%; PSI คะแนน fixed แทบไม่จับจนถึง +40. calibrated false alarm ≤10% ทุก n
+36. label_shift power ต่ำ (ทั้งสองโหมดเท่ากัน): ×1.5 จับได้ 0–10%, ×2 จับได้ 20% (n=100), 33% (250), 90% (1000), 100% (2500) — ขีดจำกัดจากหนี้เสียน้อย
+37. Action ถูกต้อง (fixed, e9650c4): ไฟล์สะอาด ascore 95% / ext 83%; concept_shift high 100%/90%; label_shift high 100%/93%; mix_shift high 100%; extreme_outlier 20% 100%/97%; unseen_category 97–100%; missing_drift 100%; schema_break 100%. mix_shift medium ได้ MONITOR_CLOSELY (WARNING) แม้ detect 100%
+38. ช่องว่าง: ข้อมูลผิดที่ชั้น validation ตัดทิ้ง (unit_error ×100, negative, type_error, duplicate) ได้ action CONTINUE 100% แม้ตัดแถวไป 5–20% → ต้องมีกฎ R1b (rejected/duplicate สูงกว่าเกณฑ์ → INVESTIGATE_DATA)
+39. variance_change medium (ascore): ได้ INVESTIGATE_DATA เพราะหางที่ยืดถูกติดธง → ความกำกวมระหว่าง drift การกระจายกับ outlier เป็นข้อจำกัดที่ต้องอภิปราย
+
 ## หมายเหตุสำหรับผลการทดลอง
 - ผล grid 25f37be มีข้อบกพร่องการนับ (ข้อ 29) → ใช้ตัวเลขหลังแก้ 11c เท่านั้น; power_ext_model 15-00 เป็นรุ่นก่อนแก้บั๊ก ใช้ 15-08
 - ผล grid เต็ม 926868a (3,895 trial) ใช้นิยาม multivariate_inconsistent แบบเดิม (3 ตัวแปรคงที่) → ต้องรัน grid ใหม่ใน Step 11 ก่อนใช้ตัวเลขในเล่ม

@@ -131,13 +131,14 @@ export function validateDataset(
   }
 
   if (blockingErrors.length > 0) {
-    return { result: summarize(total, 0, blockingErrors, warnings, rowIssues, maxIssues, false), rows: [] };
+    return { result: summarize(total, 0, blockingErrors, warnings, rowIssues, maxIssues, false, 0), rows: [] };
   }
 
   // ── Row-level checks ───────────────────────────────────────────────────
   const malformedSet = new Map(malformedRows.map(m => [m.row, m]));
   const idSeen = new Map<string, number>();
   const clean: CleanRow[] = [];
+  const warningRowIndices = new Set<number>();
 
   rawRows.forEach((raw, i) => {
     const rowNo = i + 1;
@@ -145,6 +146,7 @@ export function validateDataset(
     const add = (type: ValidationIssueType, severity: ValidationSeverity, column: string | undefined, value: unknown, message: string) => {
       rowIssues.push({ type, severity, column, row: rowNo, value: value === undefined ? undefined : String(value), message });
       if (severity === 'error') rejected = true;
+      if (severity === 'warning') warningRowIndices.add(rowNo);
     };
 
     const m = malformedSet.get(rowNo);
@@ -301,12 +303,13 @@ export function validateDataset(
   }
 
   const ok = blockingErrors.length === 0;
-  return { result: summarize(total, clean.length, blockingErrors, warnings, rowIssues, maxIssues, ok), rows: ok ? clean : [] };
+  return { result: summarize(total, clean.length, blockingErrors, warnings, rowIssues, maxIssues, ok, warningRowIndices.size), rows: ok ? clean : [] };
 }
 
 function summarize(
   total: number, valid: number, blockingErrors: ValidationIssue[], warnings: ValidationIssue[],
   rowIssues: ValidationIssue[], maxIssues: number, ok: boolean,
+  warningRowsCount: number = 0,
 ): ValidationResult {
   const groupMap = new Map<string, ValidationIssueGroup>();
   for (const is of rowIssues) {
@@ -324,6 +327,8 @@ function summarize(
     validRows: valid,
     rejectedRows: rejected,
     rejectedPct: total ? Math.round((rejected / total) * 1000) / 10 : 0,
+    warningRows: warningRowsCount,
+    warningRowPct: total ? Math.round((warningRowsCount / total) * 1000) / 10 : 0,
     blockingErrors,
     warnings,
     groups,

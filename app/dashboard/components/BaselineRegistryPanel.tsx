@@ -55,6 +55,118 @@ export default function BaselineRegistryPanel({
   const [showWizard, setShowWizard] = useState<boolean>(false);
   const [wizardInitialData, setWizardInitialData] = useState<any>(undefined);
 
+  // Delete modal state
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    version: BaselineVersion | null;
+    loading: boolean;
+    impact: {
+      monitoringRunsCount: number;
+      sandboxRunsCount: number;
+      eventsCount: number;
+      reviewsCount: number;
+      totalImpactCount: number;
+      canDelete: boolean;
+      reason?: string;
+    } | null;
+    confirmInput: string;
+    isProcessing: boolean;
+    errorMessage: string;
+  }>({
+    isOpen: false,
+    version: null,
+    loading: false,
+    impact: null,
+    confirmInput: '',
+    isProcessing: false,
+    errorMessage: '',
+  });
+
+  const openDeleteModal = async (v: BaselineVersion) => {
+    setDeleteModal({
+      isOpen: true,
+      version: v,
+      loading: true,
+      impact: null,
+      confirmInput: '',
+      isProcessing: false,
+      errorMessage: '',
+    });
+
+    try {
+      const res = await fetch(`/api/registry/models/${v.modelId}/versions/${v.version}`, {
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setDeleteModal(prev => ({
+          ...prev,
+          loading: false,
+          impact: data,
+        }));
+      } else {
+        setDeleteModal(prev => ({
+          ...prev,
+          loading: false,
+          errorMessage: data.error || 'ไม่สามารถดึงข้อมูลผลกระทบได้',
+        }));
+      }
+    } catch (err: unknown) {
+      setDeleteModal(prev => ({
+        ...prev,
+        loading: false,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      }));
+    }
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({
+      isOpen: false,
+      version: null,
+      loading: false,
+      impact: null,
+      confirmInput: '',
+      isProcessing: false,
+      errorMessage: '',
+    });
+  };
+
+  const handleDeleteSubmit = async (action: 'delete' | 'archive') => {
+    const v = deleteModal.version;
+    if (!v) return;
+
+    setDeleteModal(prev => ({ ...prev, isProcessing: true, errorMessage: '' }));
+    try {
+      const res = await fetch(`/api/registry/models/${v.modelId}/versions/${v.version}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || `ดำเนินการ ${action} ไม่สำเร็จ`);
+      }
+
+      closeDeleteModal();
+      if (selectedVersion?.version === v.version) {
+        setSelectedVersion(null);
+      }
+      await loadRegistry();
+      alert(
+        action === 'archive'
+          ? `📦 เก็บถาวร (Archive) เวอร์ชัน v${v.version} เรียบร้อยแล้ว`
+          : `🗑️ ลบ Baseline เวอร์ชัน v${v.version} และข้อมูลที่เกี่ยวข้องสำเร็จ`,
+      );
+    } catch (err: unknown) {
+      setDeleteModal(prev => ({
+        ...prev,
+        isProcessing: false,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      }));
+    }
+  };
+
   // Load models and default
   const loadRegistry = useCallback(async () => {
     setLoading(true);
@@ -396,6 +508,15 @@ export default function BaselineRegistryPanel({
                                       CSV
                                     </button>
                                   )}
+                                  {!v.builtIn && (
+                                    <button
+                                      onClick={() => openDeleteModal(v)}
+                                      title="ลบ Baseline"
+                                      className="px-2 py-0.5 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 rounded text-[10px] transition"
+                                    >
+                                      ลบ
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -495,6 +616,175 @@ export default function BaselineRegistryPanel({
           onSuccess={handleWizardSuccess}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal.isOpen && deleteModal.version && (() => {
+        const v = deleteModal.version;
+        const impact = deleteModal.impact;
+        const isActive = v.status === 'ACTIVE';
+        const expectedConfirm = (v.name || v.version).trim();
+        const isMatch =
+          deleteModal.confirmInput.trim() === expectedConfirm ||
+          deleteModal.confirmInput.trim() === v.version;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col space-y-4 p-6">
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🗑️</span>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-100">
+                      ยืนยันการลบ Baseline: v{v.version}
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      โมเดล: <span className="font-mono text-indigo-300">{v.modelId}</span> · {v.name}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={closeDeleteModal}
+                  disabled={deleteModal.isProcessing}
+                  className="text-slate-400 hover:text-slate-200 text-lg leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {deleteModal.errorMessage && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                  ❌ {deleteModal.errorMessage}
+                </div>
+              )}
+
+              {deleteModal.loading ? (
+                <div className="py-8 text-center text-slate-400 text-xs animate-pulse">
+                  กำลังตรวจสอบประวัติและผลกระทบของ Baseline...
+                </div>
+              ) : isActive ? (
+                /* Rule: ACTIVE cannot be deleted directly */
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-2">
+                    <p className="font-bold text-amber-300 flex items-center gap-1.5">
+                      <span>⚠️</span> ไม่สามารถลบเวอร์ชันที่เป็น ACTIVE ได้โดยตรง
+                    </p>
+                    <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                      ตามนโยบาย MLOps Governance: เวอร์ชันที่มีสถานะ ACTIVE กำลังเปิดใช้งานสำหรับติดตามผล (Monitoring) อยู่ในระบบ เพื่อป้องกันระบบขัดข้อง กรุณาเปลี่ยนสถานะเป็น ARCHIVED ก่อน หรือเปิดใช้งานเวอร์ชันอื่นแทนจึงจะสามารถลบได้
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                    <button
+                      onClick={closeDeleteModal}
+                      disabled={deleteModal.isProcessing}
+                      className="px-4 py-2 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded-xl text-xs transition"
+                    >
+                      ปิด
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSubmit('archive')}
+                      disabled={deleteModal.isProcessing}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-amber-500/20 transition"
+                    >
+                      {deleteModal.isProcessing ? 'กำลังบันทึก...' : '📦 เก็บถาวร (Archive) ทันที'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Non-ACTIVE: DRAFT, VALIDATED, ARCHIVED */
+                <div className="space-y-4">
+                  {impact && impact.totalImpactCount > 0 ? (
+                    <div className="space-y-3">
+                      <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-xs space-y-2">
+                        <p className="font-bold text-rose-300 flex items-center gap-1.5">
+                          <span>⚠️</span> ตรวจพบประวัติที่ผูกกับ Baseline เวอร์ชันนี้ ({impact.totalImpactCount} รายการ)
+                        </p>
+                        <ul className="list-disc list-inside text-[11px] text-rose-200/90 space-y-1">
+                          <li>ประวัติการรัน Monitoring: {impact.monitoringRunsCount} รายการ</li>
+                          <li>ประวัติการทดลอง Sandbox: {impact.sandboxRunsCount} รายการ</li>
+                          <li>รายการ Trigger Alert & Event: {impact.eventsCount} รายการ (มีบันทึกตรวจทาน {impact.reviewsCount} รายการ)</li>
+                          {v.referenceDatasetId && (
+                            <li>ไฟล์ Reference Dataset ใน Blob Storage: {v.referenceDatasetId}</li>
+                          )}
+                        </ul>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-2">
+                        <p className="font-semibold text-slate-300 text-[11px]">ทางเลือกการจัดการ:</p>
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="p-2.5 rounded-lg border border-slate-700 bg-slate-900/60 space-y-1">
+                            <p className="font-bold text-slate-200">1. เก็บถาวร (Archive)</p>
+                            <p className="text-[10px] text-slate-400">
+                              หยุดการใช้งาน แต่ยังคงเก็บประวัติและ audit trail ไว้ตรวจสอบย้อนหลังได้
+                            </p>
+                          </div>
+                          <div className="p-2.5 rounded-lg border border-rose-500/30 bg-rose-500/5 space-y-1">
+                            <p className="font-bold text-rose-300">2. ลบถาวร (Delete)</p>
+                            <p className="text-[10px] text-slate-400">
+                              ลบทั้งข้อมูลใน KV และไฟล์ Reference ใน Blob ออกโดยสมบูรณ์
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 text-xs space-y-1.5">
+                      <p className="text-[11px] text-slate-300">
+                        ไม่พบประวัติการรันที่ผูกอยู่ ระบบจะลบเวอร์ชันนี้และไฟล์ Reference ใน Blob Storage (หากไม่ได้ถูกใช้งานโดยเวอร์ชันอื่น)
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Confirmation text input */}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-xs text-slate-300 font-semibold block">
+                      พิมพ์ชื่อ Baseline <span className="font-mono text-amber-300 font-bold select-all">"{expectedConfirm}"</span> เพื่อยืนยันการลบ:
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteModal.confirmInput}
+                      onChange={e => setDeleteModal(prev => ({ ...prev, confirmInput: e.target.value }))}
+                      placeholder={`พิมพ์ "${expectedConfirm}"`}
+                      disabled={deleteModal.isProcessing}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 outline-none focus:border-rose-500"
+                    />
+                  </div>
+
+                  {/* Modal Action buttons */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800">
+                    <button
+                      onClick={closeDeleteModal}
+                      disabled={deleteModal.isProcessing}
+                      className="px-4 py-2 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded-xl text-xs transition"
+                    >
+                      ยกเลิก
+                    </button>
+                    <div className="flex items-center gap-2">
+                      {impact && impact.totalImpactCount > 0 && v.status !== 'ARCHIVED' && (
+                        <button
+                          onClick={() => handleDeleteSubmit('archive')}
+                          disabled={deleteModal.isProcessing}
+                          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition"
+                        >
+                          📦 เก็บถาวร (Archive)
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteSubmit('delete')}
+                        disabled={!isMatch || deleteModal.isProcessing}
+                        className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:hover:bg-rose-600 text-white font-bold rounded-xl text-xs shadow-lg shadow-rose-500/20 transition"
+                      >
+                        {deleteModal.isProcessing ? 'กำลังลบ...' : '🗑️ ยืนยันลบถาวร'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -80,6 +80,10 @@
 41. Demo sequence mix_shift (12 เดือน): fixed ไม่เคยแนะนำ retrain (MONITOR_CLOSELY ที่ M10–12) vs calibrated INVESTIGATE_DRIFT M9 → CONSIDER_RETRAIN M10–12 — ภาพสาธิตข้อจำกัดของเกณฑ์อุตสาหกรรม
 42. ช่องว่างที่พบ (ทำ 11e): new_model monitor_drift (ลูกค้าเสี่ยงขึ้น → bad rate ขึ้น) โหมด fixed ได้ RECALIBRATE เพราะ R5 ดูแค่ label CRITICAL — แต่ถ้าคะแนนขยับตามแล้ว bad rate ที่เพิ่มเป็นสิ่งที่โมเดลคาดไว้ ไม่ต้อง recalibrate → ต้องเทียบ bad rate จริงกับ bad rate คาดการณ์จากการกระจายคะแนน (calibration-in-the-large, ใช้ decile ของคะแนนใน Reference จึงไม่ขึ้นกับชนิดโมเดล)
 43. แก้บั๊ก Vercel Blob Reference upload (HTTP 400): เพิ่ม header `x-vercel-blob-access: private` (ตั้งได้ผ่าน `BLOB_ACCESS`), แสดง snippet ของ response body ใน error (ตัดไม่เกิน 300 ตัวอักษรและ redact token), ยืนยัน Authorization header บน download/list สำหรับ private store พร้อม unit tests 14 ข้อผ่าน 100%
+44. จัดการ Baseline และ Onboarding Wizard (แก้บั๊กการแสดงผล + ระบบลบ Baseline):
+- แก้ป้ายสถานะ Header บน Dashboard: แสดงตามโมเดลที่เลือกใน Dropdown จริง พร้อมสถานะที่แท้จริง (`ACTIVE`, `VALIDATED (ยังไม่เปิดใช้งาน)`, `DRAFT (ยังไม่เปิดใช้งาน)`, `ยังไม่เปิดใช้งาน`) แทนการฮาร์ดโค้ด `ACTIVE`
+- ปรับ Wizard ขั้นที่ 3: คง Model ID ภายในที่สร้างอัตโนมัติ (read-only) และเปิดให้ตั้งชื่ออ่านง่าย (Display Name) + คำอธิบายโมเดล โดย fallback เป็นชื่ออัตโนมัติหากไม่กรอก
+- ระบบลบ Baseline: เพิ่ม API route `GET/DELETE /api/registry/models/[modelId]/versions/[version]` + ฟังก์ชัน `deleteBaselineVersion` / `getBaselineVersionImpact`; ป้องกัน built-in และไม่อนุญาตให้ลบ ACTIVE ตรงๆ (ต้อง Archive ก่อน); ตรวจสอบประวัติ monitoring/events/reviews หากมีประวัติจะแสดงจำนวนผลกระทบและเสนอ 2 ทางเลือกระหว่าง "เก็บถาวร (Archive)" กับ "ลบถาวร" (ลบทั้ง KV runs/events และ Blob reference); พร้อมหน้าต่างยืนยันที่ต้องพิมพ์ชื่อ baseline ก่อนลบ (Unit tests 5 ข้อผ่าน 100%)
 
 ## หมายเหตุสำหรับผลการทดลอง
 - ผล grid 25f37be มีข้อบกพร่องการนับ (ข้อ 29) → ใช้ตัวเลขหลังแก้ 11c เท่านั้น; power_ext_model 15-00 เป็นรุ่นก่อนแก้บั๊ก ใช้ 15-08

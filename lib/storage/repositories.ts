@@ -26,6 +26,7 @@ import type {
 } from '../types';
 import { getStore } from './store';
 import {
+  getBlobStore,
   isBuiltInReferenceId,
   loadReferenceDatasetBlob,
   saveReferenceDatasetBlob,
@@ -35,6 +36,7 @@ import {
   buildReferenceProfileFromData,
   getReferenceProfile,
   registerReferenceDataset,
+  unregisterReferenceDataset,
   type ReferenceProfile,
 } from '../reference';
 import { DEFAULT_DATE_COLUMN, DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from '../defaults';
@@ -853,6 +855,168 @@ export async function archiveBaselineVersion(
   nextList[idx] = updated;
   await saveStoredVersions(modelId, nextList);
   return updated;
+}
+
+export async function getBaselineVersionImpact(
+  modelId: string,
+  version: string,
+): Promise<{
+  version: BaselineVersion;
+  monitoringRunsCount: number;
+  sandboxRunsCount: number;
+  eventsCount: number;
+  reviewsCount: number;
+  totalImpactCount: number;
+  canDelete: boolean;
+  reason?: string;
+}> {
+  const all = await listBaselineVersions(modelId);
+  const target = all.find(v => v.version === version);
+  if (!target) {
+    throw new RegistryError(`ไม่พบเวอร์ชัน "${version}" ของโมเดล "${modelId}"`, 404);
+  }
+
+  const isBuiltIn = isBuiltInModelId(modelId) || isBuiltInBaselineVersion(modelId, version);
+  const isActive = target.status === 'ACTIVE';
+
+  let canDelete = true;
+  let reason: string | undefined;
+  if (isBuiltIn) {
+    canDelete = false;
+    reason = 'เป็นเวอร์ชันมาตรฐาน (Built-in) ของระบบ ไม่สามารถลบได้';
+  } else if (isActive) {
+    canDelete = false;
+    reason = 'เป็นเวอร์ชันที่กำลังเปิดใช้งาน (ACTIVE) อยู่ ต้อง Archive ก่อนจึงจะลบได้';
+  }
+
+  const targetRefId = target.referenceDatasetId;
+  const matchVersion = (vObj?: { version?: string; configVersion?: string }, refId?: string) => {
+    return vObj?.version === version || vObj?.configVersion === version || Boolean(targetRefId && refId === targetRefId);
+  };
+
+  const monitoringRuns = (await getStore().get<StoredRun[]>(runsKey('monitoring', modelId))) ?? [];
+  const targetMonitoring = monitoringRuns.filter(r => matchVersion(r.model, r.referenceId));
+
+  const sandboxRuns = (await getStore().get<StoredRun[]>(runsKey('sandbox', modelId))) ?? [];
+  const targetSandbox = sandboxRuns.filter(r => matchVersion(r.model, r.referenceId));
+
+  const events = (await getStore().get<TriggerEvent[]>(eventsKey(modelId))) ?? [];
+  const targetEvents = events.filter(ev => matchVersion(ev.model, ev.referenceId));
+  const targetReviews = targetEvents.filter(ev => ev.review !== null);
+
+  const total = targetMonitoring.length + targetSandbox.length + targetEvents.length;
+
+  return {
+    version: target,
+    monitoringRunsCount: targetMonitoring.length,
+    sandboxRunsCount: targetSandbox.length,
+    eventsCount: targetEvents.length,
+    reviewsCount: targetReviews.length,
+    totalImpactCount: total,
+    canDelete,
+    reason,
+  };
+}
+
+export async function deleteBaselineVersion(
+  modelId: string,
+  version: string,
+  opts: { purgeBlob?: boolean } = { purgeBlob: true },
+): Promise<{
+  deleted: boolean;
+  modelId: string;
+  version: string;
+  referenceDatasetId?: string;
+  blobDeleted: boolean;
+  clearedRunsCount: number;
+  clearedEventsCount: number;
+}> {
+  if (isBuiltInModelId(modelId) || isBuiltInBaselineVersion(modelId, version)) {
+    throw new BuiltInProtectedError(
+      `ไม่สามารถลบเวอร์ชันมาตรฐาน (Built-in) "${modelId}@${version}" ได้`,
+    );
+  }
+
+  const stored = await getStoredVersions(modelId);
+  const idx = stored.findIndex(v => v.version === version);
+  if (idx === -1) {
+    throw new RegistryError(`ไม่พบเวอร์ชัน "${version}" ของโมเดล "${modelId}"`, 404);
+  }
+
+  const target = stored[idx];
+  if (target.status === 'ACTIVE') {
+    throw new RegistryError(
+      `ไม่สามารถลบเวอร์ชัน "${modelId}@${version}" ได้เนื่องจากมีสถานะเป็น ACTIVE กรุณาเปลี่ยนสถานะเป็น ARCHIVED ก่อน`,
+      400,
+    );
+  }
+
+  // 1. Remove version from stored list
+  const nextList = stored.filter(v => v.version !== version);
+  await saveStoredVersions(modelId, nextList);
+
+  // 2. Remove associated runs from KV
+  let clearedRunsCount = 0;
+  const targetRefId = target.referenceDatasetId;
+  const matchVersion = (vObj?: { version?: string; configVersion?: string }, refId?: string) => {
+    return vObj?.version === version || vObj?.configVersion === version || Boolean(targetRefId && refId === targetRefId);
+  };
+
+  for (const kind of ['monitoring', 'sandbox'] as const) {
+    const key = runsKey(kind, modelId);
+    const runs = (await getStore().get<StoredRun[]>(key)) ?? [];
+    const remainingRuns = runs.filter(r => !matchVersion(r.model, r.referenceId));
+    clearedRunsCount += runs.length - remainingRuns.length;
+    if (remainingRuns.length !== runs.length) {
+      await getStore().set(key, remainingRuns);
+    }
+  }
+
+  // 3. Remove associated events from KV
+  const evKey = eventsKey(modelId);
+  const events = (await getStore().get<TriggerEvent[]>(evKey)) ?? [];
+  const remainingEvents = events.filter(ev => !matchVersion(ev.model, ev.referenceId));
+  const clearedEventsCount = events.length - remainingEvents.length;
+  if (remainingEvents.length !== events.length) {
+    await getStore().set(evKey, remainingEvents);
+  }
+
+  // 4. Delete Reference Dataset in Blob if not used by any other remaining version
+  let blobDeleted = false;
+  if (opts.purgeBlob !== false && targetRefId && !isBuiltInReferenceId(targetRefId)) {
+    const { models: allRegModels } = await listRegistryModels();
+    let refStillInUse = false;
+    for (const m of allRegModels) {
+      const vers = await listBaselineVersions(m.modelId);
+      if (
+        vers.some(
+          v => v.referenceDatasetId === targetRefId && !(m.modelId === modelId && v.version === version),
+        )
+      ) {
+        refStillInUse = true;
+        break;
+      }
+    }
+    if (!refStillInUse) {
+      try {
+        await getBlobStore().del(targetRefId);
+        unregisterReferenceDataset(targetRefId);
+        blobDeleted = true;
+      } catch (err) {
+        console.warn(`Failed to delete blob reference "${targetRefId}":`, err);
+      }
+    }
+  }
+
+  return {
+    deleted: true,
+    modelId,
+    version,
+    referenceDatasetId: target.referenceDatasetId,
+    blobDeleted,
+    clearedRunsCount,
+    clearedEventsCount,
+  };
 }
 
 export async function exportBaselineVersion(

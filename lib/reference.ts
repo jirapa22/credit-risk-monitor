@@ -193,6 +193,12 @@ export function registerReferenceDataset(
   for (const k of cache.keys()) if (k.startsWith(`${meta.referenceId}|`)) cache.delete(k);
 }
 
+export function unregisterReferenceDataset(referenceId: string): void {
+  if (referenceId === 'ascore_v1_dev855') return;
+  delete REGISTRY[referenceId];
+  for (const k of cache.keys()) if (k.startsWith(`${referenceId}|`)) cache.delete(k);
+}
+
 export function listReferenceDatasets(): ReferenceDatasetMeta[] {
   return Object.values(REGISTRY).map(r => r.meta);
 }

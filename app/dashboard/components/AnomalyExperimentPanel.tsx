@@ -338,7 +338,7 @@ function TrialResultView({ r }: { r: RunResponse }) {
     const worst = (xs: string[]) => xs.reduce((w, s) => (RANK[s] > RANK[w] ? s : w), 'STABLE');
     return {
       rows: [{ key: 'PSI (คะแนนรวม)', all: avg(t => t.drift!.psi), ex: avg(t => exOf(t).psi) },
-        ...keys.map(k => ({ key: `CSI ${k}`, all: avg(t => t.drift!.csi[k] ?? 0), ex: avg(t => exOf(t).csi[k] ?? 0) }))],
+      ...keys.map(k => ({ key: `CSI ${k}`, all: avg(t => t.drift!.csi[k] ?? 0), ex: avg(t => exOf(t).csi[k] ?? 0) }))],
       statusAll: worst(ok.map(t => t.drift!.status)),
       statusEx: worst(ok.map(t => exOf(t).status)),
       differs: ok.some(t => exOf(t).status !== t.drift!.status),
@@ -557,3 +557,4 @@ function FullResultsPanel() {
     </div>
   );
 }
+

@@ -357,7 +357,29 @@ export default function Dashboard() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const model = config ? config.models[config.activeModelId] : null;
+  const currentModelId = selectedModelId || config?.activeModelId || '';
+  const currentRegModel = registeredModels.find((m: any) => m.modelId === currentModelId);
+  const activeVer = currentRegModel?.versions?.find((v: any) => v.status === 'ACTIVE');
+  const displayVer = activeVer || currentRegModel?.versions?.[0];
+
+  let headerBadgeText = `${currentModelId} · ยังไม่เปิดใช้งาน`;
+  let headerBadgeStyle = 'border-slate-700 text-slate-400 bg-slate-800/40';
+
+  if (activeVer) {
+    headerBadgeText = `${currentModelId}@${activeVer.version} · ${activeVer.referenceDatasetId} · ACTIVE`;
+    headerBadgeStyle = 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10';
+  } else if (displayVer) {
+    headerBadgeText = `${currentModelId}@${displayVer.version} · ${displayVer.referenceDatasetId} · ${displayVer.status} (ยังไม่เปิดใช้งาน)`;
+    if (displayVer.status === 'VALIDATED') {
+      headerBadgeStyle = 'border-blue-500/40 text-blue-300 bg-blue-500/10';
+    } else if (displayVer.status === 'DRAFT') {
+      headerBadgeStyle = 'border-amber-500/40 text-amber-300 bg-amber-500/10';
+    } else {
+      headerBadgeStyle = 'border-slate-700 text-slate-400 bg-slate-800/40';
+    }
+  }
+
+  const model = config ? (config.models[currentModelId] || config.models[config.activeModelId]) : null;
   const scorecard = model?.scoring?.scorecard || {};
   // featLabels: generated dynamically from csiFeatures (so scorecard table uses correct labels)
   const featLabels: Record<string, string> = Object.fromEntries(
@@ -406,8 +428,8 @@ export default function Dashboard() {
                     </option>
                   ))}
                 </select>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-500/40 text-emerald-300 bg-emerald-500/10">
-                  {selectedModelId || config?.activeModelId}@{currentVersion || '1.0.0'} · {model?.referenceDatasetId || 'ref'} · ACTIVE
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${headerBadgeStyle}`}>
+                  {headerBadgeText}
                 </span>
                 <button
                   onClick={async () => {

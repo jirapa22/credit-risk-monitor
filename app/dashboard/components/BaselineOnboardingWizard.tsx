@@ -395,6 +395,7 @@ export default function BaselineOnboardingWizard({
     try {
       const cleanModelId = modelId.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
       const cleanVersion = version.trim() || '1.0.0';
+      const cleanModelName = modelName.trim() || `โมเดล ${cleanModelId}`;
 
       // 1. Ensure Model exists via POST /api/registry/models
       await fetch('/api/registry/models', {
@@ -402,7 +403,7 @@ export default function BaselineOnboardingWizard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           modelId: cleanModelId,
-          name: modelName.trim() || cleanModelId,
+          name: cleanModelName,
           description: description.trim(),
           mode,
           scoreDirection,
@@ -455,7 +456,7 @@ export default function BaselineOnboardingWizard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           version: cleanVersion,
-          name: modelName.trim() || cleanModelId,
+          name: cleanModelName,
           description: description.trim(),
           referenceId,
           mode,
@@ -877,16 +878,21 @@ export default function BaselineOnboardingWizard({
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-400 font-semibold">
-                    Model ID (ภาษาอังกฤษ ตัวพิมพ์เล็ก ตัวเลข และขีดล่าง)
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-slate-400 font-semibold">
+                      Model ID (รหัสภายในระบบ)
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-mono">คงค่าอัตโนมัติ</span>
+                  </div>
                   <input
                     type="text"
                     value={modelId}
-                    onChange={e => setModelId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
-                    placeholder="เช่น car_loan_v2, ext_risk_gbm"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 outline-none focus:border-indigo-500"
+                    readOnly
+                    className="w-full bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-400 cursor-not-allowed select-all"
                   />
+                  <p className="text-[10px] text-slate-500">
+                    รหัสภายในที่ระบบสร้างขึ้นอัตโนมัติสำหรับอ้างอิงไฟล์และ API
+                  </p>
                 </div>
 
                 <div className="space-y-1">
@@ -901,23 +907,26 @@ export default function BaselineOnboardingWizard({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-400 font-semibold">ชื่อโมเดลภาษาไทย</label>
+                  <label className="text-xs text-slate-400 font-semibold">ชื่อที่อ่านง่าย (Display Name)</label>
                   <input
                     type="text"
                     value={modelName}
                     onChange={e => setModelName(e.target.value)}
-                    placeholder="เช่น โมเดลสินเชื่อบุคคลภายนอก v1"
+                    placeholder={`เช่น โมเดล ${modelId || 'สินเชื่อ'}`}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500"
                   />
+                  <p className="text-[10px] text-slate-500">
+                    ชื่อสำหรับแสดงผลบน Dashboard (หากไม่ระบุจะใช้ชื่ออัตโนมัติ)
+                  </p>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-400 font-semibold">คำอธิบาย</label>
+                  <label className="text-xs text-slate-400 font-semibold">คำอธิบายแบบจำลอง (Description)</label>
                   <input
                     type="text"
                     value={description}
                     onChange={e => setDescription(e.target.value)}
-                    placeholder="คำอธิบายโมเดลและที่มาของชุดข้อมูลพัฒนา"
+                    placeholder="คำอธิบายโมเดลและที่มาของชุดข้อมูลพัฒนา (ไม่บังคับ)"
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500"
                   />
                 </div>

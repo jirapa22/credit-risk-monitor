@@ -327,8 +327,17 @@ export function validateBaseline(
   }
 
   if (spec.mode === 'scorecard') {
+    const rawModelTable = baseline.modelTable || spec.modelTable;
+    if ((!spec.scoring || !Array.isArray(spec.scoring.features) || spec.scoring.features.length === 0) && rawModelTable) {
+      spec.scoring = modelTableToScoring(rawModelTable);
+    }
     for (const f of spec.scoring?.features ?? []) {
-      numericFeatureKeys.add(f);
+      const sc = spec.scoring?.scorecard?.[f];
+      const regDef = spec.featureRegistry[f];
+      const isCat = sc?.dataType === 'categorical' || Boolean(sc?.categories && sc.categories.length > 0) || regDef?.dataType === 'categorical';
+      if (!isCat) {
+        numericFeatureKeys.add(f);
+      }
       if (!colSet.has(f)) {
         errors.push({
           code: 'MISSING_SCORECARD_FEATURE',

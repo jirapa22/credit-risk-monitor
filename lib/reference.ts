@@ -307,6 +307,11 @@ export function buildReferenceProfileFromData(
       badCount,
       badRate,
     };
+    file.meta.badCount = badCount;
+    file.meta.badRate = badRate;
+    if (REGISTRY[referenceId]) {
+      REGISTRY[referenceId].meta = meta;
+    }
   }
 
   const hasScorecard = Boolean(
@@ -319,8 +324,8 @@ export function buildReferenceProfileFromData(
     scores = file.rows.map(r => Number(r[scoreColumn])).filter(Number.isFinite);
   } else if (hasScorecard && scoring) {
     scores = file.rows.map(r => {
-      const rec: Record<string, number> = {};
-      for (const f of scoring.features) rec[f] = Number(r[f]);
+      const rec: Record<string, unknown> = {};
+      for (const f of scoring.features) rec[f] = r[f];
       return calculateAScore(scoring, rec);
     });
   }

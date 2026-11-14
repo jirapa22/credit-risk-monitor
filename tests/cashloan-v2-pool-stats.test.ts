@@ -2,14 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseCsv } from '../lib/csv';
-import { importModelTableFromText } from '../lib/scorecardImport';
+import { importModelTableFromText, scoreRecordWithModelTable } from '../lib/scorecardImport';
 import {
   computeDevelopmentStability,
   computeModelTablePoolStats,
 } from '../lib/poolStats';
-import { baselineToModelObject, getEffectiveModel } from '../lib/storage/repositories';
+import {
+  baselineToModelObject,
+  getEffectiveModel,
+  createDraftBaselineVersion,
+  validateBaselineVersion,
+  loadReferenceProfile,
+} from '../lib/storage/repositories';
+import { saveReferenceDatasetBlob, loadReferenceDatasetBlob } from '../lib/storage/blob';
 import { buildReferenceProfileFromData } from '../lib/reference';
 import { validateBaseline } from '../lib/baselineValidation';
+import { calculateAScore } from '../lib/scoring';
+import { calculateAUC, calculateGini, calculateKS, type DataPoint } from '../lib/stats';
+import { buildDriftReport } from '../lib/driftReport';
 
 describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
   const root = process.cwd();
@@ -190,12 +200,12 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
       scoring: imported.scoring,
     };
 
-    const modelObj = baselineToModelObject(baselineVer, rows);
+    const modelObj = baselineToModelObject(baselineVer as any, rows);
     expect(modelObj.baseline.bad_rate).toBeCloseTo(0.1246, 3);
     expect(modelObj.baseline.bad_rate).not.toBe(0);
   });
 
-  it('(6) aligns Wizard validation AUC and Sandbox Baseline Performance at 0.731 (without duplicating Train/Test)', () => {
+  it('(6) aligns Wizard validation AUC and Sandbox Baseline Performance at 0.753 (without duplicating Train/Test)', () => {
     const meta = {
       referenceId: 'cashloan_v2_ref',
       version: '1.0.0',
@@ -232,15 +242,15 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
     // 1. Wizard validation
     const valReport = validateBaseline(baselineVer, { meta, rows });
     expect(valReport.ok).toBe(true);
-    const wizardAuc = valReport.computed.performance.auc;
-    expect(wizardAuc).toBeCloseTo(0.731, 3);
+    const wizardAuc = valReport.computed.performance!.auc;
+    expect(wizardAuc).toBeCloseTo(0.753, 3);
 
     // 2. Model Sandbox baseline performance
-    const modelObj = baselineToModelObject(baselineVer, rows);
+    const modelObj = baselineToModelObject(baselineVer as any, rows);
     expect(modelObj.baseline.performance.overall).toBeDefined();
-    expect(modelObj.baseline.performance.overall.auc).toBeCloseTo(0.731, 3);
-    expect(modelObj.baseline.performance.overall.gini).toBeCloseTo(0.462, 3);
-    expect(modelObj.baseline.performance.overall.ks).toBeCloseTo(0.353, 3);
+    expect(modelObj.baseline.performance.overall.auc).toBeCloseTo(0.753, 3);
+    expect(modelObj.baseline.performance.overall.gini).toBeCloseTo(0.506, 3);
+    expect(modelObj.baseline.performance.overall.ks).toBeCloseTo(0.384, 3);
 
     // Ensure wizard and sandbox AUC match 100%
     expect(wizardAuc).toBeCloseTo(modelObj.baseline.performance.overall.auc, 4);
@@ -293,6 +303,154 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
       color: 'amber',
       dotAnimate: false,
     });
+  });
+
+  it('(8) confirms 3 scoring paths (CSV column, ModelTable scorer, and Scorecard) yield 100% identical scores and AUC 0.753', () => {
+    const labels = rows.map(r => Number(r['default_12m']));
+
+    // (ก) คอลัมน์ credit_score ในไฟล์
+    const scoresA = rows.map(r => Number(r['credit_score']));
+    const ptsA: DataPoint[] = scoresA.map((s, i) => ({ score: s, label: labels[i] }));
+    const aucA = calculateAUC(ptsA, 'higher_is_safer');
+
+    // (ข) ตัวให้คะแนนของตัวนำเข้าตารางโมเดล
+    const scoresB = rows.map(r => scoreRecordWithModelTable(imported.table, r, imported.featureUpdates));
+    const ptsB: DataPoint[] = scoresB.map((s, i) => ({ score: s, label: labels[i] }));
+    const aucB = calculateAUC(ptsB, 'higher_is_safer');
+
+    // (ค) เส้นทาง scoring/scorecard ที่ใช้ตอน validate และ Sandbox
+    const scoring = imported.scoring!;
+    expect(scoring.features.length).toBe(9); // 7 numeric + 2 categorical
+    const scoresC = rows.map(r => {
+      const rec: Record<string, unknown> = {};
+      for (const f of scoring.features) rec[f] = r[f];
+      return calculateAScore(scoring, rec);
+    });
+    const ptsC: DataPoint[] = scoresC.map((s, i) => ({ score: s, label: labels[i] }));
+    const aucC = calculateAUC(ptsC, 'higher_is_safer');
+
+    // Verify all 3 paths yield identical AUC
+    expect(aucA).toBeCloseTo(0.753, 3);
+    expect(aucB).toBeCloseTo(0.753, 3);
+    expect(aucC).toBeCloseTo(0.753, 3);
+    expect(aucA).toBe(aucB);
+    expect(aucB).toBe(aucC);
+
+    // Verify 0 differing rows across all 5,000 samples
+    let diffAB = 0;
+    let diffAC = 0;
+    for (let i = 0; i < rows.length; i++) {
+      if (Math.abs(scoresA[i] - scoresB[i]) > 0.001) diffAB++;
+      if (Math.abs(scoresA[i] - scoresC[i]) > 0.001) diffAC++;
+    }
+    expect(diffAB).toBe(0);
+    expect(diffAC).toBe(0);
+  });
+
+  it('(9) validates fresh wizard onboarding with cashloan_v2, persists mapped label stats, and evaluates m05/m06 label drift', async () => {
+    const refId = `ref_wiz_test_${Date.now()}`;
+    const modelId = `model_wiz_test_${Date.now()}`;
+
+    // Step 1: Upload reference dataset before label column mapping (badCount = 0 initially)
+    const initialMeta = {
+      referenceId: refId,
+      version: '1.0.0',
+      modelId,
+      description: 'Test Cashloan v2 Reference',
+      source: 'upload',
+      createdAt: new Date().toISOString(),
+      rowCount: rows.length,
+      badCount: 0,
+      badRate: 0,
+      periodStart: '',
+      periodEnd: '',
+      columns: Object.keys(rows[0]),
+      sha256: `test_sha_${Date.now()}`,
+    };
+    await saveReferenceDatasetBlob({ meta: initialMeta, rows });
+
+    // Step 2 & 4: Save draft baseline with mapped labelColumn: default_12m
+    await createDraftBaselineVersion(modelId, {
+      version: '1.0.0',
+      mode: 'scorecard',
+      columns: {
+        idColumn: 'app_id',
+        dateColumn: 'app_date',
+        labelColumn: 'default_12m',
+        scoreColumn: 'credit_score',
+      },
+      referenceDatasetId: refId,
+      modelTable: imported.table,
+      scoring: imported.scoring,
+      featureRegistry: imported.featureUpdates as any,
+    });
+
+    // Check that reference dataset blob now has non-zero badCount and badRate
+    const updatedBlob = await loadReferenceDatasetBlob(refId);
+    expect(updatedBlob).toBeDefined();
+    expect(updatedBlob!.meta.badCount).toBe(623);
+    expect(updatedBlob!.meta.badRate).toBeCloseTo(0.1246, 3);
+
+    // Step 5: Validate baseline version
+    const valResult = await validateBaselineVersion(modelId, '1.0.0', { calibrationResamples: 5 });
+    expect(valResult.ok).toBe(true);
+    expect(valResult.report.computed.performance?.auc).toBeCloseTo(0.753, 3);
+
+    // Load reference profile for monitoring / Sandbox
+    const prof = await loadReferenceProfile(refId, valResult.version);
+    expect(prof.hasLabels).toBe(true);
+    expect(prof.meta.badCount).toBe(623);
+    expect(prof.meta.badRate).toBeCloseTo(0.1246, 3);
+
+    // Verify baselineToModelObject carries bad_rate, performance, and ksDecileTable
+    const modelObj = baselineToModelObject(valResult.version, rows);
+    expect(modelObj.baseline.bad_rate).toBeCloseTo(0.1246, 3);
+    expect(modelObj.baseline.performance.overall.auc).toBeCloseTo(0.753, 3);
+    expect(modelObj.baseline.ksDecileTable).toBeDefined();
+    expect(modelObj.baseline.ksDecileTable.length).toBe(10);
+    expect(modelObj.baseline.ksDecileTable[0].decile).toBe('D1');
+    expect(modelObj.baseline.ksDecileTable[0].bad).toBeGreaterThan(0);
+    expect(modelObj.baseline.ksDecileTable[9].decile).toBe('D10');
+    expect(modelObj.baseline.ksDecileTable[9].bad).toBeGreaterThan(0);
+
+    // Step 6: Verify Label Drift on m05 and m06 produces real non-zero metrics
+    const m05Text = readFileSync(join(root, 'samples/cashloan_v2/m05_v2_2025-11_แคมเปญMobileApp.csv'), 'utf8');
+    const { rows: m05Rows } = parseCsv(m05Text);
+    const m05Clean = m05Rows.map((r, i) => ({
+      row: i + 1,
+      id: String(r['app_id'] || i),
+      date: String(r['app_date'] || ''),
+      score: Number(r['credit_score']),
+      label: r['default_12m'] !== undefined ? Number(r['default_12m']) : null,
+      values: {},
+      categories: {},
+    }));
+    const reportM05 = buildDriftReport(prof, valResult.version, { cleanRows: m05Clean as any, rawRows: m05Rows });
+    expect(reportM05.label.status).toBe('CRITICAL');
+    expect(reportM05.label.metrics).toBeDefined();
+    expect(reportM05.label.metrics!.referenceBadRate).toBeCloseTo(0.1246, 3);
+    expect(reportM05.label.metrics!.actualBadRate).toBeCloseTo(0.1885, 3);
+    expect(reportM05.label.metrics!.relativeChange).toBeGreaterThan(0.50); // > +50%
+    expect(reportM05.label.metrics!.pValue).toBeLessThan(0.001);
+
+    const m06Text = readFileSync(join(root, 'samples/cashloan_v2/m06_v2_2025-12_เศรษฐกิจชะลอตัว.csv'), 'utf8');
+    const { rows: m06Rows } = parseCsv(m06Text);
+    const m06Clean = m06Rows.map((r, i) => ({
+      row: i + 1,
+      id: String(r['app_id'] || i),
+      date: String(r['app_date'] || ''),
+      score: Number(r['credit_score']),
+      label: r['default_12m'] !== undefined ? Number(r['default_12m']) : null,
+      values: {},
+      categories: {},
+    }));
+    const reportM06 = buildDriftReport(prof, valResult.version, { cleanRows: m06Clean as any, rawRows: m06Rows });
+    expect(reportM06.label.status).toBe('WARNING');
+    expect(reportM06.label.metrics).toBeDefined();
+    expect(reportM06.label.metrics!.referenceBadRate).toBeCloseTo(0.1246, 3);
+    expect(reportM06.label.metrics!.actualBadRate).toBeCloseTo(0.1550, 3);
+    expect(reportM06.label.metrics!.relativeChange).toBeGreaterThan(0.20); // > +20%
+    expect(reportM06.label.metrics!.pValue).toBeLessThan(0.05);
   });
 });
 

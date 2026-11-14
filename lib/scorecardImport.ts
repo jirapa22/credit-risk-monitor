@@ -900,15 +900,25 @@ export function importModelTableFromRows(
     }
   }
 
-  // Build ScoringConfig from numeric pools if any
+  // Build ScoringConfig from numeric and categorical pools
   const scorecard: Record<string, ScorecardFeature> = {};
   for (const feat of featureOrder) {
     const update = featureUpdates[feat];
-    if (update && update.dataType === 'numeric' && update.binning) {
+    if (!update) continue;
+    if (update.dataType === 'numeric' && update.binning) {
       scorecard[feat] = {
+        dataType: 'numeric',
         bins: update.binning.boundaries,
         points: update.poolPoints,
         bin_labels: update.binning.binLabels,
+      };
+    } else if (update.dataType === 'categorical' && update.categoryPools) {
+      scorecard[feat] = {
+        dataType: 'categorical',
+        bins: [],
+        bin_labels: update.categoryPools.map(p => p.label || p.categories.join('|')),
+        points: update.poolPoints,
+        categories: update.categoryPools.map(p => p.categories),
       };
     }
   }
@@ -1073,6 +1083,41 @@ export function modelTableToScoring(table: ModelTableDefinition): ScoringConfig 
     res.scoring.base_points = table.base_points;
   }
   return res.scoring;
+}
+
+/**
+ * Scores a single record using the ModelTableDefinition directly.
+ */
+export function scoreRecordWithModelTable(
+  table: ModelTableDefinition,
+  record: Record<string, unknown>,
+  featureUpdates?: Record<string, any>,
+): number {
+  const basePoints = table.base_points ?? 0;
+  let score = basePoints;
+  const updates = featureUpdates ?? importModelTableFromRows(table.rows as any).featureUpdates;
+
+  for (const feat of table.features) {
+    const update = updates[feat];
+    if (!update) continue;
+    if (update.dataType === 'numeric') {
+      const numVal = parseNumber(record[feat]);
+      if (Number.isFinite(numVal)) {
+        const bIdx = getBinIndex(numVal, update.binning?.boundaries ?? []);
+        score += update.poolPoints[bIdx] ?? 0;
+      }
+    } else {
+      const rawVal = String(record[feat] ?? '').trim();
+      const pools = update.categoryPools ?? [];
+      const foundIdx = pools.findIndex((p: any) => p.categories.includes(rawVal) || p.label === rawVal);
+      if (foundIdx >= 0) {
+        score += update.poolPoints[foundIdx] ?? 0;
+      } else {
+        score += update.poolPoints[update.poolPoints.length - 1] ?? 0;
+      }
+    }
+  }
+  return score;
 }
 
 

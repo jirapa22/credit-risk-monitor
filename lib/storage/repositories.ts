@@ -294,12 +294,55 @@ export function baselineToModelObject(baseline: BaselineVersion, referenceRows?:
           badRate = +(validLabels.filter(l => l === 1).length / validLabels.length).toFixed(6);
         }
       }
+      let ksDecileTable: any[] = [];
+      if (prof.hasLabels && prof.hasScores && prof.scores.length >= 10) {
+        const paired = prof.scores
+          .map((s, i) => ({ score: s, label: prof.labels[i] }))
+          .filter((p): p is { score: number; label: number } => p.label === 0 || p.label === 1);
+        const totalBads = paired.filter(p => p.label === 1).length;
+        const totalGoods = paired.filter(p => p.label === 0).length;
+        if (totalBads > 0 && totalGoods > 0) {
+          paired.sort((a, b) => b.score - a.score);
+          const totalRows = paired.length;
+          const decileSize = Math.floor(totalRows / 10);
+          let cumB = 0;
+          let cumG = 0;
+          for (let d = 0; d < 10; d++) {
+            const start = d * decileSize;
+            const end = d === 9 ? totalRows : (d + 1) * decileSize;
+            const slice = paired.slice(start, end);
+            const n = slice.length;
+            const bad = slice.filter(p => p.label === 1).length;
+            const good = n - bad;
+            const minScore = slice[slice.length - 1].score;
+            const maxScore = slice[0].score;
+            cumB += bad;
+            cumG += good;
+            const cumBad = +(cumB / totalBads).toFixed(3);
+            const cumGood = +(cumG / totalGoods).toFixed(3);
+            const ks = +Math.abs(cumBad - cumGood).toFixed(3);
+            ksDecileTable.push({
+              decile: `D${d + 1}`,
+              n,
+              bad,
+              good,
+              minScore: +minScore.toFixed(3),
+              maxScore: +maxScore.toFixed(3),
+              badRate: +(bad / n).toFixed(4),
+              cumBad,
+              cumGood,
+              ks,
+            });
+          }
+        }
+      }
       dynamicBaseline = {
         sample_size: prof.meta.rowCount,
         bad_rate: badRate,
         feature_stats,
         score_distribution,
         performance,
+        ...(ksDecileTable.length > 0 ? { ksDecileTable } : {}),
       };
     } catch {
       // Reference profile not registered in memory yet
@@ -859,6 +902,32 @@ export async function createDraftBaselineVersion(
     builtIn: false,
   };
 
+  if (draft.referenceDatasetId && draft.columns.labelColumn) {
+    try {
+      const refBlob = await loadReferenceDatasetBlob(draft.referenceDatasetId);
+      if (refBlob && Array.isArray(refBlob.rows) && refBlob.rows.length > 0) {
+        const lblCol = draft.columns.labelColumn;
+        let badCount = 0;
+        let validLabelCount = 0;
+        for (const r of refBlob.rows) {
+          const v = r[lblCol];
+          if (v === 0 || v === 1 || v === '0' || v === '1') {
+            validLabelCount++;
+            if (Number(v) === 1) badCount++;
+          }
+        }
+        if (validLabelCount > 0) {
+          refBlob.meta.badCount = badCount;
+          refBlob.meta.badRate = +(badCount / validLabelCount).toFixed(6);
+          await saveReferenceDatasetBlob(refBlob);
+          registerReferenceDataset(refBlob.meta, refBlob.rows);
+        }
+      }
+    } catch {
+      // non-fatal
+    }
+  }
+
   const next =
     existingIdx !== -1
       ? stored.map((v, i) => (i === existingIdx ? draft : v))
@@ -920,6 +989,25 @@ export async function validateBaselineVersion(
       },
     };
     return { ok: false, version: { ...target, validationReport: missingRefReport }, report: missingRefReport };
+  }
+
+  if (target.columns?.labelColumn && Array.isArray(refBlob.rows) && refBlob.rows.length > 0) {
+    const lblCol = target.columns.labelColumn;
+    let badCount = 0;
+    let validLabelCount = 0;
+    for (const r of refBlob.rows) {
+      const v = r[lblCol];
+      if (v === 0 || v === 1 || v === '0' || v === '1') {
+        validLabelCount++;
+        if (Number(v) === 1) badCount++;
+      }
+    }
+    if (validLabelCount > 0 && (refBlob.meta.badCount === 0 || refBlob.meta.badRate === 0)) {
+      refBlob.meta.badCount = badCount;
+      refBlob.meta.badRate = +(badCount / validLabelCount).toFixed(6);
+      await saveReferenceDatasetBlob(refBlob);
+      registerReferenceDataset(refBlob.meta, refBlob.rows);
+    }
   }
 
   const report = validateBaseline(target, refBlob);

@@ -61,10 +61,12 @@ export type AnomalyTransform = 'none' | 'log1p';
 export interface ScorecardFeature {
   bins: number[];         // upper-inclusive boundaries: value <= bins[i] → bin i
   bin_labels?: string[];
-  points: number[];       // length = bins.length + 1
+  points: number[];       // length = bins.length + 1 for numeric, or length = categories.length for categorical
   woe?: number[];
   count?: number[];
   bad_rate?: number[];
+  dataType?: 'numeric' | 'categorical';
+  categories?: string[][]; // category lists per bin for categorical features
 }
 
 

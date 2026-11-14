@@ -1,0 +1,1340 @@
+{
+  "ascore_v1/01_clean.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/02_data_error_5pct.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R8b"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R2"
+      }
+    }
+  },
+  "ascore_v1/03_data_error_20pct.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "covariateStatus": "WARNING",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R2"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R2"
+      }
+    }
+  },
+  "ascore_v1/04_schema_break.csv": {
+    "fixed": {
+      "validation": {
+        "ok": false,
+        "totalRows": 500,
+        "validRows": 0,
+        "rejectedRows": 500,
+        "rejectedPct": 100
+      },
+      "drift": {
+        "overallStatus": "N/A",
+        "covariateFeatures": {}
+      },
+      "trigger": {
+        "action": "BLOCKED_INVALID_DATA",
+        "severity": "critical",
+        "matchedRuleId": "R1"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": false,
+        "totalRows": 500,
+        "validRows": 0,
+        "rejectedRows": 500,
+        "rejectedPct": 100
+      },
+      "drift": {
+        "overallStatus": "N/A",
+        "covariateFeatures": {}
+      },
+      "trigger": {
+        "action": "BLOCKED_INVALID_DATA",
+        "severity": "critical",
+        "matchedRuleId": "R1"
+      }
+    }
+  },
+  "ascore_v1/05_rejected_rows.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 450,
+        "rejectedRows": 50,
+        "rejectedPct": 10
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 450,
+        "rejectedRows": 50,
+        "rejectedPct": 10
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    }
+  },
+  "ascore_v1/06_mix_shift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "covariateStatus": "WARNING",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DRIFT",
+        "severity": "warning",
+        "matchedRuleId": "R7"
+      }
+    }
+  },
+  "ascore_v1/07_label_shift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "CRITICAL"
+      },
+      "trigger": {
+        "action": "RECALIBRATE",
+        "severity": "warning",
+        "matchedRuleId": "R5"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "WARNING",
+        "labelStatus": "CRITICAL"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    }
+  },
+  "ascore_v1/08_concept_shift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "CRITICAL",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONSIDER_RETRAIN",
+        "severity": "critical",
+        "matchedRuleId": "R4"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "CRITICAL",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONSIDER_RETRAIN",
+        "severity": "critical",
+        "matchedRuleId": "R4"
+      }
+    }
+  },
+  "ascore_v1/09_multivariate.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R8b"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R2"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_01.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_02.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "WARNING",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_03.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_04.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "WARNING",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_05.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_06.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_07.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_08.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_09.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DRIFT",
+        "severity": "warning",
+        "matchedRuleId": "R7"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_10.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONSIDER_RETRAIN",
+        "severity": "critical",
+        "matchedRuleId": "R6"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_11.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "covariateStatus": "WARNING",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONSIDER_RETRAIN",
+        "severity": "critical",
+        "matchedRuleId": "R6"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_12.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "covariateStatus": "WARNING",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONSIDER_RETRAIN",
+        "severity": "critical",
+        "matchedRuleId": "R6"
+      }
+    }
+  },
+  "ext_model/01_clean.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ext_model/02_unseen_category.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    }
+  },
+  "ext_model/03_category_shift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DRIFT",
+        "severity": "warning",
+        "matchedRuleId": "R7"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DRIFT",
+        "severity": "warning",
+        "matchedRuleId": "R7"
+      }
+    }
+  },
+  "ext_model/04_missing_drift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "CRITICAL",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "CRITICAL",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    }
+  },
+  "new_model_auto_loan/monitor_clean.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "new_model_auto_loan/monitor_drift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "CRITICAL"
+      },
+      "trigger": {
+        "action": "RECALIBRATE",
+        "severity": "warning",
+        "matchedRuleId": "R5"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {},
+        "missingStatus": "STABLE",
+        "conceptStatus": "WARNING",
+        "labelStatus": "CRITICAL"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DRIFT",
+        "severity": "warning",
+        "matchedRuleId": "R7"
+      }
+    }
+  }
+}

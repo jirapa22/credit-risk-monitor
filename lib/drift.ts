@@ -39,6 +39,7 @@ export interface DriftDetectionOptions {
   idColumn?: string | null;
   dateColumn?: string | null;
   actualCategories?: Record<string, string[]>;
+  scoring?: ScoringConfig | null;
 }
 
 /** Which features get a CSI, and with which bins/threshold. */
@@ -70,10 +71,18 @@ export function resolveCsiFeatures(
     categories?: string[];
     threshold: number;
     skipped?: string;
+    usedInModel: boolean;
+    importance?: number;
+    binningSource: 'pool ของโมเดล' | 'แบ่งช่วงอัตโนมัติ (AUTO_QUANTILE_BINS)';
+    poolPoints?: number[];
+    categoryPools?: Array<{ label: string; categories: string[] }>;
   }[] = [];
   for (const key of keys) {
     const def = registry[key];
     const t = thresholds.csi_features?.[key];
+    const usedInModel = def?.usedInModel !== false;
+    const importance = def?.importance;
+
     if (def?.dataType === 'categorical') {
       const refCatVals = reference.categoricalFeatures?.[key];
       const baseCats = reference.categorySpecs?.[key]?.categories ?? [];
@@ -87,24 +96,59 @@ export function resolveCsiFeatures(
           categories: [],
           threshold: 0,
           skipped: 'ไม่มีตัวแปรนี้ใน Reference Dataset',
+          usedInModel,
+          importance,
+          binningSource: 'แบ่งช่วงอัตโนมัติ (AUTO_QUANTILE_BINS)',
         });
         continue;
       }
+
+      let binningSource: 'pool ของโมเดล' | 'แบ่งช่วงอัตโนมัติ (AUTO_QUANTILE_BINS)' = 'แบ่งช่วงอัตโนมัติ (AUTO_QUANTILE_BINS)';
+      let labels: string[];
+      if (def?.categoryPools && def.categoryPools.length > 0) {
+        binningSource = 'pool ของโมเดล';
+        labels = def.categoryPools.map(p => p.label);
+      } else {
+        labels = baseCats.map(formatCategoryDisplayLabel);
+      }
+
       out.push({
         key,
         displayName: t?.label || def?.displayName || key,
         dataType: 'categorical',
         source: t?.source || def?.source,
         bins: [],
-        labels: baseCats.map(formatCategoryDisplayLabel),
+        labels,
         categories: baseCats,
         threshold: t?.threshold ?? def?.csiThreshold ?? 0.10,
+        usedInModel,
+        importance,
+        binningSource,
+        poolPoints: def?.poolPoints,
+        categoryPools: def?.categoryPools,
       });
       continue;
     }
+
     // User-editable thresholds.csi_features takes precedence over registry defaults.
     let bins = (t?.bins?.length ? t.bins : def?.binning?.boundaries) ?? [];
     let labels = (t?.bins?.length ? t.bin_labels : def?.binning?.binLabels) ?? [];
+    let binningSource: 'pool ของโมเดล' | 'แบ่งช่วงอัตโนมัติ (AUTO_QUANTILE_BINS)' = 'แบ่งช่วงอัตโนมัติ (AUTO_QUANTILE_BINS)';
+    let poolPoints = def?.poolPoints;
+
+    const scFeat = options?.scoring?.scorecard?.[key];
+    if (bins.length > 0) {
+      binningSource = 'pool ของโมเดล';
+    } else if (scFeat?.bins && scFeat.bins.length > 0) {
+      bins = [...scFeat.bins];
+      labels = scFeat.bin_labels ? [...scFeat.bin_labels] : defaultBinLabels(bins);
+      binningSource = 'pool ของโมเดล';
+    }
+
+    if (poolPoints === undefined && scFeat?.points && scFeat.points.length > 0) {
+      poolPoints = [...scFeat.points];
+    }
+
     const refVals = reference.features[key];
     if (!refVals) {
       out.push({
@@ -115,10 +159,16 @@ export function resolveCsiFeatures(
         labels: [],
         threshold: 0,
         skipped: 'ไม่มีตัวแปรนี้ใน Reference Dataset',
+        usedInModel,
+        importance,
+        binningSource,
       });
       continue;
     }
-    if (bins.length === 0) bins = quantileBoundaries(refVals, 10);
+    if (bins.length === 0) {
+      bins = quantileBoundaries(refVals, 10);
+      binningSource = 'แบ่งช่วงอัตโนมัติ (AUTO_QUANTILE_BINS)';
+    }
     if (!labels || labels.length !== bins.length + 1) labels = defaultBinLabels(bins);
     out.push({
       key,
@@ -127,6 +177,10 @@ export function resolveCsiFeatures(
       source: t?.source || def?.source,
       bins, labels,
       threshold: t?.threshold ?? def?.csiThreshold ?? 0.10,
+      usedInModel,
+      importance,
+      binningSource,
+      poolPoints,
     });
   }
   return out;
@@ -168,6 +222,7 @@ export function runDriftDetection(
         reference.categoricalFeatures?.[f.key] ?? [],
         actualCats,
         f.categories ?? [],
+        f.categoryPools,
       );
       csi[f.key] = {
         value: catPsi.value,
@@ -176,6 +231,10 @@ export function runDriftDetection(
         bins: catPsi.bins.map((b, i) => ({ label: catPsi.labels[i] ?? `Cat ${i + 1}`, ...b })),
         displayName: f.displayName,
         source: f.source,
+        binningSource: f.binningSource,
+        usedInModel: f.usedInModel,
+        importance: f.importance,
+        poolPoints: f.poolPoints,
       };
       continue;
     }
@@ -185,6 +244,10 @@ export function runDriftDetection(
       ...stability(reference.features[f.key], actual, f.bins, f.labels, f.threshold, critical),
       displayName: f.displayName,
       source: f.source,
+      binningSource: f.binningSource,
+      usedInModel: f.usedInModel,
+      importance: f.importance,
+      poolPoints: f.poolPoints,
     };
   }
 

@@ -46,6 +46,14 @@ export interface FeatureDefinition {
   csiThreshold?: number | null;
   /** Transform applied before univariate outlier stats (IQR/MAD). Default 'none'. */
   anomalyTransform?: AnomalyTransform;
+  /** Whether the feature is an active input in the model (true) or an external/pre-drift signal (false). Default true. */
+  usedInModel?: boolean;
+  /** Importance score of the variable (e.g. Information Value IV, Gini contribution, or feature weight). */
+  importance?: number;
+  /** Categorical pools: grouping multiple raw category values into 1 pool */
+  categoryPools?: Array<{ label: string; categories: string[] }>;
+  /** Score points per pool/bin (optional) - used to calculate score impact in points. Length must match pools count. */
+  poolPoints?: number[];
 }
 
 export type AnomalyTransform = 'none' | 'log1p';
@@ -57,6 +65,49 @@ export interface ScorecardFeature {
   woe?: number[];
   count?: number[];
   bad_rate?: number[];
+}
+
+
+export interface ModelCard {
+  name?: string;
+  version?: string;
+  developer?: string;
+  developedAt?: string;
+  devPeriodStart?: string;
+  devPeriodEnd?: string;
+  sampleSize?: number;
+  purpose?: string;
+  scoreScale?: {
+    pdo?: number;
+    baseScore?: number;
+    baseOdds?: number;
+    direction?: 'higher_is_safer' | 'higher_is_riskier';
+  };
+  cutoff?: number;
+  notes?: string;
+}
+
+export interface SplitPerformanceStats {
+  auc?: number;
+  gini?: number;
+  ks?: number;
+  badRate?: number;
+  n?: number;
+  period?: string;
+}
+
+export interface DevelopmentPerformance {
+  train?: SplitPerformanceStats;
+  test?: SplitPerformanceStats;
+  oot?: SplitPerformanceStats;
+  overall?: SplitPerformanceStats;
+}
+
+export interface DevelopmentStats {
+  source?: 'computed_from_reference' | 'user_entered' | 'imported';
+  reported?: DevelopmentPerformance;
+  computed?: DevelopmentPerformance;
+  diff?: Record<string, any>;
 }
 
 export interface ScoringConfig {
@@ -184,6 +235,10 @@ export interface DriftConfig {
   /** Relative Gini drop thresholds (0.10 = 10%, 0.25 = 25%). */
   giniRelDropWarning?: number;
   giniRelDropCritical?: number;
+  /** Max severity cap for out-of-model features (usedInModel=false). Defaults to 'WARNING'. */
+  outOfModelMaxSeverity?: DriftStatus;
+  /** Minimum pool proportion threshold below which a warning is issued (default 0.05 = 5%). */
+  minPoolProportion?: number;
 }
 
 export interface BinContribution {
@@ -200,6 +255,12 @@ export interface StabilityResult {
   status: DriftSectionStatus;
   threshold: { warning: number; critical: number };
   bins: BinContribution[];
+  displayName?: string;
+  source?: string;
+  binningSource?: 'pool ของโมเดล' | 'แบ่งช่วงอัตโนมัติ (AUTO_QUANTILE_BINS)';
+  usedInModel?: boolean;
+  importance?: number;
+  poolPoints?: number[];
 }
 
 export interface DriftResult {
@@ -300,6 +361,24 @@ export interface CovariateFeatureReport {
   wasserstein: WassersteinResult | null;
   chiSquare?: ChiSquareResult | null;
   jensenShannon?: JensenShannonResult | null;
+  usedInModel?: boolean;
+  importance?: number;
+  binningSource?: 'pool ของโมเดล' | 'แบ่งช่วงอัตโนมัติ (AUTO_QUANTILE_BINS)';
+  poolCount?: number;
+  poolProportions?: Array<{
+    label: string;
+    actualPct: number;
+    expectedPct: number;
+    isSmallPool: boolean;
+  }>;
+  hasSmallPool?: boolean;
+  scoreImpactPoints?: number;
+  scoreImpactContribution?: Array<{
+    binLabel: string;
+    deltaPct: number;
+    points: number;
+    impact: number;
+  }>;
 }
 
 export interface MissingFeatureReport {
@@ -393,6 +472,21 @@ export interface DriftReportSummaryMetrics {
   notAvailable: { section: string; reason: string }[];
 }
 
+
+export interface DevBenchmarkRow {
+  metric: 'AUC' | 'KS' | 'Gini' | 'Bad Rate';
+  devValue: number | null;
+  currentValue: number | null;
+  delta: number | null;
+  status: 'OK' | 'WARN' | 'ALERT' | 'NOT_AVAILABLE';
+}
+
+export interface DevBenchmarkReport {
+  devSource: 'computed' | 'reported' | 'none';
+  hasCurrentLabels: boolean;
+  rows: DevBenchmarkRow[];
+}
+
 export interface DriftReport {
   model: ModelVersionRef;
   referenceId: string;
@@ -401,7 +495,12 @@ export interface DriftReport {
   covariate: DriftReportSection<{
     features: Record<string, CovariateFeatureReport>;
     score: CovariateFeatureReport;
+    inModelFeatures?: Record<string, CovariateFeatureReport>;
+    outOfModelFeatures?: Record<string, CovariateFeatureReport>;
+    assumedAllInModel?: boolean;
+    totalScoreImpactPoints?: number;
   }>;
+  devBenchmark?: DevBenchmarkReport;
   missing: DriftReportSection<{
     features: Record<string, MissingFeatureReport>;
     threshold: { warningDelta: number; criticalDelta: number };
@@ -792,6 +891,8 @@ export interface BaselineVersion {
   calibratedThresholds?: CalibratedThresholds;
   validationReport?: BaselineValidationReport | null;
   onboardingLog?: OnboardingLogEntry[];
+  modelCard?: ModelCard;
+  developmentStats?: DevelopmentStats;
   createdAt: string;
   createdBy: string;
   statusHistory: BaselineStatusHistoryEntry[];

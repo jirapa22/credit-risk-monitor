@@ -225,6 +225,8 @@ function normalizeBaselineSpec(baseline: BaselineVersion | any) {
     thresholds,
     referenceDatasetId,
     anomalyConfig: baseline.anomalyConfig,
+    modelCard: baseline.modelCard,
+    developmentStats: baseline.developmentStats,
   };
 }
 
@@ -394,6 +396,51 @@ export function validateBaseline(
           code: 'INVALID_SCORE_COLUMN',
           field: spec.scoreColumn,
           message: `คอลัมน์คะแนน "${spec.scoreColumn}" แปลงเป็นตัวเลขได้เพียง ${(rate * 100).toFixed(1)}% (< 95%)`,
+        });
+      }
+    }
+  }
+
+  // ── 4b. Model Card & Development Statistics validation ───────────────────
+  const modelCard = spec.modelCard || baseline.modelCard;
+  if (modelCard) {
+    if (modelCard.sampleSize !== undefined && modelCard.sampleSize <= 0) {
+      warnings.push({
+        code: 'INVALID_SAMPLE_SIZE',
+        message: 'sampleSize ใน Model Card ต้องมีค่ามากกว่า 0',
+      });
+    }
+  }
+
+  const devStats = spec.developmentStats || baseline.developmentStats;
+  if (devStats?.reported) {
+    const rep = devStats.reported;
+    const splits = ['train', 'test', 'oot', 'overall'] as const;
+    for (const sp of splits) {
+      const s = rep[sp];
+      if (!s) continue;
+      if (s.auc !== undefined && (s.auc < 0.5 || s.auc > 1.0)) {
+        warnings.push({
+          code: 'OUT_OF_RANGE_DEV_STAT',
+          message: `ค่า AUC (${s.auc}) ของชุด ${sp} อยู่นอกช่วงปกติ (0.50–1.00)`,
+        });
+      }
+      if (s.gini !== undefined && (s.gini < -1.0 || s.gini > 1.0)) {
+        warnings.push({
+          code: 'OUT_OF_RANGE_DEV_STAT',
+          message: `ค่า Gini (${s.gini}) ของชุด ${sp} อยู่นอกช่วงปกติ (-1.00 ถึง 1.00)`,
+        });
+      }
+      if (s.ks !== undefined && (s.ks < 0.0 || s.ks > 1.0)) {
+        warnings.push({
+          code: 'OUT_OF_RANGE_DEV_STAT',
+          message: `ค่า KS (${s.ks}) ของชุด ${sp} อยู่นอกช่วงปกติ (0.00–1.00)`,
+        });
+      }
+      if (s.badRate !== undefined && (s.badRate < 0.0 || s.badRate > 1.0)) {
+        warnings.push({
+          code: 'OUT_OF_RANGE_DEV_STAT',
+          message: `ค่า Bad Rate (${s.badRate}) ของชุด ${sp} อยู่นอกช่วงปกติ (0.00–1.00)`,
         });
       }
     }

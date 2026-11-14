@@ -134,7 +134,26 @@ export function psiForCategories(
   baseValues: (string | null)[],
   actualValues: (string | null)[],
   baseCategories: string[],
+  categoryPools?: Array<{ label: string; categories: string[] }>,
 ): CategoricalPsiBreakdown {
+  if (categoryPools && categoryPools.length > 0) {
+    const catToPool = new Map<string, string>();
+    for (const p of categoryPools) {
+      for (const c of p.categories) {
+        catToPool.set(c, p.label);
+      }
+    }
+    const mapToPool = (v: string | null): string => {
+      if (!v) return '__OTHER__';
+      return catToPool.get(v) ?? '__OTHER__';
+    };
+    const mappedBase = baseValues.map(mapToPool);
+    const mappedActual = actualValues.map(mapToPool);
+    const poolCats = categoryPools.map(p => p.label);
+    if (!poolCats.includes('__OTHER__')) poolCats.push('__OTHER__');
+
+    return psiForCategories(mappedBase, mappedActual, poolCats);
+  }
   const validBase = baseValues.filter((v): v is string => typeof v === 'string' && v.length > 0);
   const validActual = actualValues.filter((v): v is string => typeof v === 'string' && v.length > 0);
   if (validBase.length === 0 || validActual.length === 0) {

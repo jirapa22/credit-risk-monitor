@@ -14,12 +14,15 @@
  */
 import type {
   AnomalyTransform,
+  BaselineMode,
+  BaselineValidationReport,
   CalibratedThresholds,
   CategoryProportionEntry,
   ConceptBinBadRate,
   ConceptFeatureReport,
   ConceptPerformanceReport,
   CovariateFeatureReport,
+  DevelopmentStats,
   DistributionProfile,
   DistributionStats,
   DriftConfig,
@@ -32,8 +35,10 @@ import type {
   KsTwoSampleResult,
   LabelDriftMetrics,
   MissingFeatureReport,
+  ModelCard,
   MonitoringThresholds,
   DriftResult,
+  ScoringConfig,
   StabilityResult,
   WassersteinResult,
 } from './types';
@@ -77,6 +82,8 @@ export const DEFAULT_DRIFT_CONFIG: Required<DriftConfig> = {
   minBadsPerBin: 5,
   giniRelDropWarning: 0.10,      // -10% relative
   giniRelDropCritical: 0.25,     // -25% relative
+  outOfModelMaxSeverity: 'WARNING',
+  minPoolProportion: 0.05,
 };
 
 const DEFAULT_THRESHOLDS: MonitoringThresholds = {
@@ -122,6 +129,8 @@ export function resolveDriftConfig(model: any): Required<DriftConfig> {
     minBadsPerBin: dc.minBadsPerBin ?? DEFAULT_DRIFT_CONFIG.minBadsPerBin,
     giniRelDropWarning: dc.giniRelDropWarning ?? DEFAULT_DRIFT_CONFIG.giniRelDropWarning,
     giniRelDropCritical: dc.giniRelDropCritical ?? DEFAULT_DRIFT_CONFIG.giniRelDropCritical,
+    outOfModelMaxSeverity: dc.outOfModelMaxSeverity ?? DEFAULT_DRIFT_CONFIG.outOfModelMaxSeverity,
+    minPoolProportion: dc.minPoolProportion ?? DEFAULT_DRIFT_CONFIG.minPoolProportion,
   };
 }
 
@@ -348,6 +357,12 @@ interface ResolvedModelSpec {
   thresholds: MonitoringThresholds;
   driftConfig: Required<DriftConfig>;
   calibratedThresholds?: CalibratedThresholds;
+  mode?: BaselineMode;
+  scoring?: ScoringConfig;
+  modelCard?: ModelCard;
+  developmentStats?: DevelopmentStats;
+  validationReport?: BaselineValidationReport | null;
+  model?: any;
 }
 
 function resolveModelSpec(model: any): ResolvedModelSpec {
@@ -413,6 +428,12 @@ function resolveModelSpec(model: any): ResolvedModelSpec {
     thresholds,
     driftConfig: resolveDriftConfig(model),
     calibratedThresholds: model?.calibratedThresholds ?? model?.baseline?.calibratedThresholds,
+    mode: model?.mode,
+    scoring: model?.scoring,
+    modelCard: model?.modelCard,
+    developmentStats: model?.developmentStats,
+    validationReport: model?.validationReport,
+    model,
   };
 }
 
@@ -485,6 +506,7 @@ export function buildDriftReport(
     idColumn: spec.idColumn,
     dateColumn: spec.dateColumn,
     actualCategories,
+    scoring: (spec.model?.scoring ?? spec.scoring) as any,
   };
 
   // Reuse PSI/CSI from drift.ts (only call runDriftDetection if caller didn't pass driftResult)
@@ -588,6 +610,39 @@ export function buildDriftReport(
       triggeredMetrics.push(`Wasserstein=${wasserstein.scaled.toFixed(4)} (${wasserstein.status})`);
     }
 
+    const fUsedInModel = csiEntry?.usedInModel ?? (def?.usedInModel !== false);
+    const fImportance = csiEntry?.importance ?? def?.importance;
+    const minPoolProp = spec.driftConfig?.minPoolProportion ?? 0.05;
+    const minPoolPct = minPoolProp * 100;
+    const poolProportions = (csiEntry?.bins ?? []).map(b => ({
+      label: b.label,
+      expectedPct: b.expectedPct,
+      actualPct: b.actualPct,
+      isSmallPool: b.expectedPct < minPoolPct || b.actualPct < minPoolPct,
+    }));
+    const poolCount = poolProportions.length;
+    const hasSmallPool = poolProportions.some(p => p.isSmallPool);
+
+    const poolPoints = csiEntry?.poolPoints ?? def?.poolPoints;
+    let scoreImpactPoints: number | undefined;
+    let scoreImpactContribution: Array<{ binLabel: string; deltaPct: number; points: number; impact: number }> | undefined;
+    if (poolPoints && poolPoints.length === csiEntry?.bins?.length) {
+      let sumImpact = 0;
+      scoreImpactContribution = csiEntry.bins.map((b, idx) => {
+        const deltaProp = (b.actualPct - b.expectedPct) / 100;
+        const pts = poolPoints[idx] ?? 0;
+        const impact = +(deltaProp * pts).toFixed(2);
+        sumImpact += impact;
+        return {
+          binLabel: b.label,
+          deltaPct: +(b.actualPct - b.expectedPct).toFixed(2),
+          points: pts,
+          impact,
+        };
+      });
+      scoreImpactPoints = +sumImpact.toFixed(2);
+    }
+
     covariateFeatures[key] = {
       key,
       displayName,
@@ -604,6 +659,14 @@ export function buildDriftReport(
       distributionProfile,
       ks,
       wasserstein,
+      usedInModel: fUsedInModel,
+      importance: fImportance,
+      binningSource: csiEntry?.binningSource ?? (def?.binning?.boundaries?.length ? 'pool ของโมเดล' : 'แบ่งช่วงอัตโนมัติ (AUTO_QUANTILE_BINS)'),
+      poolCount,
+      poolProportions,
+      hasSmallPool,
+      scoreImpactPoints,
+      scoreImpactContribution,
     };
   }
 
@@ -823,19 +886,58 @@ export function buildDriftReport(
     };
   }
 
-  const availableCovariatesFixed = [
-    ...Object.values(covariateFeatures).map(c => c.statusFixed ?? c.status),
+  const inModelFeatures: Record<string, CovariateFeatureReport> = {};
+  const outOfModelFeatures: Record<string, CovariateFeatureReport> = {};
+  for (const [k, f] of Object.entries(covariateFeatures)) {
+    if (f.usedInModel !== false) {
+      inModelFeatures[k] = f;
+    } else {
+      outOfModelFeatures[k] = f;
+    }
+  }
+
+  const isScoreColumnMode = spec.mode === 'score_column';
+  const hasAnyExplicitOutOfModel = Object.values(spec.registry).some(d => d.usedInModel === false);
+  const assumedAllInModel = Boolean(isScoreColumnMode && !hasAnyExplicitOutOfModel);
+
+  const outOfModelMax: DriftStatus = spec.driftConfig?.outOfModelMaxSeverity ?? 'WARNING';
+  const capRank = (st: DriftStatus): DriftStatus => {
+    return STATUS_RANK[st] > STATUS_RANK[outOfModelMax] ? outOfModelMax : st;
+  };
+
+  const inModelStatusesFixed = [
+    ...Object.values(inModelFeatures).map(c => c.statusFixed ?? c.status),
     scoreCovariate.statusFixed ?? scoreCovariate.status,
   ].filter((s): s is DriftStatus => s !== 'NOT_AVAILABLE');
+
+  const outOfModelStatusesFixed = Object.values(outOfModelFeatures)
+    .map(c => c.statusFixed ?? c.status)
+    .filter((s): s is DriftStatus => s !== 'NOT_AVAILABLE')
+    .map(capRank);
+
+  const availableCovariatesFixed = [...inModelStatusesFixed, ...outOfModelStatusesFixed];
   const covariateStatusFixed: DriftSectionStatus =
     availableCovariatesFixed.length === 0 ? 'NOT_AVAILABLE' : worstStatus(availableCovariatesFixed);
 
-  const availableCovariatesCalibrated = [
-    ...Object.values(covariateFeatures).map(c => c.statusCalibrated ?? c.status),
+  const inModelStatusesCalibrated = [
+    ...Object.values(inModelFeatures).map(c => c.statusCalibrated ?? c.status),
     scoreCovariate.statusCalibrated ?? scoreCovariate.status,
   ].filter((s): s is DriftStatus => s !== 'NOT_AVAILABLE');
+
+  const outOfModelStatusesCalibrated = Object.values(outOfModelFeatures)
+    .map(c => c.statusCalibrated ?? c.status)
+    .filter((s): s is DriftStatus => s !== 'NOT_AVAILABLE')
+    .map(capRank);
+
+  const availableCovariatesCalibrated = [...inModelStatusesCalibrated, ...outOfModelStatusesCalibrated];
   const covariateStatusCalibrated: DriftSectionStatus =
     availableCovariatesCalibrated.length === 0 ? 'NOT_AVAILABLE' : worstStatus(availableCovariatesCalibrated);
+
+  let totalScoreImpactPoints: number | undefined;
+  const featuresWithImpact = Object.values(covariateFeatures).filter(f => f.scoreImpactPoints !== undefined);
+  if (featuresWithImpact.length > 0) {
+    totalScoreImpactPoints = +featuresWithImpact.reduce((sum, f) => sum + (f.scoreImpactPoints ?? 0), 0).toFixed(2);
+  }
 
   const covariateStatus: DriftSectionStatus =
     thresholdMode === 'calibrated' ? covariateStatusCalibrated : covariateStatusFixed;
@@ -1466,6 +1568,82 @@ export function buildDriftReport(
     notAvailable,
   };
 
+  // ── Development vs Current Month Benchmark ─────────────────────────────────
+  let devBenchmark: any = undefined;
+  const devPerf = spec.developmentStats?.reported?.overall
+    ?? spec.developmentStats?.reported?.train
+    ?? (spec.validationReport?.computed?.performance ? {
+        auc: spec.validationReport.computed.performance.auc,
+        gini: spec.validationReport.computed.performance.gini,
+        ks: spec.validationReport.computed.performance.ks,
+        badRate: spec.validationReport.computed.badRate ?? null,
+      } : undefined)
+    ?? (conceptSection.metrics?.performance?.reference ? {
+        auc: conceptSection.metrics.performance.reference.auc,
+        gini: conceptSection.metrics.performance.reference.gini,
+        ks: conceptSection.metrics.performance.reference.ks,
+        badRate: labelSection.metrics?.referenceBadRate ?? reference.meta?.badRate ?? null,
+      } : undefined);
+
+  if (devPerf) {
+    const perfAct = conceptSection.metrics?.performance?.actual;
+    const hasCurrentLabels = Boolean(labelSection.metrics && perfAct);
+    const curAuc = perfAct?.auc ?? null;
+    const curKs = perfAct?.ks ?? null;
+    const curGini = perfAct?.gini ?? null;
+    const curBadRate = labelSection.metrics?.actualBadRate ?? null;
+
+    const devAuc = devPerf.auc ?? null;
+    const devKs = devPerf.ks ?? null;
+    const devGini = devPerf.gini ?? null;
+    const devBadRate = devPerf.badRate ?? null;
+
+    const rows = [
+      {
+        metric: 'AUC',
+        devValue: devAuc,
+        currentValue: curAuc,
+        delta: devAuc !== null && curAuc !== null ? +(curAuc - devAuc).toFixed(4) : null,
+        status: !hasCurrentLabels || devAuc === null || curAuc === null ? 'NOT_AVAILABLE'
+          : (devAuc - curAuc > 0.10 ? 'ALERT' : devAuc - curAuc > 0.05 ? 'WARN' : 'OK'),
+      },
+      {
+        metric: 'KS',
+        devValue: devKs,
+        currentValue: curKs,
+        delta: devKs !== null && curKs !== null ? +(curKs - devKs).toFixed(4) : null,
+        status: !hasCurrentLabels || devKs === null || curKs === null ? 'NOT_AVAILABLE'
+          : (devKs - curKs > 0.10 ? 'ALERT' : devKs - curKs > 0.05 ? 'WARN' : 'OK'),
+      },
+      {
+        metric: 'Gini',
+        devValue: devGini,
+        currentValue: curGini,
+        delta: devGini !== null && curGini !== null ? +(curGini - devGini).toFixed(4) : null,
+        status: !hasCurrentLabels || devGini === null || curGini === null ? 'NOT_AVAILABLE'
+          : (devGini !== 0 && (devGini - curGini) / Math.abs(devGini) >= (spec.driftConfig?.giniRelDropCritical ?? 0.25) ? 'ALERT'
+             : devGini !== 0 && (devGini - curGini) / Math.abs(devGini) >= (spec.driftConfig?.giniRelDropWarning ?? 0.10) ? 'WARN'
+             : 'OK'),
+      },
+      {
+        metric: 'Bad Rate',
+        devValue: devBadRate,
+        currentValue: curBadRate,
+        delta: devBadRate !== null && curBadRate !== null ? +(curBadRate - devBadRate).toFixed(4) : null,
+        status: !hasCurrentLabels || devBadRate === null || curBadRate === null ? 'NOT_AVAILABLE'
+          : (devBadRate !== 0 && Math.abs(curBadRate - devBadRate) / devBadRate >= (spec.driftConfig?.labelRelChangeCritical ?? 0.50) ? 'ALERT'
+             : devBadRate !== 0 && Math.abs(curBadRate - devBadRate) / devBadRate >= (spec.driftConfig?.labelRelChangeWarning ?? 0.20) ? 'WARN'
+             : 'OK'),
+      },
+    ];
+
+    devBenchmark = {
+      devSource: spec.developmentStats?.reported ? 'reported' : 'computed',
+      hasCurrentLabels,
+      rows,
+    };
+  }
+
   return {
     model: { modelId: spec.modelId, configVersion: spec.configVersion },
     referenceId: reference.meta.referenceId,
@@ -1479,8 +1657,13 @@ export function buildDriftReport(
       metrics: {
         features: covariateFeatures,
         score: scoreCovariate,
+        inModelFeatures,
+        outOfModelFeatures,
+        assumedAllInModel,
+        totalScoreImpactPoints,
       },
     },
+    devBenchmark,
     missing: {
       status: missingStatus,
       statusFixed: missingStatus,

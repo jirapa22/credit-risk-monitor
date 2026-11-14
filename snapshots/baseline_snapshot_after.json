@@ -1,0 +1,3216 @@
+{
+  "ascore_v1/01_clean.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0131,
+            "ksD": 0.0338,
+            "wasserstein": 0.0475,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0131,
+            "ksD": 0.0338,
+            "wasserstein": 0.0475,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/02_data_error_5pct.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.0306,
+            "ksD": 0.0698,
+            "wasserstein": 0.3054,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R8b"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "CRITICAL",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.0306,
+            "ksD": 0.0698,
+            "wasserstein": 0.3054,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R2"
+      }
+    }
+  },
+  "ascore_v1/03_data_error_20pct.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "overallStatusFixed": "WARNING",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "WARNING",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "WARNING",
+            "statusFixed": "WARNING",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.1662,
+            "ksD": 0.2076,
+            "wasserstein": 1.0445,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R2"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "WARNING",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "CRITICAL",
+            "statusFixed": "WARNING",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.1662,
+            "ksD": 0.2076,
+            "wasserstein": 1.0445,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R2"
+      }
+    }
+  },
+  "ascore_v1/04_schema_break.csv": {
+    "fixed": {
+      "validation": {
+        "ok": false,
+        "totalRows": 500,
+        "validRows": 0,
+        "rejectedRows": 500,
+        "rejectedPct": 100
+      },
+      "drift": {
+        "overallStatus": "N/A",
+        "covariateFeatures": {}
+      },
+      "trigger": {
+        "action": "BLOCKED_INVALID_DATA",
+        "severity": "critical",
+        "matchedRuleId": "R1"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": false,
+        "totalRows": 500,
+        "validRows": 0,
+        "rejectedRows": 500,
+        "rejectedPct": 100
+      },
+      "drift": {
+        "overallStatus": "N/A",
+        "covariateFeatures": {}
+      },
+      "trigger": {
+        "action": "BLOCKED_INVALID_DATA",
+        "severity": "critical",
+        "matchedRuleId": "R1"
+      }
+    }
+  },
+  "ascore_v1/05_rejected_rows.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 450,
+        "rejectedRows": 50,
+        "rejectedPct": 10
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0093,
+            "ksD": 0.0257,
+            "wasserstein": 0.0369,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0055,
+            "ksD": 0.0315,
+            "wasserstein": 0.0467,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0024,
+            "ksD": 0.0263,
+            "wasserstein": 0.0417,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 450,
+        "rejectedRows": 50,
+        "rejectedPct": 10
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0093,
+            "ksD": 0.0257,
+            "wasserstein": 0.0369,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0055,
+            "ksD": 0.0315,
+            "wasserstein": 0.0467,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0024,
+            "ksD": 0.0263,
+            "wasserstein": 0.0417,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    }
+  },
+  "ascore_v1/06_mix_shift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "overallStatusFixed": "WARNING",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "WARNING",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "WARNING",
+            "statusFixed": "WARNING",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.1399,
+            "ksD": 0.1902,
+            "wasserstein": 0.2768,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "WARNING",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "CRITICAL",
+            "statusFixed": "WARNING",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.1399,
+            "ksD": 0.1902,
+            "wasserstein": 0.2768,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DRIFT",
+        "severity": "warning",
+        "matchedRuleId": "R7"
+      }
+    }
+  },
+  "ascore_v1/07_label_shift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0131,
+            "ksD": 0.0338,
+            "wasserstein": 0.0475,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "CRITICAL"
+      },
+      "trigger": {
+        "action": "RECALIBRATE",
+        "severity": "warning",
+        "matchedRuleId": "R5"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0131,
+            "ksD": 0.0338,
+            "wasserstein": 0.0475,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "WARNING",
+        "labelStatus": "CRITICAL"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    }
+  },
+  "ascore_v1/08_concept_shift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0131,
+            "ksD": 0.0338,
+            "wasserstein": 0.0475,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "CRITICAL",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONSIDER_RETRAIN",
+        "severity": "critical",
+        "matchedRuleId": "R4"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0131,
+            "ksD": 0.0338,
+            "wasserstein": 0.0475,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.005,
+            "ksD": 0.0344,
+            "wasserstein": 0.0461,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0009,
+            "ksD": 0.0241,
+            "wasserstein": 0.0374,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "CRITICAL",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONSIDER_RETRAIN",
+        "severity": "critical",
+        "matchedRuleId": "R4"
+      }
+    }
+  },
+  "ascore_v1/09_multivariate.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0131,
+            "ksD": 0.0338,
+            "wasserstein": 0.0475,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.0382,
+            "ksD": 0.0983,
+            "wasserstein": 0.213,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.042,
+            "ksD": 0.1127,
+            "wasserstein": 0.1979,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R8b"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0131,
+            "ksD": 0.0338,
+            "wasserstein": 0.0475,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "CRITICAL",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.0382,
+            "ksD": 0.0983,
+            "wasserstein": 0.213,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "CRITICAL",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.042,
+            "ksD": 0.1127,
+            "wasserstein": 0.1979,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R2"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_01.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.004,
+            "ksD": 0.0301,
+            "wasserstein": 0.0476,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0142,
+            "ksD": 0.0347,
+            "wasserstein": 0.0511,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0048,
+            "ksD": 0.0254,
+            "wasserstein": 0.0503,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.004,
+            "ksD": 0.0301,
+            "wasserstein": 0.0476,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0142,
+            "ksD": 0.0347,
+            "wasserstein": 0.0511,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0048,
+            "ksD": 0.0254,
+            "wasserstein": 0.0503,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_02.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0019,
+            "ksD": 0.0276,
+            "wasserstein": 0.0238,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0076,
+            "ksD": 0.0315,
+            "wasserstein": 0.0656,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0,
+            "ksD": 0.0245,
+            "wasserstein": 0.0405,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "overallStatusFixed": "WARNING",
+        "overallStatusCalibrated": "WARNING",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0019,
+            "ksD": 0.0276,
+            "wasserstein": 0.0238,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0076,
+            "ksD": 0.0315,
+            "wasserstein": 0.0656,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0,
+            "ksD": 0.0245,
+            "wasserstein": 0.0405,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "WARNING",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_03.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0105,
+            "ksD": 0.0415,
+            "wasserstein": 0.0535,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0012,
+            "ksD": 0.0226,
+            "wasserstein": 0.036,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0027,
+            "ksD": 0.0381,
+            "wasserstein": 0.0447,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0105,
+            "ksD": 0.0415,
+            "wasserstein": 0.0535,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0012,
+            "ksD": 0.0226,
+            "wasserstein": 0.036,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0027,
+            "ksD": 0.0381,
+            "wasserstein": 0.0447,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_04.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "overallStatusFixed": "WARNING",
+        "overallStatusCalibrated": "WARNING",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0252,
+            "ksD": 0.0469,
+            "wasserstein": 0.0428,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.009,
+            "ksD": 0.0346,
+            "wasserstein": 0.0508,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0075,
+            "ksD": 0.0523,
+            "wasserstein": 0.0829,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "WARNING",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0252,
+            "ksD": 0.0469,
+            "wasserstein": 0.0428,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.009,
+            "ksD": 0.0346,
+            "wasserstein": 0.0508,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0075,
+            "ksD": 0.0523,
+            "wasserstein": 0.0829,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_05.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0156,
+            "ksD": 0.0436,
+            "wasserstein": 0.0647,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0022,
+            "ksD": 0.0294,
+            "wasserstein": 0.0483,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0021,
+            "ksD": 0.0217,
+            "wasserstein": 0.0368,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0156,
+            "ksD": 0.0436,
+            "wasserstein": 0.0647,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0022,
+            "ksD": 0.0294,
+            "wasserstein": 0.0483,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0021,
+            "ksD": 0.0217,
+            "wasserstein": 0.0368,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_06.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0036,
+            "ksD": 0.0312,
+            "wasserstein": 0.0365,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0048,
+            "ksD": 0.0411,
+            "wasserstein": 0.0668,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0069,
+            "ksD": 0.0343,
+            "wasserstein": 0.0536,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0036,
+            "ksD": 0.0312,
+            "wasserstein": 0.0365,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0048,
+            "ksD": 0.0411,
+            "wasserstein": 0.0668,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0069,
+            "ksD": 0.0343,
+            "wasserstein": 0.0536,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_07.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0143,
+            "ksD": 0.0562,
+            "wasserstein": 0.0546,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0134,
+            "ksD": 0.0346,
+            "wasserstein": 0.0411,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0064,
+            "ksD": 0.0351,
+            "wasserstein": 0.081,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0143,
+            "ksD": 0.0562,
+            "wasserstein": 0.0546,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0134,
+            "ksD": 0.0346,
+            "wasserstein": 0.0411,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0064,
+            "ksD": 0.0351,
+            "wasserstein": 0.081,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_08.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0118,
+            "ksD": 0.0545,
+            "wasserstein": 0.0831,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0102,
+            "ksD": 0.052,
+            "wasserstein": 0.1061,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0093,
+            "ksD": 0.0297,
+            "wasserstein": 0.0526,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0118,
+            "ksD": 0.0545,
+            "wasserstein": 0.0831,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0102,
+            "ksD": 0.052,
+            "wasserstein": 0.1061,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0093,
+            "ksD": 0.0297,
+            "wasserstein": 0.0526,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_09.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.0474,
+            "ksD": 0.1085,
+            "wasserstein": 0.1592,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0062,
+            "ksD": 0.0511,
+            "wasserstein": 0.079,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0063,
+            "ksD": 0.0269,
+            "wasserstein": 0.0385,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "CRITICAL",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.0474,
+            "ksD": 0.1085,
+            "wasserstein": 0.1592,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0062,
+            "ksD": 0.0511,
+            "wasserstein": 0.079,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0063,
+            "ksD": 0.0269,
+            "wasserstein": 0.0385,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DRIFT",
+        "severity": "warning",
+        "matchedRuleId": "R7"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_10.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.064,
+            "ksD": 0.1297,
+            "wasserstein": 0.1874,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0051,
+            "ksD": 0.0248,
+            "wasserstein": 0.0387,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0076,
+            "ksD": 0.0291,
+            "wasserstein": 0.0484,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "CRITICAL",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.064,
+            "ksD": 0.1297,
+            "wasserstein": 0.1874,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0051,
+            "ksD": 0.0248,
+            "wasserstein": 0.0387,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0076,
+            "ksD": 0.0291,
+            "wasserstein": 0.0484,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONSIDER_RETRAIN",
+        "severity": "critical",
+        "matchedRuleId": "R6"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_11.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "overallStatusFixed": "WARNING",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "WARNING",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "WARNING",
+            "statusFixed": "WARNING",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.1684,
+            "ksD": 0.2165,
+            "wasserstein": 0.2653,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0028,
+            "ksD": 0.0291,
+            "wasserstein": 0.041,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0019,
+            "ksD": 0.02,
+            "wasserstein": 0.0485,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "WARNING",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "CRITICAL",
+            "statusFixed": "WARNING",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.1684,
+            "ksD": 0.2165,
+            "wasserstein": 0.2653,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0028,
+            "ksD": 0.0291,
+            "wasserstein": 0.041,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0019,
+            "ksD": 0.02,
+            "wasserstein": 0.0485,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONSIDER_RETRAIN",
+        "severity": "critical",
+        "matchedRuleId": "R6"
+      }
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_12.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "WARNING",
+        "overallStatusFixed": "WARNING",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "WARNING",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "WARNING",
+            "statusFixed": "WARNING",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.1554,
+            "ksD": 0.2165,
+            "wasserstein": 0.2953,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0111,
+            "ksD": 0.0433,
+            "wasserstein": 0.0533,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0032,
+            "ksD": 0.0271,
+            "wasserstein": 0.0467,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "MONITOR_CLOSELY",
+        "severity": "info",
+        "matchedRuleId": "R8"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "WARNING",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "WARNING",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "monthly_income": {
+            "displayName": "Monthly Income",
+            "status": "CRITICAL",
+            "statusFixed": "WARNING",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.1554,
+            "ksD": 0.2165,
+            "wasserstein": 0.2953,
+            "jensenShannon": null
+          },
+          "loan_amount": {
+            "displayName": "Loan Amount",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0111,
+            "ksD": 0.0433,
+            "wasserstein": 0.0533,
+            "jensenShannon": null
+          },
+          "dti_ratio": {
+            "displayName": "DTI Ratio",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0032,
+            "ksD": 0.0271,
+            "wasserstein": 0.0467,
+            "jensenShannon": null
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONSIDER_RETRAIN",
+        "severity": "critical",
+        "matchedRuleId": "R6"
+      }
+    }
+  },
+  "ext_model/01_clean.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "รายได้ต่อเดือน": {
+            "displayName": "รายได้ต่อเดือน",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0222,
+            "ksD": 0.0413,
+            "wasserstein": 0.0589,
+            "jensenShannon": null
+          },
+          "วงเงินสินเชื่อ": {
+            "displayName": "วงเงินสินเชื่อ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0305,
+            "ksD": 0.036,
+            "wasserstein": 0.0324,
+            "jensenShannon": null
+          },
+          "สัดส่วนภาระหนี้": {
+            "displayName": "สัดส่วนภาระหนี้ (DTI)",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.014,
+            "ksD": 0.03,
+            "wasserstein": 0.043,
+            "jensenShannon": null
+          },
+          "กลุ่มอาชีพ": {
+            "displayName": "กลุ่มอาชีพ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.008,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.0379
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "รายได้ต่อเดือน": {
+            "displayName": "รายได้ต่อเดือน",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0222,
+            "ksD": 0.0413,
+            "wasserstein": 0.0589,
+            "jensenShannon": null
+          },
+          "วงเงินสินเชื่อ": {
+            "displayName": "วงเงินสินเชื่อ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0305,
+            "ksD": 0.036,
+            "wasserstein": 0.0324,
+            "jensenShannon": null
+          },
+          "สัดส่วนภาระหนี้": {
+            "displayName": "สัดส่วนภาระหนี้ (DTI)",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.014,
+            "ksD": 0.03,
+            "wasserstein": 0.043,
+            "jensenShannon": null
+          },
+          "กลุ่มอาชีพ": {
+            "displayName": "กลุ่มอาชีพ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.008,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.0379
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "ext_model/02_unseen_category.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "รายได้ต่อเดือน": {
+            "displayName": "รายได้ต่อเดือน",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0222,
+            "ksD": 0.0413,
+            "wasserstein": 0.0589,
+            "jensenShannon": null
+          },
+          "วงเงินสินเชื่อ": {
+            "displayName": "วงเงินสินเชื่อ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0305,
+            "ksD": 0.036,
+            "wasserstein": 0.0324,
+            "jensenShannon": null
+          },
+          "สัดส่วนภาระหนี้": {
+            "displayName": "สัดส่วนภาระหนี้ (DTI)",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.014,
+            "ksD": 0.03,
+            "wasserstein": 0.043,
+            "jensenShannon": null
+          },
+          "กลุ่มอาชีพ": {
+            "displayName": "กลุ่มอาชีพ",
+            "status": "CRITICAL",
+            "statusFixed": "CRITICAL",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.3207,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.164
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "รายได้ต่อเดือน": {
+            "displayName": "รายได้ต่อเดือน",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0222,
+            "ksD": 0.0413,
+            "wasserstein": 0.0589,
+            "jensenShannon": null
+          },
+          "วงเงินสินเชื่อ": {
+            "displayName": "วงเงินสินเชื่อ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0305,
+            "ksD": 0.036,
+            "wasserstein": 0.0324,
+            "jensenShannon": null
+          },
+          "สัดส่วนภาระหนี้": {
+            "displayName": "สัดส่วนภาระหนี้ (DTI)",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.014,
+            "ksD": 0.03,
+            "wasserstein": 0.043,
+            "jensenShannon": null
+          },
+          "กลุ่มอาชีพ": {
+            "displayName": "กลุ่มอาชีพ",
+            "status": "CRITICAL",
+            "statusFixed": "CRITICAL",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.3207,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.164
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    }
+  },
+  "ext_model/03_category_shift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "รายได้ต่อเดือน": {
+            "displayName": "รายได้ต่อเดือน",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0222,
+            "ksD": 0.0413,
+            "wasserstein": 0.0589,
+            "jensenShannon": null
+          },
+          "วงเงินสินเชื่อ": {
+            "displayName": "วงเงินสินเชื่อ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0305,
+            "ksD": 0.036,
+            "wasserstein": 0.0324,
+            "jensenShannon": null
+          },
+          "สัดส่วนภาระหนี้": {
+            "displayName": "สัดส่วนภาระหนี้ (DTI)",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.014,
+            "ksD": 0.03,
+            "wasserstein": 0.043,
+            "jensenShannon": null
+          },
+          "กลุ่มอาชีพ": {
+            "displayName": "กลุ่มอาชีพ",
+            "status": "CRITICAL",
+            "statusFixed": "CRITICAL",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.2943,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.2277
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DRIFT",
+        "severity": "warning",
+        "matchedRuleId": "R7"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "รายได้ต่อเดือน": {
+            "displayName": "รายได้ต่อเดือน",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0222,
+            "ksD": 0.0413,
+            "wasserstein": 0.0589,
+            "jensenShannon": null
+          },
+          "วงเงินสินเชื่อ": {
+            "displayName": "วงเงินสินเชื่อ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0305,
+            "ksD": 0.036,
+            "wasserstein": 0.0324,
+            "jensenShannon": null
+          },
+          "สัดส่วนภาระหนี้": {
+            "displayName": "สัดส่วนภาระหนี้ (DTI)",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.014,
+            "ksD": 0.03,
+            "wasserstein": 0.043,
+            "jensenShannon": null
+          },
+          "กลุ่มอาชีพ": {
+            "displayName": "กลุ่มอาชีพ",
+            "status": "CRITICAL",
+            "statusFixed": "CRITICAL",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.2943,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.2277
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DRIFT",
+        "severity": "warning",
+        "matchedRuleId": "R7"
+      }
+    }
+  },
+  "ext_model/04_missing_drift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "รายได้ต่อเดือน": {
+            "displayName": "รายได้ต่อเดือน",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.084,
+            "ksD": 0.058,
+            "wasserstein": 0.1135,
+            "jensenShannon": null
+          },
+          "วงเงินสินเชื่อ": {
+            "displayName": "วงเงินสินเชื่อ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0305,
+            "ksD": 0.036,
+            "wasserstein": 0.0324,
+            "jensenShannon": null
+          },
+          "สัดส่วนภาระหนี้": {
+            "displayName": "สัดส่วนภาระหนี้ (DTI)",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.014,
+            "ksD": 0.03,
+            "wasserstein": 0.043,
+            "jensenShannon": null
+          },
+          "กลุ่มอาชีพ": {
+            "displayName": "กลุ่มอาชีพ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.008,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.0379
+          }
+        },
+        "missingStatus": "CRITICAL",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "รายได้ต่อเดือน": {
+            "displayName": "รายได้ต่อเดือน",
+            "status": "CRITICAL",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.084,
+            "ksD": 0.058,
+            "wasserstein": 0.1135,
+            "jensenShannon": null
+          },
+          "วงเงินสินเชื่อ": {
+            "displayName": "วงเงินสินเชื่อ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0305,
+            "ksD": 0.036,
+            "wasserstein": 0.0324,
+            "jensenShannon": null
+          },
+          "สัดส่วนภาระหนี้": {
+            "displayName": "สัดส่วนภาระหนี้ (DTI)",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.014,
+            "ksD": 0.03,
+            "wasserstein": 0.043,
+            "jensenShannon": null
+          },
+          "กลุ่มอาชีพ": {
+            "displayName": "กลุ่มอาชีพ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.008,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.0379
+          }
+        },
+        "missingStatus": "CRITICAL",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DATA",
+        "severity": "warning",
+        "matchedRuleId": "R1b"
+      }
+    }
+  },
+  "new_model_auto_loan/monitor_clean.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "ราคารถ": {
+            "displayName": "ราคารถยนต์",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0127,
+            "ksD": 0.0223,
+            "wasserstein": 0.0219,
+            "jensenShannon": null
+          },
+          "เงินดาวน์_pct": {
+            "displayName": "สัดส่วนเงินดาวน์",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0218,
+            "ksD": 0.0407,
+            "wasserstein": 0.0475,
+            "jensenShannon": null
+          },
+          "ระยะผ่อน_เดือน": {
+            "displayName": "ระยะเวลาผ่อนชำระ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0013,
+            "ksD": 0.0107,
+            "wasserstein": 0.0193,
+            "jensenShannon": null
+          },
+          "อายุผู้กู้": {
+            "displayName": "อายุผู้กู้",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0389,
+            "ksD": 0.028,
+            "wasserstein": 0.0353,
+            "jensenShannon": null
+          },
+          "ประเภทรถ": {
+            "displayName": "ประเภทรถยนต์",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0136,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.0495
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "STABLE",
+        "overallStatusFixed": "STABLE",
+        "overallStatusCalibrated": "STABLE",
+        "covariateStatus": "STABLE",
+        "covariateStatusFixed": "STABLE",
+        "covariateStatusCalibrated": "STABLE",
+        "covariateFeatures": {
+          "ราคารถ": {
+            "displayName": "ราคารถยนต์",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0127,
+            "ksD": 0.0223,
+            "wasserstein": 0.0219,
+            "jensenShannon": null
+          },
+          "เงินดาวน์_pct": {
+            "displayName": "สัดส่วนเงินดาวน์",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0218,
+            "ksD": 0.0407,
+            "wasserstein": 0.0475,
+            "jensenShannon": null
+          },
+          "ระยะผ่อน_เดือน": {
+            "displayName": "ระยะเวลาผ่อนชำระ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0013,
+            "ksD": 0.0107,
+            "wasserstein": 0.0193,
+            "jensenShannon": null
+          },
+          "อายุผู้กู้": {
+            "displayName": "อายุผู้กู้",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0389,
+            "ksD": 0.028,
+            "wasserstein": 0.0353,
+            "jensenShannon": null
+          },
+          "ประเภทรถ": {
+            "displayName": "ประเภทรถยนต์",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0136,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.0495
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "STABLE"
+      },
+      "trigger": {
+        "action": "CONTINUE",
+        "severity": "info",
+        "matchedRuleId": "R9"
+      }
+    }
+  },
+  "new_model_auto_loan/monitor_drift.csv": {
+    "fixed": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "ราคารถ": {
+            "displayName": "ราคารถยนต์",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0185,
+            "ksD": 0.0403,
+            "wasserstein": 0.0296,
+            "jensenShannon": null
+          },
+          "เงินดาวน์_pct": {
+            "displayName": "สัดส่วนเงินดาวน์",
+            "status": "CRITICAL",
+            "statusFixed": "CRITICAL",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 3.8998,
+            "ksD": 0.4867,
+            "wasserstein": 1.0184,
+            "jensenShannon": null
+          },
+          "ระยะผ่อน_เดือน": {
+            "displayName": "ระยะเวลาผ่อนชำระ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0111,
+            "ksD": 0.0243,
+            "wasserstein": 0.0436,
+            "jensenShannon": null
+          },
+          "อายุผู้กู้": {
+            "displayName": "อายุผู้กู้",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0231,
+            "ksD": 0.0303,
+            "wasserstein": 0.0175,
+            "jensenShannon": null
+          },
+          "ประเภทรถ": {
+            "displayName": "ประเภทรถยนต์",
+            "status": "CRITICAL",
+            "statusFixed": "CRITICAL",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.4481,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.2794
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "STABLE",
+        "labelStatus": "CRITICAL"
+      },
+      "trigger": {
+        "action": "RECALIBRATE",
+        "severity": "warning",
+        "matchedRuleId": "R5"
+      }
+    },
+    "calibrated": {
+      "validation": {
+        "ok": true,
+        "totalRows": 500,
+        "validRows": 500,
+        "rejectedRows": 0,
+        "rejectedPct": 0
+      },
+      "drift": {
+        "overallStatus": "CRITICAL",
+        "overallStatusFixed": "CRITICAL",
+        "overallStatusCalibrated": "CRITICAL",
+        "covariateStatus": "CRITICAL",
+        "covariateStatusFixed": "CRITICAL",
+        "covariateStatusCalibrated": "CRITICAL",
+        "covariateFeatures": {
+          "ราคารถ": {
+            "displayName": "ราคารถยนต์",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0185,
+            "ksD": 0.0403,
+            "wasserstein": 0.0296,
+            "jensenShannon": null
+          },
+          "เงินดาวน์_pct": {
+            "displayName": "สัดส่วนเงินดาวน์",
+            "status": "CRITICAL",
+            "statusFixed": "CRITICAL",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 3.8998,
+            "ksD": 0.4867,
+            "wasserstein": 1.0184,
+            "jensenShannon": null
+          },
+          "ระยะผ่อน_เดือน": {
+            "displayName": "ระยะเวลาผ่อนชำระ",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0111,
+            "ksD": 0.0243,
+            "wasserstein": 0.0436,
+            "jensenShannon": null
+          },
+          "อายุผู้กู้": {
+            "displayName": "อายุผู้กู้",
+            "status": "STABLE",
+            "statusFixed": "STABLE",
+            "statusCalibrated": "STABLE",
+            "csiValue": 0.0231,
+            "ksD": 0.0303,
+            "wasserstein": 0.0175,
+            "jensenShannon": null
+          },
+          "ประเภทรถ": {
+            "displayName": "ประเภทรถยนต์",
+            "status": "CRITICAL",
+            "statusFixed": "CRITICAL",
+            "statusCalibrated": "CRITICAL",
+            "csiValue": 0.4481,
+            "ksD": null,
+            "wasserstein": null,
+            "jensenShannon": 0.2794
+          }
+        },
+        "missingStatus": "STABLE",
+        "conceptStatus": "WARNING",
+        "labelStatus": "CRITICAL"
+      },
+      "trigger": {
+        "action": "INVESTIGATE_DRIFT",
+        "severity": "warning",
+        "matchedRuleId": "R7"
+      }
+    }
+  }
+}

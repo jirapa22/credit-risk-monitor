@@ -274,6 +274,7 @@ export function baselineToModelObject(baseline: BaselineVersion): any {
     mode: baseline.mode,
     status: baseline.status === 'ACTIVE' ? 'active' : baseline.status.toLowerCase(),
     configVersion: baseline.version,
+    version: baseline.version,
     referenceDatasetId: baseline.referenceDatasetId,
     idColumn: baseline.columns.idColumn ?? DEFAULT_ID_COLUMN,
     dateColumn: baseline.columns.dateColumn ?? null,
@@ -544,27 +545,50 @@ export async function loadReferenceProfile(
   return getReferenceProfile(referenceId, scoring, { labelColumn, scoreColumn, featureRegistry });
 }
 
+export function getLatestBaselineVersion(versions: BaselineVersion[]): BaselineVersion | null {
+  if (!versions || versions.length === 0) return null;
+  const sorted = [...versions].sort((a, b) => {
+    const timeA = new Date(a.createdAt).getTime();
+    const timeB = new Date(b.createdAt).getTime();
+    if (!Number.isNaN(timeA) && !Number.isNaN(timeB) && timeA !== timeB) {
+      return timeB - timeA;
+    }
+    return b.version.localeCompare(a.version, undefined, { numeric: true });
+  });
+  return sorted[0];
+}
+
 /**
- * Effective model object (compatible with all existing pipeline functions & APIs).
+ * Effective model object (strictly requires ACTIVE status for monitoring/screening).
  */
 export async function getEffectiveModel(modelId?: string) {
   const targetId = modelId || (await getDefaultModelId());
+  const active = await getActiveBaseline(targetId);
+  await loadReferenceProfile(active.referenceDatasetId, active);
+  return baselineToModelObject(active);
+}
+
+/**
+ * Display model object for Dashboard / Sandbox UI inspection (falls back to latest version if not yet active).
+ */
+export async function getEffectiveDisplayModel(modelId?: string) {
+  const targetId = modelId || (await getDefaultModelId());
   try {
-    const active = await getActiveBaseline(targetId);
-    await loadReferenceProfile(active.referenceDatasetId, active);
-    return baselineToModelObject(active);
-  } catch (err) {
+    return await getEffectiveModel(targetId);
+  } catch {
     const info = await getModel(targetId);
     if (info && info.versions.length > 0) {
-      const latest = info.activeVersion || info.versions[0];
-      try {
-        await loadReferenceProfile(latest.referenceDatasetId, latest);
-      } catch {
-        // Ignore
+      const latest = info.activeVersion || getLatestBaselineVersion(info.versions);
+      if (latest) {
+        try {
+          await loadReferenceProfile(latest.referenceDatasetId, latest);
+        } catch {
+          // Ignore
+        }
+        return baselineToModelObject(latest);
       }
-      return baselineToModelObject(latest);
     }
-    throw err;
+    throw new RegistryError(`ไม่พบโมเดล "${targetId}" ในระบบ`, 404);
   }
 }
 
@@ -572,7 +596,8 @@ export async function getEffectiveConfig(requestedModelId?: string) {
   const { defaultModelId, models: regModels } = await listRegistryModels();
   const models: Record<string, any> = {};
   for (const m of regModels) {
-    const targetVer = m.activeVersion || (await listBaselineVersions(m.modelId))[0];
+    const vers = await listBaselineVersions(m.modelId);
+    const targetVer = m.activeVersion || getLatestBaselineVersion(vers);
     if (targetVer) {
       try {
         await loadReferenceProfile(targetVer.referenceDatasetId, targetVer);
@@ -594,7 +619,7 @@ export async function saveThresholds(
   thresholds: MonitoringThresholds,
   note = 'Thresholds updated from dashboard',
 ) {
-  const current = await getEffectiveModel(modelId);
+  const current = await getEffectiveDisplayModel(modelId);
   const store = getStore();
   const prev = await store.get<ConfigOverride>(overrideKey(modelId));
   const version = bumpPatch(current.configVersion ?? '1.0.0');

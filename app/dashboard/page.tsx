@@ -362,7 +362,16 @@ export default function Dashboard() {
   const currentModelId = selectedModelId || config?.activeModelId || '';
   const currentRegModel = registeredModels.find((m: any) => m.modelId === currentModelId);
   const activeVer = currentRegModel?.versions?.find((v: any) => v.status === 'ACTIVE');
-  const displayVer = activeVer || currentRegModel?.versions?.[0];
+  const displayVer =
+    activeVer ||
+    (Array.isArray(currentRegModel?.versions) && currentRegModel.versions.length > 0
+      ? [...currentRegModel.versions].sort((a: any, b: any) => {
+          const tA = new Date(a.createdAt).getTime();
+          const tB = new Date(b.createdAt).getTime();
+          if (!Number.isNaN(tA) && !Number.isNaN(tB) && tA !== tB) return tB - tA;
+          return String(b.version).localeCompare(String(a.version), undefined, { numeric: true });
+        })[0]
+      : undefined);
 
   let headerBadgeText = `${currentModelId} · ยังไม่เปิดใช้งาน`;
   let headerBadgeStyle = 'border-slate-700 text-slate-400 bg-slate-800/40';

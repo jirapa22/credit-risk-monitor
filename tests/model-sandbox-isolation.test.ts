@@ -4,12 +4,15 @@ import {
   createDraftBaselineVersion,
   deleteRegistryModel,
   getEffectiveConfig,
+  getEffectiveDisplayModel,
   getEffectiveModel,
+  getLatestBaselineVersion,
   saveThresholds,
   validateBaselineVersion,
 } from '../lib/storage/repositories';
 import { runTrial } from '../lib/experiment';
 import { POST as saveModelConfigRoute } from '../app/api/save-model-config/route';
+import { POST as monitorUploadRoute } from '../app/api/monitor-upload/route';
 import { saveReferenceDatasetBlob } from '../lib/storage/blob';
 
 describe('Model Sandbox Isolation & Selected Model Configuration Tests', () => {
@@ -134,7 +137,13 @@ describe('Model Sandbox Isolation & Selected Model Configuration Tests', () => {
       csi_features: {},
     });
 
-    const updatedCustom = await getEffectiveModel(customModelId);
+    // Custom model is not ACTIVE, so getEffectiveModel must throw
+    await expect(getEffectiveModel(customModelId)).rejects.toThrow(
+      `โมเดล "${customModelId}" ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE)`
+    );
+
+    // But getEffectiveDisplayModel should return it with the updated thresholds
+    const updatedCustom = await getEffectiveDisplayModel(customModelId);
     expect(updatedCustom.thresholds.psi_warning).toBe(0.22);
     expect(updatedCustom.thresholds.auc_min).toBe(0.68);
 
@@ -211,5 +220,180 @@ describe('Model Sandbox Isolation & Selected Model Configuration Tests', () => {
     expect(model.developmentStats).toBeUndefined();
 
     await deleteRegistryModel(noStatsModelId, { purgeBlobs: true, actor: 'test' });
+  });
+
+  it('verifies DRAFT, VALIDATED, and ARCHIVED models cannot run monitoring, but display in sandbox', async () => {
+    const lifecycleModelId = 'test_model_lifecycle';
+    const refId = 'ref_lifecycle_dataset';
+    try { await deleteRegistryModel(lifecycleModelId, { purgeBlobs: true, actor: 'test' }); } catch { /* ignore */ }
+
+    const mockRows = Array.from({ length: 250 }, (_, i) => ({
+      rec_id: String(i + 1),
+      score_val: 500 + (i % 200),
+      is_bad: i % 10 === 0 ? 1 : 0,
+      f1: 10 + (i % 30),
+    }));
+    await saveReferenceDatasetBlob({
+      rows: mockRows,
+      meta: {
+        referenceId: refId,
+        modelId: lifecycleModelId,
+        version: '1.0.0',
+        rowCount: 250,
+        badCount: 25,
+        badRate: 0.1,
+        periodStart: '2024-01-01',
+        periodEnd: '2024-06-30',
+        sha256: 'mockshablob999',
+        source: 'unit_test',
+        description: 'Test lifecycle reference',
+        createdAt: '2024-01-01T00:00:00Z',
+        columns: ['rec_id', 'score_val', 'is_bad', 'f1'],
+      },
+    });
+
+    // 1. Stage: DRAFT
+    await createDraftBaselineVersion(lifecycleModelId, {
+      version: '1.0.0',
+      name: 'Lifecycle Model',
+      description: 'Test lifecycle model',
+      referenceDatasetId: refId,
+      mode: 'score_column',
+      columns: { idColumn: 'rec_id', scoreColumn: 'score_val', labelColumn: 'is_bad' },
+      thresholds: { psi_warning: 0.10, psi_critical: 0.25, gini_min: 0.10, auc_min: 0.55, ks_min: 0.10, csi_features: {} },
+    });
+
+    // Runtime monitoring MUST throw
+    await expect(getEffectiveModel(lifecycleModelId)).rejects.toThrow(
+      `โมเดล "${lifecycleModelId}" ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE)`
+    );
+
+    // Monitoring upload API endpoint MUST reject with non-ACTIVE error
+    const uploadReqDraft = new Request('http://localhost/api/monitor-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modelId: lifecycleModelId,
+        customers: [{ rec_id: '1', score_val: 550, is_bad: 0, f1: 15 }],
+      }),
+    });
+    const uploadResDraft = await monitorUploadRoute(uploadReqDraft);
+    expect(uploadResDraft.status).toBeGreaterThanOrEqual(400);
+    const uploadDataDraft = await uploadResDraft.json();
+    expect(uploadDataDraft.detail || uploadDataDraft.error).toContain('ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE)');
+
+    // But Display function & Sandbox config MUST load the model
+    const displayDraft = await getEffectiveDisplayModel(lifecycleModelId);
+    expect(displayDraft.id).toBe(lifecycleModelId);
+    expect(displayDraft.version).toBe('1.0.0');
+
+    const configDraft = await getEffectiveConfig(lifecycleModelId);
+    expect(configDraft.models[lifecycleModelId]).toBeDefined();
+    expect(configDraft.models[lifecycleModelId].id).toBe(lifecycleModelId);
+
+    // 2. Stage: VALIDATED
+    await validateBaselineVersion(lifecycleModelId, '1.0.0', { dryRun: false });
+
+    // Runtime monitoring MUST still throw
+    await expect(getEffectiveModel(lifecycleModelId)).rejects.toThrow(
+      `โมเดล "${lifecycleModelId}" ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE)`
+    );
+
+    // Display functions still work
+    const displayValidated = await getEffectiveDisplayModel(lifecycleModelId);
+    expect(displayValidated.id).toBe(lifecycleModelId);
+
+    // 3. Stage: ARCHIVED
+    await archiveBaselineVersion(lifecycleModelId, '1.0.0', { note: 'Archiving model' });
+
+    // Runtime monitoring MUST still throw
+    await expect(getEffectiveModel(lifecycleModelId)).rejects.toThrow(
+      `โมเดล "${lifecycleModelId}" ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE)`
+    );
+
+    // Display functions still work
+    const displayArchived = await getEffectiveDisplayModel(lifecycleModelId);
+    expect(displayArchived.id).toBe(lifecycleModelId);
+
+    await deleteRegistryModel(lifecycleModelId, { purgeBlobs: true, actor: 'test' });
+  });
+
+  it('getLatestBaselineVersion selects version by latest createdAt and falls back to semver', () => {
+    // 1. Multiple versions with differing createdAt timestamps
+    const v1 = {
+      version: '1.0.0',
+      createdAt: '2024-01-01T00:00:00Z',
+    } as any;
+    const v2 = {
+      version: '2.0.0',
+      createdAt: '2024-03-01T00:00:00Z',
+    } as any;
+    const v3 = {
+      version: '1.1.0',
+      createdAt: '2024-06-01T00:00:00Z',
+    } as any;
+
+    // In stored array, v1 was inserted first, then v2, then v3
+    const latestByCreated = getLatestBaselineVersion([v1, v2, v3]);
+    expect(latestByCreated?.version).toBe('1.1.0');
+
+    // Reversed insertion array
+    const latestReversed = getLatestBaselineVersion([v3, v2, v1]);
+    expect(latestReversed?.version).toBe('1.1.0');
+
+    // 2. Fallback to semver when createdAt is equal or invalid
+    const vSem1 = { version: '1.0.0', createdAt: '2024-01-01T00:00:00Z' } as any;
+    const vSem2 = { version: '1.10.0', createdAt: '2024-01-01T00:00:00Z' } as any;
+    const vSem3 = { version: '1.2.0', createdAt: '2024-01-01T00:00:00Z' } as any;
+    const latestBySemver = getLatestBaselineVersion([vSem1, vSem2, vSem3]);
+    expect(latestBySemver?.version).toBe('1.10.0');
+
+    // 3. Empty list returns null
+    expect(getLatestBaselineVersion([])).toBeNull();
+  });
+
+  it('POST /api/save-model-config supports saving thresholds for ascore_v1 with explicit modelId', async () => {
+    const origAscore = await getEffectiveModel('ascore_v1');
+    const origPsiWarning = origAscore.thresholds.psi_warning;
+
+    // Send save request with explicit modelId: 'ascore_v1'
+    const req = new Request('http://localhost/api/save-model-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modelId: 'ascore_v1',
+        thresholds: {
+          psi_warning: 0.12,
+          psi_critical: origAscore.thresholds.psi_critical,
+          gini_min: origAscore.thresholds.gini_min,
+          auc_min: origAscore.thresholds.auc_min,
+          ks_min: origAscore.thresholds.ks_min,
+        },
+      }),
+    });
+    const res = await saveModelConfigRoute(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.model.id).toBe('ascore_v1');
+    expect(data.model.thresholds.psi_warning).toBe(0.12);
+
+    // Restore original threshold
+    const restoreReq = new Request('http://localhost/api/save-model-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modelId: 'ascore_v1',
+        thresholds: {
+          psi_warning: origPsiWarning,
+          psi_critical: origAscore.thresholds.psi_critical,
+          gini_min: origAscore.thresholds.gini_min,
+          auc_min: origAscore.thresholds.auc_min,
+          ks_min: origAscore.thresholds.ks_min,
+        },
+      }),
+    });
+    const restoreRes = await saveModelConfigRoute(restoreReq);
+    expect(restoreRes.status).toBe(200);
   });
 });

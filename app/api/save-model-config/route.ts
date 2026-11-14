@@ -7,7 +7,7 @@
  * Each save bumps configVersion so monitoring runs stay separable.
  */
 import { NextResponse } from 'next/server';
-import { getActiveModelId, getEffectiveModel, saveThresholds, storageInfo } from '../../../lib/storage/repositories';
+import { getActiveModelId, getEffectiveDisplayModel, saveThresholds, storageInfo } from '../../../lib/storage/repositories';
 import { parseThresholds } from '../../../lib/thresholds';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     if (!modelId || typeof modelId !== 'string' || !modelId.trim()) {
       return NextResponse.json({ error: 'ต้องระบุ modelId ในการบันทึก threshold' }, { status: 400 });
     }
-    const current = await getEffectiveModel(modelId);
+    const current = await getEffectiveDisplayModel(modelId);
     const { value, errors } = parseThresholds(body.thresholds ?? {}, current.thresholds);
     if (!value) return NextResponse.json({ error: 'ค่า Threshold ไม่ถูกต้อง', errors }, { status: 400 });
 
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       configVersion: ov.configVersion,
-      model: await getEffectiveModel(modelId),
+      model: await getEffectiveDisplayModel(modelId),
       storage,
       warning: storage.persistent ? undefined : 'ยังไม่ได้ตั้งค่าฐานข้อมูล (KV_REST_API_URL/TOKEN) — ค่าจะหายเมื่อ server restart',
     });

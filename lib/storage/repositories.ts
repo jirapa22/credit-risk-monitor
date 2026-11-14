@@ -36,6 +36,7 @@ import {
   saveReferenceDatasetBlob,
   type ReferenceDatasetBlob,
 } from './blob';
+import { computeModelTablePoolStats, computeDevelopmentStability } from '../poolStats';
 import {
   buildReferenceProfileFromData,
   getReferenceProfile,
@@ -173,7 +174,7 @@ function buildBuiltInBaselineVersion(modelId: string, archivedByNewerActive = fa
  * Converts a `BaselineVersion` into the runtime model object consumed by
  * `runMonitoring`, `buildDriftReport`, `evaluateTrigger`, and `runAnomalyScreening`.
  */
-export function baselineToModelObject(baseline: BaselineVersion): any {
+export function baselineToModelObject(baseline: BaselineVersion, referenceRows?: Record<string, unknown>[]): any {
   const rawBuiltIn = bundled.models[baseline.modelId]
     ? structuredClone(bundled.models[baseline.modelId])
     : {};
@@ -263,6 +264,52 @@ export function baselineToModelObject(baseline: BaselineVersion): any {
     }
   }
 
+  let modelTable = baseline.modelTable ? structuredClone(baseline.modelTable) : undefined;
+  let ivSummary = rawBuiltIn.ivSummary ? structuredClone(rawBuiltIn.ivSummary) : undefined;
+  let devStats = baseline.developmentStats ? structuredClone(baseline.developmentStats) : undefined;
+
+  if (modelTable && Array.isArray(modelTable.rows) && modelTable.rows.length > 0) {
+    const hasPrecomputedStats = modelTable.rows.some((r: any) => r.count !== undefined && r.woe !== undefined);
+    if (hasPrecomputedStats) {
+      (modelTable as any).source = (modelTable as any).source || 'จากไฟล์การตั้งค่าโมเดล';
+    } else if (referenceRows && referenceRows.length > 0) {
+      const poolStats = computeModelTablePoolStats({
+        modelTable,
+        referenceRows,
+        labelColumn: baseline.columns.labelColumn ?? DEFAULT_LABEL_COLUMN,
+        featureRegistry: baseline.featureRegistry,
+      });
+      modelTable.rows = poolStats.enrichedRows as any;
+      (modelTable as any).totalIV = poolStats.totalIV;
+      (modelTable as any).source = poolStats.source;
+      if (!ivSummary || Object.keys(ivSummary).length === 0) {
+        ivSummary = poolStats.ivSummary;
+      }
+    }
+  }
+
+  // Development Stability (PSI/CSI)
+  const existingStability = (devStats as any)?.stability || (baseline.modelCard as any)?.developmentStability;
+  if (existingStability) {
+    if (!devStats) devStats = {};
+    (devStats as any).stability = {
+      ...existingStability,
+      source: existingStability.source || 'จาก Model Card',
+    };
+  } else if (referenceRows && referenceRows.length > 0) {
+    const devStab = computeDevelopmentStability({
+      referenceRows,
+      dateColumn: baseline.columns.dateColumn ?? null,
+      scoreColumn: baseline.columns.scoreColumn ?? null,
+      modelTable,
+      featureRegistry: baseline.featureRegistry,
+    });
+    if (devStab.available) {
+      if (!devStats) devStats = {};
+      (devStats as any).stability = devStab;
+    }
+  }
+
   return {
     ...rawBuiltIn,
     ...(dynamicBaseline ? { baseline: dynamicBaseline } : {}),
@@ -289,9 +336,10 @@ export function baselineToModelObject(baseline: BaselineVersion): any {
     triggerConfig: baseline.triggerConfig,
     riskGrades: baseline.riskGrades,
     experimentConfig: baseline.experimentConfig,
+    ...(ivSummary ? { ivSummary } : {}),
     ...(baseline.modelCard ? { modelCard: baseline.modelCard } : {}),
-    ...(baseline.developmentStats ? { developmentStats: baseline.developmentStats } : {}),
-    ...(baseline.modelTable ? { modelTable: baseline.modelTable } : {}),
+    ...(devStats ? { developmentStats: devStats } : {}),
+    ...(modelTable ? { modelTable } : {}),
     builtIn: Boolean(baseline.builtIn),
     baselineVersion: baseline,
   };
@@ -564,8 +612,9 @@ export function getLatestBaselineVersion(versions: BaselineVersion[]): BaselineV
 export async function getEffectiveModel(modelId?: string) {
   const targetId = modelId || (await getDefaultModelId());
   const active = await getActiveBaseline(targetId);
+  const blob = await loadReferenceDatasetBlob(active.referenceDatasetId);
   await loadReferenceProfile(active.referenceDatasetId, active);
-  return baselineToModelObject(active);
+  return baselineToModelObject(active, blob?.rows);
 }
 
 /**
@@ -580,12 +629,15 @@ export async function getEffectiveDisplayModel(modelId?: string) {
     if (info && info.versions.length > 0) {
       const latest = info.activeVersion || getLatestBaselineVersion(info.versions);
       if (latest) {
+        let rows: any[] | undefined = undefined;
         try {
+          const blob = await loadReferenceDatasetBlob(latest.referenceDatasetId);
+          if (blob) rows = blob.rows;
           await loadReferenceProfile(latest.referenceDatasetId, latest);
         } catch {
           // Ignore
         }
-        return baselineToModelObject(latest);
+        return baselineToModelObject(latest, rows);
       }
     }
     throw new RegistryError(`ไม่พบโมเดล "${targetId}" ในระบบ`, 404);
@@ -599,12 +651,15 @@ export async function getEffectiveConfig(requestedModelId?: string) {
     const vers = await listBaselineVersions(m.modelId);
     const targetVer = m.activeVersion || getLatestBaselineVersion(vers);
     if (targetVer) {
+      let rows: any[] | undefined = undefined;
       try {
+        const blob = await loadReferenceDatasetBlob(targetVer.referenceDatasetId);
+        if (blob) rows = blob.rows;
         await loadReferenceProfile(targetVer.referenceDatasetId, targetVer);
       } catch {
         // Ignore if reference is not yet uploaded
       }
-      models[m.modelId] = baselineToModelObject(targetVer);
+      models[m.modelId] = baselineToModelObject(targetVer, rows);
     }
   }
   const activeModelId =

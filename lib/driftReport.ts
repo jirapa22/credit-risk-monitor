@@ -1637,11 +1637,37 @@ export function buildDriftReport(
       },
     ];
 
+    const devStab = (spec as any).developmentStats?.stability;
+    if (devStab?.available && devStab.scorePsi !== undefined && devStab.scorePsi !== null) {
+      const curPsi = typeof scoreCovariate?.psiOrCsi?.value === 'number' ? scoreCovariate.psiOrCsi.value : null;
+      rows.push({
+        metric: 'Score PSI',
+        devValue: devStab.scorePsi,
+        currentValue: curPsi,
+        delta: devStab.scorePsi !== null && curPsi !== null ? +(curPsi - devStab.scorePsi).toFixed(4) : null,
+        status: 'OK',
+      });
+    }
+
     devBenchmark = {
       devSource: spec.developmentStats?.reported ? 'reported' : 'computed',
       hasCurrentLabels,
+      devPsi: devStab?.scorePsi ?? null,
+      devCsi: devStab?.featureCsi ?? null,
       rows,
     };
+  }
+
+  const devStabRef = (spec as any).developmentStats?.stability;
+  if (devStabRef?.available) {
+    if (scoreCovariate) {
+      (scoreCovariate as any).devPsi = devStabRef.scorePsi ?? null;
+    }
+    for (const [k, csiVal] of Object.entries(devStabRef.featureCsi || {})) {
+      if (covariateFeatures[k]) {
+        (covariateFeatures[k] as any).devCsi = csiVal;
+      }
+    }
   }
 
   return {

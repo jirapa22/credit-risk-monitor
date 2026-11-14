@@ -638,6 +638,69 @@ export default function Dashboard() {
                             </div>
                           </div>
                         )}
+
+                        {/* Development Stability (ความผันผวนตอนพัฒนา: Train vs Test/OOT) */}
+                        <div className="border-t border-slate-800 pt-3 mt-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold text-slate-300">
+                              ⚖️ ความผันผวนตอนพัฒนา (Development Stability: Train vs Test/OOT)
+                            </span>
+                            {(() => {
+                              const stab = (model as any)?.developmentStats?.stability;
+                              if (stab && stab.available) {
+                                return (
+                                  <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
+                                    {stab.source || 'คำนวณโดยระบบจาก Baseline'}
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="text-[9px] font-mono text-slate-500 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
+                                  ไม่มีข้อมูล
+                                </span>
+                              );
+                            })()}
+                          </div>
+                          {(() => {
+                            const stab = (model as any)?.developmentStats?.stability;
+                            if (!stab || !stab.available) {
+                              return (
+                                <p className="text-[10px] text-slate-500 italic bg-slate-950/40 p-2 rounded-lg border border-slate-800/40">
+                                  ไม่มีข้อมูล: {stab?.reason || 'ไม่มีคอลัมน์วันที่ หรือข้อมูลน้อยกว่า 500 แถว'}
+                                </p>
+                              );
+                            }
+                            return (
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap items-center justify-between text-[9px] text-slate-400 bg-slate-950/40 px-2 py-1.5 rounded-lg border border-slate-800/40 font-mono">
+                                  <span>Train: {stab.trainCount?.toLocaleString()} ({Math.round((stab.trainRatio ?? 0.75) * 100)}%) · {stab.trainPeriod}</span>
+                                  <span className="text-slate-600">vs</span>
+                                  <span>Test/OOT: {stab.testCount?.toLocaleString()} ({Math.round((1 - (stab.trainRatio ?? 0.75)) * 100)}%) · {stab.testPeriod}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <div className="bg-slate-950/50 rounded-xl p-2 px-3 text-center border border-slate-800">
+                                    <p className="text-[9px] text-slate-500 uppercase mb-0.5">Score PSI (Dev)</p>
+                                    <p className="text-xs font-bold font-mono text-indigo-400">
+                                      {typeof stab.scorePsi === 'number' ? stab.scorePsi.toFixed(4) : '—'}
+                                    </p>
+                                  </div>
+                                  {stab.featureCsi && Object.keys(stab.featureCsi).length > 0 && (
+                                    <div className="flex-1 overflow-x-auto">
+                                      <p className="text-[8px] text-slate-500 uppercase mb-1">Feature CSI (Dev)</p>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {Object.entries(stab.featureCsi).map(([feat, csiVal]: [string, any]) => (
+                                          <span key={feat} className="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-950/60 border border-slate-800 text-slate-300">
+                                            <span className="text-slate-500">{featLabels[feat] || feat}:</span> {typeof csiVal === 'number' ? csiVal.toFixed(4) : csiVal}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
                       </div>
                     );
                   })()}
@@ -791,11 +854,21 @@ export default function Dashboard() {
                     <h2 className="text-sm font-bold text-slate-200">
                       📋 {(model as any)?.modelTable ? 'Model Structure (Pools & Points)' : 'Scorecard Reference'}
                     </h2>
-                    {((model as any)?.modelTable?.base_points !== undefined || model?.scoring?.base_points !== undefined) && (
-                      <span className="text-[10px] font-mono font-bold text-indigo-400 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
-                        Base Points = {(model as any)?.modelTable?.base_points ?? model?.scoring?.base_points}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
+                        {(model as any)?.modelTable?.source || ((model as any)?.modelTable ? 'คำนวณโดยระบบจาก Baseline' : 'จากไฟล์รายงานโมเดล (Model Report)')}
                       </span>
-                    )}
+                      {((model as any)?.modelTable?.base_points !== undefined || model?.scoring?.base_points !== undefined) && (
+                        <span className="text-[10px] font-mono font-bold text-indigo-400 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
+                          Base Points = {(model as any)?.modelTable?.base_points ?? model?.scoring?.base_points}
+                        </span>
+                      )}
+                      {(model as any)?.modelTable?.totalIV !== undefined && (
+                        <span className="text-[10px] font-mono font-bold text-emerald-400 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
+                          Total IV = {(model as any).modelTable.totalIV.toFixed(4)}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {(() => {
@@ -813,9 +886,23 @@ export default function Dashboard() {
                             <div key={varName}>
                               <div className="flex items-center justify-between mb-2">
                                 <p className="text-[11px] font-bold text-slate-300">{featLabels[varName] || varName}</p>
-                                <span className="text-[10px] font-mono text-slate-500 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
-                                  {pRows.length} pools
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  {(() => {
+                                    const varIv = (model as any)?.ivSummary?.[varName]?.iv;
+                                    if (varIv !== undefined && varIv !== null) {
+                                      const ivColor = varIv >= 0.30 ? 'text-emerald-400' : varIv >= 0.10 ? 'text-blue-400' : varIv >= 0.02 ? 'text-amber-400' : 'text-slate-500';
+                                      return (
+                                        <span className={`text-[10px] font-mono font-bold ${ivColor} bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800`}>
+                                          IV = {varIv.toFixed(4)}
+                                        </span>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                  <span className="text-[10px] font-mono text-slate-500 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
+                                    {pRows.length} pools
+                                  </span>
+                                </div>
                               </div>
                               <div className="overflow-x-auto">
                                 <table className="w-full text-[10px]">
@@ -824,8 +911,12 @@ export default function Dashboard() {
                                       <th className="text-left pb-1 text-slate-500 font-medium">Pool ID</th>
                                       <th className="text-left pb-1 text-slate-500 font-medium">Range / Categories</th>
                                       <th className="text-right pb-1 text-slate-500 font-medium">Points</th>
-                                      <th className="text-right pb-1 text-slate-500 font-medium">WOE</th>
                                       <th className="text-right pb-1 text-slate-500 font-medium">Count</th>
+                                      <th className="text-right pb-1 text-slate-500 font-medium">สัดส่วน</th>
+                                      <th className="text-right pb-1 text-slate-500 font-medium">Bad Count</th>
+                                      <th className="text-right pb-1 text-slate-500 font-medium">Bad Rate</th>
+                                      <th className="text-right pb-1 text-slate-500 font-medium">WOE</th>
+                                      <th className="text-right pb-1 text-slate-500 font-medium">IV</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -842,11 +933,23 @@ export default function Dashboard() {
                                           <td className={`py-1 text-right font-mono font-bold ${(r.points ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                             {(r.points ?? 0) >= 0 ? '+' : ''}{r.points}
                                           </td>
-                                          <td className="py-1 text-right font-mono text-slate-500">
+                                          <td className="py-1 text-right font-mono text-slate-400">
+                                            {typeof r.count === 'number' ? r.count.toLocaleString() : (r.count !== undefined && r.count !== null ? r.count : '—')}
+                                          </td>
+                                          <td className="py-1 text-right font-mono text-slate-400">
+                                            {typeof r.share === 'number' ? `${(r.share * 100).toFixed(1)}%` : '—'}
+                                          </td>
+                                          <td className="py-1 text-right font-mono text-slate-400">
+                                            {typeof r.badCount === 'number' ? r.badCount.toLocaleString() : '—'}
+                                          </td>
+                                          <td className="py-1 text-right font-mono text-slate-400">
+                                            {typeof r.badRate === 'number' ? `${(r.badRate * 100).toFixed(2)}%` : '—'}
+                                          </td>
+                                          <td className="py-1 text-right font-mono text-slate-400">
                                             {typeof r.woe === 'number' ? r.woe.toFixed(4) : '—'}
                                           </td>
-                                          <td className="py-1 text-right font-mono text-slate-500">
-                                            {r.count !== undefined && r.count !== null ? r.count : '—'}
+                                          <td className="py-1 text-right font-mono text-slate-400">
+                                            {typeof r.iv === 'number' ? r.iv.toFixed(4) : '—'}
                                           </td>
                                         </tr>
                                       );
@@ -927,11 +1030,18 @@ export default function Dashboard() {
                   })()}
                 </div>
 
-                {/* IV Summary — ทุกตัวแปรที่พิจารณา (จาก ascore_model_report.xlsx) */}
+                {/* IV Summary */}
                 {(model as any)?.ivSummary && (
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
-                    <h2 className="text-sm font-bold text-slate-200 mb-1">📊 Information Value (IV) Summary</h2>
-                    <p className="text-[9px] text-slate-500 mb-4">จาก ascore_model_report.xlsx · Sheet: IV Summary — ครอบคลุมทุกตัวแปรที่พิจารณา</p>
+                    <div className="flex items-center justify-between mb-1">
+                      <h2 className="text-sm font-bold text-slate-200">📊 Information Value (IV) Summary</h2>
+                      <span className="text-[10px] font-mono text-slate-400 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
+                        {(model as any)?.modelTable ? 'คำนวณโดยระบบจาก Baseline' : 'จาก ascore_model_report.xlsx · Sheet: IV Summary'}
+                      </span>
+                    </div>
+                    <p className="text-[9px] text-slate-500 mb-4">
+                      {(model as any)?.modelTable ? 'คำนวณโดยระบบจาก Baseline · ครอบคลุมทุกตัวแปรในโมเดล' : 'จาก ascore_model_report.xlsx · Sheet: IV Summary — ครอบคลุมทุกตัวแปรที่พิจารณา'}
+                    </p>
                     <table className="w-full text-[10px]">
                       <thead>
                         <tr className="border-b border-slate-800">
@@ -1287,7 +1397,12 @@ export default function Dashboard() {
                           {/* PSI */}
                           <tr className="border-b border-slate-800/50 hover:bg-slate-800/20">
                             <td className="py-3 px-4 font-semibold text-slate-300">PSI — Score Distribution <span className="text-slate-500 font-normal">(ต่ำกว่า = ดี)</span></td>
-                            <td className="py-3 px-4 text-center font-mono text-slate-400">&lt; {psiWarningNum.toFixed(2)}</td>
+                            <td className="py-3 px-4 text-center font-mono text-slate-400">
+                              <div>&lt; {psiWarningNum.toFixed(2)}</div>
+                              {uploadedMetrics.devPsi !== undefined && uploadedMetrics.devPsi !== null && (
+                                <span className="text-[9px] text-slate-500 block font-normal">ตอนพัฒนา: {uploadedMetrics.devPsi.toFixed(4)}</span>
+                              )}
+                            </td>
                             <td className="py-3 px-4 text-center font-mono font-bold text-slate-200">{uploadedMetrics.psi.toFixed(4)}</td>
                             <td className="py-3 px-4 text-center font-mono text-slate-400">—</td>
                             <td className="py-3 px-4 text-center"><Badge status={uploadedMetrics.psiStatus ?? uploadedMetrics.status} /></td>
@@ -1306,7 +1421,12 @@ export default function Dashboard() {
                                     <p className="font-semibold text-slate-300">CSI — {displayName} <span className="text-slate-500 font-normal">(ต่ำกว่า = ดี)</span></p>
                                     {sourceText && <p className="text-[9px] text-slate-600 mt-0.5 font-mono">{sourceText}</p>}
                                   </td>
-                                  <td className="py-3 px-4 text-center font-mono text-rose-400">&lt; {limit.toFixed(3)}</td>
+                                  <td className="py-3 px-4 text-center font-mono text-rose-400">
+                                    <div>&lt; {limit.toFixed(3)}</div>
+                                    {detail.devCsi !== undefined && detail.devCsi !== null && (
+                                      <span className="text-[9px] text-slate-500 block font-normal">ตอนพัฒนา: {detail.devCsi.toFixed(4)}</span>
+                                    )}
+                                  </td>
                                   <td className="py-3 px-4 text-center font-mono font-bold text-slate-200">{csiVal.toFixed(4)}</td>
                                   <td className={`py-3 px-4 text-center font-mono font-semibold ${diff <= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{diff >= 0 ? '+' : ''}{diff.toFixed(4)}</td>
                                   <td className="py-3 px-4 text-center"><Badge status={detail.status ?? (csiVal < limit ? 'STABLE' : 'WARNING')} /></td>

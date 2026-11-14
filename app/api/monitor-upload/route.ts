@@ -68,9 +68,11 @@ export async function POST(request: Request) {
     }
 
     const d = run.drift;
+    const devStability = (model as any)?.developmentStats?.stability;
     const csi = Object.fromEntries(Object.entries(d.csi).map(([k, v]) => [k, v.value]));
     const csiDetail = Object.fromEntries(Object.entries(d.csi).map(([k, v]) => [k, {
       value: v.value,
+      devCsi: devStability?.featureCsi?.[k] ?? null,
       status: v.status,
       threshold: v.threshold.warning,
       criticalThreshold: v.threshold.critical,
@@ -89,6 +91,8 @@ export async function POST(request: Request) {
       ...base,
       drift: d,
       psi: d.psi.value,
+      devPsi: devStability?.scorePsi ?? null,
+      devStability: devStability ?? null,
       psiStatus: d.psi.status,
       csi,
       csiDetail,

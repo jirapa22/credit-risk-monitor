@@ -496,8 +496,32 @@ export default function Dashboard() {
               </span>
             )}
             {currentVersion && <span className="font-mono text-[10px] text-slate-500">cfg v{currentVersion}</span>}
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            Model Active
+            {activeVer ? (
+              <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Model Active</span>
+              </span>
+            ) : displayVer?.status === 'VALIDATED' ? (
+              <span className="flex items-center gap-1.5 text-blue-400 font-medium">
+                <span className="w-2 h-2 rounded-full bg-blue-400" />
+                <span>Model Validated (ยังไม่ Active)</span>
+              </span>
+            ) : displayVer?.status === 'DRAFT' ? (
+              <span className="flex items-center gap-1.5 text-amber-400 font-medium">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                <span>Model Draft (แบบร่าง)</span>
+              </span>
+            ) : displayVer?.status === 'ARCHIVED' ? (
+              <span className="flex items-center gap-1.5 text-slate-400 font-medium">
+                <span className="w-2 h-2 rounded-full bg-slate-500" />
+                <span>Model Archived (เก็บถาวร)</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-slate-400 font-medium">
+                <span className="w-2 h-2 rounded-full bg-slate-500" />
+                <span>ยังไม่เปิดใช้งาน</span>
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -575,13 +599,24 @@ export default function Dashboard() {
 
                 {/* Baseline Performance */}
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
-                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded">📈 B. Baseline Performance (Train / Test / OOT)</span>
                   {(() => {
                     const devPerf = (model as any)?.developmentStats?.reported || (model as any)?.developmentStats?.computed;
                     const testPerf = devPerf?.test || model?.baseline?.performance?.test;
                     const trainPerf = devPerf?.train || model?.baseline?.performance?.train;
+                    const overallPerf = (model?.baseline?.performance as any)?.overall;
                     const ootPerf = devPerf?.oot;
+
+                    // If test and train are identical or if we only have overall/baseline performance
+                    const isIdenticalTestTrain = Boolean(
+                      testPerf && trainPerf &&
+                      testPerf.auc === trainPerf.auc &&
+                      testPerf.gini === trainPerf.gini &&
+                      testPerf.ks === trainPerf.ks
+                    );
+                    const isWholeDataset = Boolean(overallPerf || (!trainPerf && testPerf) || isIdenticalTestTrain);
+
                     const hasDevData = Boolean(
+                      overallPerf ||
                       (testPerf && (testPerf.auc !== undefined || testPerf.gini !== undefined || testPerf.ks !== undefined)) ||
                       (trainPerf && (trainPerf.auc !== undefined || trainPerf.gini !== undefined || trainPerf.ks !== undefined)) ||
                       (ootPerf && (ootPerf.auc !== undefined || ootPerf.gini !== undefined || ootPerf.ks !== undefined))
@@ -589,57 +624,94 @@ export default function Dashboard() {
 
                     if (!hasDevData) {
                       return (
-                        <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 text-center">
-                          <p className="text-xs text-slate-500 italic">ไม่มีข้อมูลสถิติตอนพัฒนา (Train/Test/OOT)</p>
-                        </div>
+                        <>
+                          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded">📈 B. Baseline Performance</span>
+                          <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 text-center mt-2">
+                            <p className="text-xs text-slate-500 italic">ไม่มีข้อมูลสถิติตอนพัฒนา (Train/Test/OOT)</p>
+                          </div>
+                        </>
                       );
                     }
 
                     return (
-                      <div className="space-y-3 mt-2">
-                        {testPerf && (testPerf.auc !== undefined || testPerf.gini !== undefined || testPerf.ks !== undefined) && (
-                          <div>
-                            <p className="text-[9px] text-slate-500 uppercase mb-1">Test Performance</p>
-                            <div className="grid grid-cols-3 gap-2">
-                              {[
-                                { k: 'AUC', v: testPerf?.auc },
-                                { k: 'Gini', v: testPerf?.gini },
-                                { k: 'KS', v: testPerf?.ks },
-                              ].map(({ k, v }) => (
-                                <div key={k} className="bg-slate-950/50 rounded-xl p-2 text-center">
-                                  <p className="text-[9px] text-slate-500 uppercase mb-1">{k}</p>
-                                  <p className="text-sm font-bold font-mono text-emerald-400">
-                                    {typeof v === 'number' ? v.toFixed(3) : '—'}
-                                  </p>
+                      <>
+                        {isWholeDataset ? (
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded">📈 B. Baseline Performance (Baseline ทั้งชุด)</span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-blue-500/40 text-blue-300 bg-blue-500/10">คำนวณโดยระบบจาก Baseline</span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded">📈 B. Baseline Performance (Train / Test / OOT)</span>
+                        )}
+
+                        <div className="space-y-3 mt-2">
+                          {isWholeDataset ? (
+                            <div>
+                              {(overallPerf || testPerf)?.period && (
+                                <p className="text-[9px] text-slate-500 uppercase mb-1 font-mono">ช่วงเวลา: {(overallPerf || testPerf).period}</p>
+                              )}
+                              <div className="grid grid-cols-3 gap-2">
+                                {[
+                                  { k: 'AUC', v: (overallPerf || testPerf)?.auc },
+                                  { k: 'Gini', v: (overallPerf || testPerf)?.gini },
+                                  { k: 'KS', v: (overallPerf || testPerf)?.ks },
+                                ].map(({ k, v }) => (
+                                  <div key={k} className="bg-slate-950/50 rounded-xl p-2 text-center">
+                                    <p className="text-[9px] text-slate-500 uppercase mb-1">{k}</p>
+                                    <p className="text-sm font-bold font-mono text-emerald-400">
+                                      {typeof v === 'number' ? v.toFixed(3) : '—'}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              {testPerf && (testPerf.auc !== undefined || testPerf.gini !== undefined || testPerf.ks !== undefined) && (
+                                <div>
+                                  <p className="text-[9px] text-slate-500 uppercase mb-1">Test Performance</p>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                      { k: 'AUC', v: testPerf?.auc },
+                                      { k: 'Gini', v: testPerf?.gini },
+                                      { k: 'KS', v: testPerf?.ks },
+                                    ].map(({ k, v }) => (
+                                      <div key={k} className="bg-slate-950/50 rounded-xl p-2 text-center">
+                                        <p className="text-[9px] text-slate-500 uppercase mb-1">{k}</p>
+                                        <p className="text-sm font-bold font-mono text-emerald-400">
+                                          {typeof v === 'number' ? v.toFixed(3) : '—'}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                              )}
 
-                        {trainPerf && (trainPerf.auc !== undefined || trainPerf.gini !== undefined || trainPerf.ks !== undefined) && (
-                          <div className="border-t border-slate-800 pt-2">
-                            <p className="text-[9px] text-slate-500 mb-1">Train Performance</p>
-                            <div className="flex gap-3 text-[10px] font-mono">
-                              <span className="text-slate-400">AUC: <span className="text-blue-400">{typeof trainPerf?.auc === 'number' ? trainPerf.auc.toFixed(3) : '—'}</span></span>
-                              <span className="text-slate-400">Gini: <span className="text-blue-400">{typeof trainPerf?.gini === 'number' ? trainPerf.gini.toFixed(3) : '—'}</span></span>
-                              <span className="text-slate-400">KS: <span className="text-blue-400">{typeof trainPerf?.ks === 'number' ? trainPerf.ks.toFixed(3) : '—'}</span></span>
-                            </div>
-                          </div>
-                        )}
+                              {trainPerf && (trainPerf.auc !== undefined || trainPerf.gini !== undefined || trainPerf.ks !== undefined) && (
+                                <div className="border-t border-slate-800 pt-2">
+                                  <p className="text-[9px] text-slate-500 mb-1">Train Performance</p>
+                                  <div className="flex gap-3 text-[10px] font-mono">
+                                    <span className="text-slate-400">AUC: <span className="text-blue-400">{typeof trainPerf?.auc === 'number' ? trainPerf.auc.toFixed(3) : '—'}</span></span>
+                                    <span className="text-slate-400">Gini: <span className="text-blue-400">{typeof trainPerf?.gini === 'number' ? trainPerf.gini.toFixed(3) : '—'}</span></span>
+                                    <span className="text-slate-400">KS: <span className="text-blue-400">{typeof trainPerf?.ks === 'number' ? trainPerf.ks.toFixed(3) : '—'}</span></span>
+                                  </div>
+                                </div>
+                              )}
 
-                        {ootPerf && (ootPerf.auc !== undefined || ootPerf.gini !== undefined || ootPerf.ks !== undefined) && (
-                          <div className="border-t border-slate-800 pt-2">
-                            <p className="text-[9px] text-slate-500 mb-1">OOT Performance</p>
-                            <div className="flex gap-3 text-[10px] font-mono">
-                              <span className="text-slate-400">AUC: <span className="text-purple-400">{typeof ootPerf?.auc === 'number' ? ootPerf.auc.toFixed(3) : '—'}</span></span>
-                              <span className="text-slate-400">Gini: <span className="text-purple-400">{typeof ootPerf?.gini === 'number' ? ootPerf.gini.toFixed(3) : '—'}</span></span>
-                              <span className="text-slate-400">KS: <span className="text-purple-400">{typeof ootPerf?.ks === 'number' ? ootPerf.ks.toFixed(3) : '—'}</span></span>
-                            </div>
-                          </div>
-                        )}
+                              {ootPerf && (ootPerf.auc !== undefined || ootPerf.gini !== undefined || ootPerf.ks !== undefined) && (
+                                <div className="border-t border-slate-800 pt-2">
+                                  <p className="text-[9px] text-slate-500 mb-1">OOT Performance</p>
+                                  <div className="flex gap-3 text-[10px] font-mono">
+                                    <span className="text-slate-400">AUC: <span className="text-purple-400">{typeof ootPerf?.auc === 'number' ? ootPerf.auc.toFixed(3) : '—'}</span></span>
+                                    <span className="text-slate-400">Gini: <span className="text-purple-400">{typeof ootPerf?.gini === 'number' ? ootPerf.gini.toFixed(3) : '—'}</span></span>
+                                    <span className="text-slate-400">KS: <span className="text-purple-400">{typeof ootPerf?.ks === 'number' ? ootPerf.ks.toFixed(3) : '—'}</span></span>
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
 
-                        {/* Development Stability (ความผันผวนตอนพัฒนา: Train vs Test/OOT) */}
+                          {/* Development Stability (ความผันผวนตอนพัฒนา: Train vs Test/OOT) */}
                         <div className="border-t border-slate-800 pt-3 mt-3">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-[10px] font-bold text-slate-300">
@@ -702,6 +774,7 @@ export default function Dashboard() {
                           })()}
                         </div>
                       </div>
+                    </>
                     );
                   })()}
                 </div>

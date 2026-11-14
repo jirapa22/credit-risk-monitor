@@ -1059,3 +1059,20 @@ export function applyModelTableToBaseline<T extends { featureRegistry?: Record<s
   return model;
 }
 
+/**
+ * Derives a `ScoringConfig` directly from a `ModelTableDefinition` (base points + binned points).
+ */
+export function modelTableToScoring(table: ModelTableDefinition): ScoringConfig | undefined {
+  if (!table || !Array.isArray(table.rows) || table.rows.length === 0) return undefined;
+  const rows = [...table.rows] as unknown as Record<string, unknown>[];
+  if (table.base_points !== undefined && !rows.some(r => String(r.variable).toLowerCase() === 'base_points')) {
+    rows.unshift({ variable: 'base_points', points: table.base_points });
+  }
+  const res = importModelTableFromRows(rows);
+  if (res.scoring && table.base_points !== undefined) {
+    res.scoring.base_points = table.base_points;
+  }
+  return res.scoring;
+}
+
+

@@ -20,7 +20,7 @@ import { buildReferenceProfileFromData } from './reference';
 import { DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from './defaults';
 import { computeRowsSha256, type ReferenceDatasetBlob } from './storage/blob';
 import { validateScoringConfig } from './scoring';
-import { importModelTableFromRows, type ScorecardComparisonReport } from './scorecardImport';
+import { importModelTableFromRows, modelTableToScoring, type ScorecardComparisonReport } from './scorecardImport';
 import { isValidDate, parseNumber } from './validation';
 import {
   assessMetricReliability,
@@ -361,6 +361,10 @@ export function validateBaseline(
 
   // ── 4. Mode-specific validation ('scorecard' vs 'score_column') ───────────
   if (spec.mode === 'scorecard') {
+    const rawModelTable = baseline.modelTable || spec.modelTable;
+    if ((!spec.scoring || !Array.isArray(spec.scoring.features) || spec.scoring.features.length === 0) && rawModelTable) {
+      spec.scoring = modelTableToScoring(rawModelTable);
+    }
     if (!spec.scoring || !Array.isArray(spec.scoring.features) || spec.scoring.features.length === 0) {
       errors.push({
         code: 'INVALID_SCORECARD',
@@ -529,9 +533,14 @@ export function validateBaseline(
   let multivariateFitMs = 0;
 
   if (canBuildProfile) {
+    let effectiveScoring = spec.mode === 'scorecard' ? spec.scoring : null;
+    const rawModelTable = baseline.modelTable || spec.modelTable;
+    if (spec.mode === 'scorecard' && (!effectiveScoring || Object.keys(effectiveScoring.scorecard || {}).length === 0) && rawModelTable) {
+      effectiveScoring = modelTableToScoring(rawModelTable) ?? null;
+    }
     const profile = buildReferenceProfileFromData(
       { meta, rows: typedRows },
-      spec.mode === 'scorecard' ? spec.scoring : null,
+      effectiveScoring,
       {
         labelColumn: labelCol,
         scoreColumn: spec.mode === 'score_column' ? (spec.scoreColumn ?? undefined) : undefined,

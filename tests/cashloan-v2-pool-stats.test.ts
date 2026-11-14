@@ -7,7 +7,9 @@ import {
   computeDevelopmentStability,
   computeModelTablePoolStats,
 } from '../lib/poolStats';
-import { getEffectiveModel } from '../lib/storage/repositories';
+import { baselineToModelObject, getEffectiveModel } from '../lib/storage/repositories';
+import { buildReferenceProfileFromData } from '../lib/reference';
+import { validateBaseline } from '../lib/baselineValidation';
 
 describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
   const root = process.cwd();
@@ -142,4 +144,155 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
     expect(ascore.ivSummary).toBeDefined();
     expect(ascore.ivSummary['loan_amount']?.iv).toBe(0.2329);
   });
+
+  it('(5) computes reference bad rate accurately (~12.5%) from default_12m, never 0.0%', () => {
+    const meta = {
+      referenceId: 'cashloan_v2_ref',
+      version: '1.0.0',
+      modelId: 'model_cashloan_v2',
+      description: 'Cash Loan v2 Baseline',
+      source: 'test',
+      createdAt: new Date().toISOString(),
+      rowCount: rows.length,
+      badCount: 0,
+      badRate: 0, // Initially unmapped / 0
+      periodStart: '2024-01-01',
+      periodEnd: '2024-12-31',
+      columns: Object.keys(rows[0]),
+      sha256: 'test_sha',
+    };
+
+    const prof = buildReferenceProfileFromData(
+      { meta, rows },
+      imported.scoring,
+      { labelColumn: 'default_12m' },
+    );
+
+    expect(prof.hasLabels).toBe(true);
+    expect(prof.meta.badCount).toBe(623);
+    expect(prof.meta.badRate).toBeCloseTo(0.1246, 3);
+    expect(prof.meta.badRate).toBeGreaterThan(0.10);
+
+    const baselineVer = {
+      modelId: 'model_cashloan_v2',
+      version: '1.0.0',
+      mode: 'scorecard' as const,
+      status: 'ACTIVE' as const,
+      referenceDatasetId: 'cashloan_v2_ref',
+      columns: {
+        idColumn: 'app_id',
+        dateColumn: 'app_date',
+        labelColumn: 'default_12m',
+        scoreColumn: 'credit_score',
+      },
+      scoreDirection: 'higher_is_safer' as const,
+      modelTable: imported.table,
+      scoring: imported.scoring,
+    };
+
+    const modelObj = baselineToModelObject(baselineVer, rows);
+    expect(modelObj.baseline.bad_rate).toBeCloseTo(0.1246, 3);
+    expect(modelObj.baseline.bad_rate).not.toBe(0);
+  });
+
+  it('(6) aligns Wizard validation AUC and Sandbox Baseline Performance at 0.731 (without duplicating Train/Test)', () => {
+    const meta = {
+      referenceId: 'cashloan_v2_ref',
+      version: '1.0.0',
+      modelId: 'model_cashloan_v2',
+      description: '',
+      source: '',
+      createdAt: new Date().toISOString(),
+      rowCount: rows.length,
+      badCount: 0,
+      badRate: 0,
+      periodStart: '',
+      periodEnd: '',
+      columns: Object.keys(rows[0]),
+      sha256: 'test_sha',
+    };
+
+    const baselineVer = {
+      modelId: 'model_cashloan_v2',
+      version: '1.0.0',
+      mode: 'scorecard' as const,
+      status: 'DRAFT' as const,
+      referenceDatasetId: 'cashloan_v2_ref',
+      columns: {
+        idColumn: 'app_id',
+        dateColumn: 'app_date',
+        labelColumn: 'default_12m',
+        scoreColumn: 'credit_score',
+      },
+      scoreDirection: 'higher_is_safer' as const,
+      modelTable: imported.table,
+      // intentionally omit scoring to simulate modelTable-only draft
+    };
+
+    // 1. Wizard validation
+    const valReport = validateBaseline(baselineVer, { meta, rows });
+    expect(valReport.ok).toBe(true);
+    const wizardAuc = valReport.computed.performance.auc;
+    expect(wizardAuc).toBeCloseTo(0.731, 3);
+
+    // 2. Model Sandbox baseline performance
+    const modelObj = baselineToModelObject(baselineVer, rows);
+    expect(modelObj.baseline.performance.overall).toBeDefined();
+    expect(modelObj.baseline.performance.overall.auc).toBeCloseTo(0.731, 3);
+    expect(modelObj.baseline.performance.overall.gini).toBeCloseTo(0.462, 3);
+    expect(modelObj.baseline.performance.overall.ks).toBeCloseTo(0.353, 3);
+
+    // Ensure wizard and sandbox AUC match 100%
+    expect(wizardAuc).toBeCloseTo(modelObj.baseline.performance.overall.auc, 4);
+
+    // Ensure whole-dataset baseline does not invent duplicate train performance
+    expect(modelObj.baseline.performance.train).toBeUndefined();
+  });
+
+  it('(7) reflects accurate status in header for selected models (ACTIVE vs ARCHIVED vs VALIDATED vs DRAFT)', () => {
+    function getHeaderStatusBadge(activeVer: any, displayVer: any) {
+      if (activeVer) {
+        return { label: 'Model Active', color: 'emerald', dotAnimate: true };
+      }
+      if (displayVer?.status === 'VALIDATED') {
+        return { label: 'Model Validated (ยังไม่ Active)', color: 'blue', dotAnimate: false };
+      }
+      if (displayVer?.status === 'DRAFT') {
+        return { label: 'Model Draft (แบบร่าง)', color: 'amber', dotAnimate: false };
+      }
+      if (displayVer?.status === 'ARCHIVED') {
+        return { label: 'Model Archived (เก็บถาวร)', color: 'slate', dotAnimate: false };
+      }
+      return { label: 'ยังไม่เปิดใช้งาน', color: 'slate', dotAnimate: false };
+    }
+
+    // 1. When model has active version
+    expect(getHeaderStatusBadge({ version: '1.0.0', status: 'ACTIVE' }, null)).toEqual({
+      label: 'Model Active',
+      color: 'emerald',
+      dotAnimate: true,
+    });
+
+    // 2. When model has only ARCHIVED version (like model_il20t)
+    expect(getHeaderStatusBadge(null, { version: '1.0.0', status: 'ARCHIVED' })).toEqual({
+      label: 'Model Archived (เก็บถาวร)',
+      color: 'slate',
+      dotAnimate: false,
+    });
+
+    // 3. When model has only VALIDATED version
+    expect(getHeaderStatusBadge(null, { version: '1.0.0', status: 'VALIDATED' })).toEqual({
+      label: 'Model Validated (ยังไม่ Active)',
+      color: 'blue',
+      dotAnimate: false,
+    });
+
+    // 4. When model has only DRAFT version
+    expect(getHeaderStatusBadge(null, { version: '1.0.0', status: 'DRAFT' })).toEqual({
+      label: 'Model Draft (แบบร่าง)',
+      color: 'amber',
+      dotAnimate: false,
+    });
+  });
 });
+

@@ -297,6 +297,18 @@ export function buildReferenceProfileFromData(
   });
   const hasLabels = labels.some(l => l === 0 || l === 1);
 
+  let meta = file.meta;
+  if (hasLabels) {
+    const validLabels = labels.filter((l): l is number => l === 0 || l === 1);
+    const badCount = validLabels.filter(l => l === 1).length;
+    const badRate = validLabels.length > 0 ? +(badCount / validLabels.length).toFixed(6) : file.meta.badRate;
+    meta = {
+      ...file.meta,
+      badCount,
+      badRate,
+    };
+  }
+
   const hasScorecard = Boolean(
     scoring && Array.isArray(scoring.features) &&
     scoring.features.length > 0 &&
@@ -315,7 +327,7 @@ export function buildReferenceProfileFromData(
   const hasScores = scores.length > 0;
 
   const profile: ReferenceProfile = {
-    meta: file.meta,
+    meta,
     features,
     categoricalFeatures,
     categorySpecs,

@@ -37,6 +37,7 @@ import {
   type ReferenceDatasetBlob,
 } from './blob';
 import { computeModelTablePoolStats, computeDevelopmentStability } from '../poolStats';
+import { modelTableToScoring } from '../scorecardImport';
 import {
   buildReferenceProfileFromData,
   getReferenceProfile,
@@ -178,9 +179,13 @@ export function baselineToModelObject(baseline: BaselineVersion, referenceRows?:
   const rawBuiltIn = bundled.models[baseline.modelId]
     ? structuredClone(bundled.models[baseline.modelId])
     : {};
+  const derivedScoring =
+    baseline.modelTable && (!baseline.scoring || Object.keys(baseline.scoring.scorecard || {}).length === 0)
+      ? modelTableToScoring(baseline.modelTable)
+      : undefined;
   const scoring =
-    baseline.mode === 'scorecard' && baseline.scoring
-      ? baseline.scoring
+    baseline.mode === 'scorecard' && (baseline.scoring || derivedScoring)
+      ? (baseline.scoring || derivedScoring)!
       : {
           base_points: 0,
           factor: 1,
@@ -194,18 +199,41 @@ export function baselineToModelObject(baseline: BaselineVersion, referenceRows?:
   let dynamicBaseline = rawBuiltIn.baseline;
   if (!dynamicBaseline && baseline.referenceDatasetId) {
     try {
-      const prof = getReferenceProfile(
-        baseline.referenceDatasetId,
-        baseline.mode === 'scorecard' ? baseline.scoring : null,
-        {
-          labelColumn: baseline.columns.labelColumn ?? DEFAULT_LABEL_COLUMN,
-          scoreColumn:
-            baseline.mode === 'score_column'
-              ? (baseline.columns.scoreColumn ?? undefined)
-              : undefined,
-          featureRegistry: baseline.featureRegistry,
-        },
-      );
+      const scoringForProf = baseline.mode === 'scorecard' ? (baseline.scoring || derivedScoring || null) : null;
+      const optsForProf = {
+        labelColumn: baseline.columns.labelColumn ?? DEFAULT_LABEL_COLUMN,
+        scoreColumn:
+          baseline.mode === 'score_column'
+            ? (baseline.columns.scoreColumn ?? undefined)
+            : undefined,
+        featureRegistry: baseline.featureRegistry,
+      };
+      let prof: ReferenceProfile;
+      try {
+        prof = getReferenceProfile(baseline.referenceDatasetId, scoringForProf, optsForProf);
+      } catch (refErr) {
+        if (referenceRows && referenceRows.length > 0) {
+          const headers = Object.keys(referenceRows[0]);
+          const fallbackMeta = {
+            referenceId: baseline.referenceDatasetId,
+            version: '1.0.0',
+            modelId: baseline.modelId,
+            description: '',
+            source: 'runtime-reference-rows',
+            createdAt: new Date().toISOString(),
+            rowCount: referenceRows.length,
+            badCount: 0,
+            badRate: 0,
+            periodStart: '',
+            periodEnd: '',
+            columns: headers,
+            sha256: '',
+          };
+          prof = buildReferenceProfileFromData({ meta: fallbackMeta, rows: referenceRows as any }, scoringForProf, optsForProf);
+        } else {
+          throw refErr;
+        }
+      }
       const feature_stats: Record<string, any> = {};
       for (const [k, vals] of Object.entries(prof.features)) {
         const finite = vals.filter(Number.isFinite);
@@ -239,22 +267,36 @@ export function baselineToModelObject(baseline: BaselineVersion, referenceRows?:
         const auc = calculateAUC(pts, dir);
         const gini = calculateGini(pts, dir);
         const ks = calculateKS(pts);
+        const period =
+          prof.meta.periodStart && prof.meta.periodEnd
+            ? `${prof.meta.periodStart} – ${prof.meta.periodEnd}`
+            : 'Reference';
         performance = {
+          overall: {
+            auc,
+            gini,
+            ks,
+            period,
+            source: 'calculated_from_baseline',
+          },
           test: {
             auc,
             gini,
             ks,
-            period:
-              prof.meta.periodStart && prof.meta.periodEnd
-                ? `${prof.meta.periodStart} – ${prof.meta.periodEnd}`
-                : 'Reference',
+            period,
           },
-          train: { auc, gini, ks },
         };
+      }
+      let badRate = prof.meta.badRate;
+      if ((badRate === 0 || badRate === undefined || badRate === null) && prof.hasLabels) {
+        const validLabels = prof.labels.filter((l): l is number => l === 0 || l === 1);
+        if (validLabels.length > 0) {
+          badRate = +(validLabels.filter(l => l === 1).length / validLabels.length).toFixed(6);
+        }
       }
       dynamicBaseline = {
         sample_size: prof.meta.rowCount,
-        bad_rate: prof.meta.badRate,
+        bad_rate: badRate,
         feature_stats,
         score_distribution,
         performance,

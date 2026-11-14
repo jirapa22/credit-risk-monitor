@@ -14,8 +14,8 @@
 import zlib from 'zlib';
 import { parseCsv } from './csv';
 import { calculateAScore, validateScoringConfig } from './scoring';
-import { defaultBinLabels } from './stats';
-import type { ScorecardFeature, ScoringConfig } from './types';
+import { defaultBinLabels, getBinIndex } from './stats';
+import type { FeatureDefinition, ModelTableDefinition, ModelTableRow, ScorecardFeature, ScoringConfig } from './types';
 import { parseNumber } from './validation';
 
 const isBlank = (v: unknown) => v === null || v === undefined || String(v).trim() === '';
@@ -603,5 +603,425 @@ export function importScorecardFromBuffer(
     ? buffer.toString('utf8')
     : Buffer.from(buffer).toString('utf8');
   return importScorecardFromCsv(text, options);
+}
+
+// ─── Model Table (ตารางโมเดล) Import & Consistency Check ─────────────────────
+
+export interface ModelTableImportOptions {
+  referenceRows?: Record<string, unknown>[];
+  scoreColumn?: string;
+  referenceScores?: number[];
+  tolerancePct?: number; // default 95%
+}
+
+export interface ModelTableFeatureUpdate {
+  dataType: 'numeric' | 'categorical';
+  usedInModel: boolean;
+  binning?: { boundaries: number[]; binLabels: string[] };
+  categoryPools?: Array<{ label: string; categories: string[] }>;
+  poolPoints: number[];
+}
+
+export interface ModelTableImportResult {
+  ok: boolean;
+  table: ModelTableDefinition;
+  featureUpdates: Record<string, ModelTableFeatureUpdate>;
+  scoreComparison: ScorecardComparisonReport | null;
+  errors: string[];
+  warnings: string[];
+}
+
+/**
+ * Parses Model Table rows (standard columns: variable, type, pool_id, lower, upper, categories, points).
+ * Reuses the score comparison logic and OpenXML / CSV readers.
+ */
+export function importModelTableFromRows(
+  rows: Record<string, unknown>[],
+  options: ModelTableImportOptions = {},
+): ModelTableImportResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!rows || rows.length === 0) {
+    return {
+      ok: false,
+      table: { features: [], rows: [] },
+      featureUpdates: {},
+      scoreComparison: null,
+      errors: ['ไฟล์ตารางโมเดลไม่มีข้อมูล'],
+      warnings: [],
+    };
+  }
+
+  const sampleKeys = Object.keys(rows[0]);
+  const findCol = (targets: string[]) => {
+    for (const t of targets) {
+      const found = sampleKeys.find(k => k.trim().toLowerCase() === t.toLowerCase());
+      if (found) return found;
+    }
+    return targets[0];
+  };
+
+  const colVariable = findCol(['variable', 'var', 'feature', 'feature_name', 'column']);
+  const colType = findCol(['type', 'data_type', 'feature_type']);
+  const colPoolId = findCol(['pool_id', 'pool', 'bin', 'bin_id', 'bin_label', 'group']);
+  const colLower = findCol(['lower', 'lower_bound', 'min']);
+  const colUpper = findCol(['upper', 'upper_bound', 'max']);
+  const colCategories = findCol(['categories', 'category', 'cats', 'values']);
+  const colPoints = findCol(['points', 'point', 'score', 'pts']);
+
+  let basePoints = 0;
+  const featureOrder: string[] = [];
+  const rawRows: ModelTableRow[] = [];
+  const featureRows = new Map<string, Array<{
+    poolId: string;
+    type?: 'numeric' | 'categorical';
+    lower: number | null;
+    upper: number | null;
+    categories?: string[];
+    points: number;
+    rowNo: number;
+  }>>();
+
+  rows.forEach((r, idx) => {
+    const rowNo = idx + 2;
+    const variable = String(r[colVariable] ?? '').trim();
+    if (!variable) return;
+
+    const rawPts = r[colPoints];
+    const ptsNum = parseNumber(rawPts);
+    if (!Number.isFinite(ptsNum)) {
+      errors.push(`แถวที่ ${rowNo} (${variable}): ค่า points "${String(rawPts ?? '')}" ไม่ใช่ตัวเลข`);
+      return;
+    }
+
+    if (variable.toLowerCase() === 'base_points') {
+      basePoints = ptsNum;
+      rawRows.push({ variable: 'base_points', points: ptsNum });
+      return;
+    }
+
+    const explicitType = String(r[colType] ?? '').trim().toLowerCase();
+    const rawLower = r[colLower];
+    const rawUpper = r[colUpper];
+    const rawCats = r[colCategories];
+
+    let lower: number | null = null;
+    if (!isBlank(rawLower)) {
+      const n = parseNumber(rawLower);
+      if (Number.isFinite(n)) lower = n;
+    }
+
+    let upper: number | null = null;
+    if (!isBlank(rawUpper)) {
+      const n = parseNumber(rawUpper);
+      if (Number.isFinite(n)) upper = n;
+    }
+
+    let parsedCats: string[] | undefined = undefined;
+    if (!isBlank(rawCats)) {
+      if (Array.isArray(rawCats)) {
+        parsedCats = rawCats.map(c => String(c).trim()).filter(Boolean);
+      } else {
+        parsedCats = String(rawCats)
+          .split(/[,|;]/)
+          .map(c => c.trim())
+          .filter(Boolean);
+      }
+    }
+
+    const poolId = !isBlank(r[colPoolId]) ? String(r[colPoolId]).trim() : `Pool ${rawRows.length + 1}`;
+    const determinedType: 'numeric' | 'categorical' =
+      explicitType === 'categorical' || (parsedCats && parsedCats.length > 0)
+        ? 'categorical'
+        : 'numeric';
+
+    if (!featureRows.has(variable)) {
+      featureRows.set(variable, []);
+      featureOrder.push(variable);
+    }
+
+    featureRows.get(variable)!.push({
+      poolId,
+      type: determinedType,
+      lower,
+      upper,
+      categories: parsedCats,
+      points: ptsNum,
+      rowNo,
+    });
+
+    rawRows.push({
+      variable,
+      type: determinedType,
+      pool_id: poolId,
+      lower,
+      upper,
+      categories: parsedCats,
+      points: ptsNum,
+    });
+  });
+
+  const featureUpdates: Record<string, ModelTableFeatureUpdate> = {};
+
+  for (const feat of featureOrder) {
+    const list = featureRows.get(feat)!;
+    const isCategorical = list.some(item => item.type === 'categorical');
+
+    if (isCategorical) {
+      const categoryPools: Array<{ label: string; categories: string[] }> = [];
+      const poolPoints: number[] = [];
+
+      list.forEach((item, pIdx) => {
+        const lbl = item.poolId || `Pool ${pIdx + 1}`;
+        const cats = item.categories && item.categories.length > 0 ? item.categories : [lbl];
+        categoryPools.push({ label: lbl, categories: cats });
+        poolPoints.push(item.points);
+      });
+
+      featureUpdates[feat] = {
+        dataType: 'categorical',
+        usedInModel: true,
+        categoryPools,
+        poolPoints,
+      };
+    } else {
+      // Numeric pools: sort by upper bound ascending
+      const bounded = list.filter(item => item.upper !== null).sort((a, b) => (a.upper! - b.upper!));
+      const openEnded = list.filter(item => item.upper === null);
+
+      const ordered = [...bounded, ...openEnded];
+      const boundaries = bounded.map(item => item.upper as number);
+      const binLabels = ordered.map((item, i) => {
+        if (item.poolId && item.poolId !== `Pool ${i + 1}`) return item.poolId;
+        const low = i === 0 ? '' : bounded[i - 1]?.upper;
+        const up = item.upper;
+        if (low === '' && up !== null) return `≤${up}`;
+        if (up === null) return `>${low}`;
+        return `${low}–${up}`;
+      });
+      const poolPoints = ordered.map(item => item.points);
+
+      featureUpdates[feat] = {
+        dataType: 'numeric',
+        usedInModel: true,
+        binning: { boundaries, binLabels },
+        poolPoints,
+      };
+    }
+  }
+
+  // ── Consistency Check vs Reference score column ───────────────────────────
+  let scoreComparison: ScorecardComparisonReport | null = null;
+  const refRows = options.referenceRows ?? [];
+
+  if (errors.length === 0 && refRows.length > 0 && featureOrder.length > 0) {
+    const scoreCol = options.scoreColumn || (refRows[0] && 'score' in refRows[0] ? 'score' : undefined);
+    const hasExpectedScores =
+      Boolean(options.referenceScores && options.referenceScores.length === refRows.length) ||
+      Boolean(scoreCol && refRows.some(r => Number.isFinite(parseNumber(r[scoreCol]))));
+
+    if (hasExpectedScores) {
+      let comparedRows = 0;
+      let matchedCount = 0;
+      let maxAbsDiff = 0;
+
+      for (let i = 0; i < refRows.length; i++) {
+        const r = refRows[i];
+        const expected =
+          options.referenceScores && options.referenceScores[i] !== undefined
+            ? options.referenceScores[i]
+            : scoreCol
+              ? parseNumber(r[scoreCol])
+              : NaN;
+        if (!Number.isFinite(expected)) continue;
+
+        let computedScore = basePoints;
+        let validRow = true;
+
+        for (const feat of featureOrder) {
+          const update = featureUpdates[feat];
+          if (!update) continue;
+
+          if (update.dataType === 'numeric') {
+            const rawVal = r[feat];
+            const numVal = parseNumber(rawVal);
+            if (!Number.isFinite(numVal)) {
+              validRow = false;
+              break;
+            }
+            const bIdx = getBinIndex(numVal, update.binning?.boundaries ?? []);
+            computedScore += update.poolPoints[bIdx] ?? 0;
+          } else {
+            const rawVal = String(r[feat] ?? '').trim();
+            const pools = update.categoryPools ?? [];
+            const foundIdx = pools.findIndex(p => p.categories.includes(rawVal) || p.label === rawVal);
+            if (foundIdx >= 0) {
+              computedScore += update.poolPoints[foundIdx] ?? 0;
+            } else {
+              computedScore += update.poolPoints[update.poolPoints.length - 1] ?? 0;
+            }
+          }
+        }
+
+        if (!validRow) continue;
+
+        const diff = Math.abs(computedScore - expected);
+        comparedRows++;
+        if (diff <= 0.500001) matchedCount++;
+        if (diff > maxAbsDiff) maxAbsDiff = diff;
+      }
+
+      if (comparedRows > 0) {
+        const matchPct = +((matchedCount / comparedRows) * 100).toFixed(2);
+        scoreComparison = {
+          comparedRows,
+          matchedWithinHalfPointCount: matchedCount,
+          matchWithinHalfPointPct: matchPct,
+          maxAbsDiff: +maxAbsDiff.toFixed(4),
+        };
+
+        const tol = options.tolerancePct ?? 95;
+        if (matchPct < tol) {
+          warnings.push(
+            `คะแนนที่คำนวณจากตารางโมเดลตรงกับคอลัมน์คะแนน "${scoreCol || 'score'}" เพียง ${matchPct.toFixed(2)}% (< ${tol}%, ต่างไม่เกิน 0.5 คะแนน) โดยต่างสูงสุด ${maxAbsDiff.toFixed(2)} คะแนน`,
+          );
+        }
+      }
+    }
+  }
+
+  return {
+    ok: errors.length === 0 && featureOrder.length > 0,
+    table: {
+      base_points: basePoints,
+      features: featureOrder,
+      rows: rawRows,
+    },
+    featureUpdates,
+    scoreComparison,
+    errors,
+    warnings,
+  };
+}
+
+/**
+ * Imports Model Table from text (CSV or JSON).
+ */
+export function importModelTableFromText(
+  text: string,
+  options: ModelTableImportOptions = {},
+): ModelTableImportResult {
+  const trimmed = text.trim();
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      const parsedJson = JSON.parse(trimmed);
+      const rows: Record<string, unknown>[] = Array.isArray(parsedJson)
+        ? parsedJson
+        : Array.isArray(parsedJson.rows)
+          ? parsedJson.rows
+          : [];
+      return importModelTableFromRows(rows, options);
+    } catch (e: any) {
+      return {
+        ok: false,
+        table: { features: [], rows: [] },
+        featureUpdates: {},
+        scoreComparison: null,
+        errors: [`รูปแบบ JSON ไม่ถูกต้อง: ${e.message}`],
+        warnings: [],
+      };
+    }
+  }
+
+  const parsedCsv = parseCsv(text);
+  return importModelTableFromRows(parsedCsv.rows, options);
+}
+
+/**
+ * Imports Model Table from buffer (.xlsx, .csv, or .json).
+ */
+export function importModelTableFromBuffer(
+  buffer: Uint8Array | Buffer,
+  fileName: string,
+  options: ModelTableImportOptions = {},
+): ModelTableImportResult {
+  if (fileName.toLowerCase().endsWith('.xlsx')) {
+    const rows = parseXlsxBufferToRows(buffer);
+    return importModelTableFromRows(rows, options);
+  }
+  const text = Buffer.isBuffer(buffer)
+    ? buffer.toString('utf8')
+    : Buffer.from(buffer).toString('utf8');
+  return importModelTableFromText(text, options);
+}
+
+/**
+ * Applies Model Table import result to a BaselineVersion:
+ *   (ก) Sets usedInModel=true for variables in table, false for others
+ *   (ข) Uses pools in table as CSI bins, with label "pool ของโมเดล"
+ */
+export function applyModelTableToBaseline<T extends { featureRegistry?: Record<string, FeatureDefinition>; thresholds?: any; modelTable?: ModelTableDefinition }>(
+  baseline: T,
+  importResult: ModelTableImportResult,
+): T {
+  const model = structuredClone(baseline);
+  model.modelTable = importResult.table;
+  const tableVars = new Set(importResult.table.features);
+
+  if (!model.featureRegistry) {
+    model.featureRegistry = {};
+  }
+
+  // (ก) Set usedInModel=true for variables in table, false for others
+  for (const [k, feat] of Object.entries(model.featureRegistry)) {
+    if (tableVars.has(k)) {
+      feat.usedInModel = true;
+    } else {
+      feat.usedInModel = false;
+    }
+  }
+
+  // (ข) Use pools in table as CSI bins
+  if (!model.thresholds) model.thresholds = { csi_features: {} };
+  if (!model.thresholds.csi_features) model.thresholds.csi_features = {};
+
+  for (const [varName, update] of Object.entries(importResult.featureUpdates)) {
+    if (!model.featureRegistry[varName]) {
+      model.featureRegistry[varName] = {
+        columnName: varName,
+        displayName: varName,
+        dataType: update.dataType,
+        required: true,
+        monitoringEnabled: true,
+        usedInModel: true,
+      };
+    }
+    const def = model.featureRegistry[varName];
+    def.usedInModel = true;
+    def.poolPoints = update.poolPoints;
+
+    if (update.dataType === 'numeric' && update.binning) {
+      def.binning = update.binning;
+      model.thresholds.csi_features[varName] = {
+        label: def.displayName || varName,
+        source: 'pool ของโมเดล',
+        threshold: model.thresholds.csi_features[varName]?.threshold ?? 0.10,
+        bins: update.binning.boundaries,
+        bin_labels: update.binning.binLabels,
+      };
+    } else if (update.dataType === 'categorical' && update.categoryPools) {
+      def.categoryPools = update.categoryPools;
+      model.thresholds.csi_features[varName] = {
+        label: def.displayName || varName,
+        source: 'pool ของโมเดล',
+        threshold: model.thresholds.csi_features[varName]?.threshold ?? 0.10,
+        bins: [],
+        bin_labels: update.categoryPools.map(p => p.label),
+      };
+    }
+  }
+
+  return model;
 }
 

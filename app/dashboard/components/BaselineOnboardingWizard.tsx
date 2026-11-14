@@ -22,6 +22,7 @@ import type {
   BaselineValidationReport,
   FeatureDataType,
   FeatureDefinition,
+  ModelTableDefinition,
   ScoreDirection,
   ScoringConfig,
 } from '@/lib/types';
@@ -110,6 +111,12 @@ export default function BaselineOnboardingWizard({
   const [scorecardFileName, setScorecardFileName] = useState<string>('');
   const [scorecardImportReport, setScorecardImportReport] = useState<string>('');
   const [isImportingScorecard, setIsImportingScorecard] = useState<boolean>(false);
+
+  // Model Table state (for score_column mode)
+  const [modelTableConfig, setModelTableConfig] = useState<ModelTableDefinition | null>(null);
+  const [modelTableFileName, setModelTableFileName] = useState<string>('');
+  const [modelTableImportReport, setModelTableImportReport] = useState<string>('');
+  const [isImportingModelTable, setIsImportingModelTable] = useState<boolean>(false);
 
   // Feature settings state
   const [featureDefs, setFeatureDefs] = useState<Record<string, {
@@ -406,6 +413,81 @@ export default function BaselineOnboardingWizard({
     }
   };
 
+  const handleModelTableUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const mtFile = e.target.files?.[0];
+    if (!mtFile) return;
+    setModelTableFileName(mtFile.name);
+    setIsImportingModelTable(true);
+    setModelTableImportReport('');
+
+    try {
+      const form = new FormData();
+      form.append('file', mtFile);
+      if (referenceId) form.append('referenceId', referenceId);
+      const scoreCol = Object.entries(columnMapping).find(([_, v]) => v.role === 'score')?.[0];
+      if (scoreCol) form.append('scoreColumn', scoreCol);
+
+      const res = await fetch('/api/registry/model-table/import', {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || (data.errors ? data.errors.join('; ') : 'นำเข้าตารางโมเดลไม่สำเร็จ'));
+      }
+
+      setModelTableConfig(data.table);
+
+      // (ก) ตั้ง usedInModel=true ให้ตัวแปรที่อยู่ในตารางและ false ให้ตัวอื่น
+      const tableVars = new Set(data.table.features);
+      setFeatureDefs(prev => {
+        const next: any = { ...prev };
+        for (const [col, def] of Object.entries(next)) {
+          next[col] = {
+            ...(def as any),
+            usedInModel: tableVars.has(col),
+          };
+        }
+        for (const [col, update] of Object.entries(data.featureUpdates as Record<string, any>)) {
+          if (!next[col]) {
+            next[col] = {
+              displayName: col,
+              dataType: update.dataType,
+              required: true,
+              monitoringEnabled: true,
+              usedInModel: true,
+              binning: update.binning,
+              categoryPools: update.categoryPools,
+              poolPoints: update.poolPoints,
+            };
+          } else {
+            next[col] = {
+              ...next[col],
+              usedInModel: true,
+              binning: update.binning ?? next[col].binning,
+              categoryPools: update.categoryPools ?? next[col].categoryPools,
+              poolPoints: update.poolPoints,
+            };
+          }
+        }
+        return next;
+      });
+
+      const rep: string[] = [`นำเข้าตารางโมเดลสำเร็จ: ${data.table.features.length} ตัวแปร (In-Model)`];
+      if (data.scoreComparison) {
+        rep.push(`เทียบกับคะแนน Reference: ตรงกัน ${data.scoreComparison.matchWithinHalfPointPct}% (ต่างสูงสุด ${data.scoreComparison.maxAbsDiff} pt)`);
+      }
+      if (data.warnings?.length) {
+        rep.push(`⚠️ ${data.warnings.join('; ')}`);
+      }
+      setModelTableImportReport(rep.join(' | '));
+    } catch (err: unknown) {
+      setModelTableImportReport(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsImportingModelTable(false);
+    }
+  };
+
   // ── Step 5: Validate Baseline ──
   const handleValidate = async () => {
     setIsValidating(true);
@@ -467,6 +549,10 @@ export default function BaselineOnboardingWizard({
             rareCategoryThreshold: def.rareCategoryThreshold,
           } : {}),
           ...(def.anomalyTransform ? { anomalyTransform: def.anomalyTransform } : {}),
+          ...((def as any).usedInModel !== undefined ? { usedInModel: (def as any).usedInModel } : {}),
+          ...((def as any).poolPoints ? { poolPoints: (def as any).poolPoints } : {}),
+          ...((def as any).binning ? { binning: (def as any).binning } : {}),
+          ...((def as any).categoryPools ? { categoryPools: (def as any).categoryPools } : {}),
         };
       }
 
@@ -490,6 +576,7 @@ export default function BaselineOnboardingWizard({
           driftConfig: { thresholdMode },
           featureRegistry: registryPayload,
           ...(mode === 'scorecard' && scorecardConfig ? { scoring: scorecardConfig } : {}),
+          ...(mode === 'score_column' && modelTableConfig ? { modelTable: modelTableConfig } : {}),
           onboardingLog: columnSuggestions.map(cs => ({
             timestamp: new Date().toISOString(),
             field: cs.column,
@@ -1061,6 +1148,41 @@ export default function BaselineOnboardingWizard({
                 </div>
               )}
 
+              {/* Model Table Import (optional for score_column mode) */}
+              {mode === 'score_column' && (
+                <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📊</span>
+                    <h4 className="text-xs font-bold text-indigo-300">แนบตารางโมเดล / Model Table (CSV / JSON, ไม่บังคับ)</h4>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    แนบตารางกลุ่มตัวแปร (variable, type, pool_id, lower, upper, categories, points) เพื่อใช้เป็น CSI Bins ("pool ของโมเดล") และระบุตัวแปรที่ใช้ในโมเดลอัตโนมัติ
+                  </p>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg cursor-pointer transition">
+                      เลือกไฟล์ตารางโมเดล (CSV / JSON)
+                      <input
+                        type="file"
+                        accept=".csv,.json,.xlsx"
+                        onChange={handleModelTableUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    {modelTableFileName && (
+                      <span className="text-xs font-mono text-slate-300">{modelTableFileName}</span>
+                    )}
+                    {isImportingModelTable && (
+                      <span className="text-xs text-indigo-400 animate-pulse">กำลังตรวจสอบตารางโมเดล...</span>
+                    )}
+                  </div>
+                  {modelTableImportReport && (
+                    <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                      {modelTableImportReport}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-between pt-2">
                 <button
                   onClick={() => setStep(2)}
@@ -1151,6 +1273,23 @@ export default function BaselineOnboardingWizard({
                           className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-slate-300 w-36 outline-none focus:border-indigo-500"
                         />
                       </div>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-300 ml-auto">
+                        <input
+                          type="checkbox"
+                          checked={(def as any).usedInModel !== false}
+                          onChange={e => {
+                            const checked = e.target.checked;
+                            setFeatureDefs(prev => ({
+                              ...prev,
+                              [col]: { ...prev[col], usedInModel: checked },
+                            }));
+                          }}
+                          className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-0"
+                        />
+                        <span className={(def as any).usedInModel !== false ? 'text-indigo-400 font-semibold' : 'text-slate-500'}>
+                          {(def as any).usedInModel !== false ? 'In-Model' : 'Out-of-Model'}
+                        </span>
+                      </label>
                     </div>
 
                     {/* Numeric fields */}
@@ -1463,6 +1602,38 @@ export default function BaselineOnboardingWizard({
                             p{(bi + 1) * 10}: {b.toFixed(2)}
                           </span>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Model Table Consistency Comparison */}
+                  {validationReport.computed.modelTableComparison && (
+                    <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                          📊 ความสอดคล้องกับตารางโมเดล (Model Table Consistency)
+                        </span>
+                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                          validationReport.computed.modelTableComparison.matchWithinHalfPointPct >= 95
+                            ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/60'
+                            : 'bg-amber-950/60 text-amber-400 border border-amber-800/60'
+                        }`}>
+                          ตรงกัน {validationReport.computed.modelTableComparison.matchWithinHalfPointPct}%
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center text-xs pt-1">
+                        <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block">จำนวนแถวที่เทียบ</span>
+                          <span className="font-mono text-slate-200 font-bold">{validationReport.computed.modelTableComparison.comparedRows.toLocaleString()}</span>
+                        </div>
+                        <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block">ตรงกัน (ต่าง ≤ 0.5)</span>
+                          <span className="font-mono text-emerald-400 font-bold">{validationReport.computed.modelTableComparison.matchedWithinHalfPointCount.toLocaleString()}</span>
+                        </div>
+                        <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block">ความต่างสูงสุด</span>
+                          <span className="font-mono text-amber-400 font-bold">{validationReport.computed.modelTableComparison.maxAbsDiff} pt</span>
+                        </div>
                       </div>
                     </div>
                   )}

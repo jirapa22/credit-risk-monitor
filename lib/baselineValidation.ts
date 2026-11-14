@@ -20,6 +20,7 @@ import { buildReferenceProfileFromData } from './reference';
 import { DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from './defaults';
 import { computeRowsSha256, type ReferenceDatasetBlob } from './storage/blob';
 import { validateScoringConfig } from './scoring';
+import { importModelTableFromRows, type ScorecardComparisonReport } from './scorecardImport';
 import { isValidDate, parseNumber } from './validation';
 import {
   assessMetricReliability,
@@ -227,6 +228,7 @@ function normalizeBaselineSpec(baseline: BaselineVersion | any) {
     anomalyConfig: baseline.anomalyConfig,
     modelCard: baseline.modelCard,
     developmentStats: baseline.developmentStats,
+    modelTable: baseline.modelTable,
   };
 }
 
@@ -643,6 +645,26 @@ export function validateBaseline(
     }
   }
 
+  // ── 9. Model Table Consistency Check (Optional) ───────────────────────────
+  let modelTableComparison: ScorecardComparisonReport | null = null;
+  const rawModelTable = baseline.modelTable || spec.modelTable;
+  if (rawModelTable && Array.isArray(rawModelTable.rows) && rawModelTable.rows.length > 0 && spec.scoreColumn) {
+    const res = importModelTableFromRows(rawModelTable.rows, {
+      referenceRows: typedRows,
+      scoreColumn: spec.scoreColumn,
+      tolerancePct: 95,
+    });
+    if (res.scoreComparison) {
+      modelTableComparison = res.scoreComparison;
+      for (const w of res.warnings) {
+        warnings.push({
+          code: 'LOW_MODEL_TABLE_SCORE_MATCH',
+          message: w,
+        });
+      }
+    }
+  }
+
   return {
     ok: errors.length === 0,
     validatedAt: new Date().toISOString(),
@@ -662,6 +684,7 @@ export function validateBaseline(
       referenceFlaggedCount,
       referenceFlaggedPct,
       multivariateFitMs,
+      modelTableComparison,
     },
   };
 }

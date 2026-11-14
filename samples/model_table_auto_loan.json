@@ -1,0 +1,18 @@
+[
+  { "variable": "base_points", "points": 520 },
+  { "variable": "เงินดาวน์_pct", "type": "numeric", "pool_id": "Down ≤15%", "upper": 15, "points": 60 },
+  { "variable": "เงินดาวน์_pct", "type": "numeric", "pool_id": "Down 15–25%", "lower": 15, "upper": 25, "points": 25 },
+  { "variable": "เงินดาวน์_pct", "type": "numeric", "pool_id": "Down 25–35%", "lower": 25, "upper": 35, "points": 0 },
+  { "variable": "เงินดาวน์_pct", "type": "numeric", "pool_id": "Down >35%", "lower": 35, "upper": null, "points": -25 },
+  { "variable": "ระยะผ่อน_เดือน", "type": "numeric", "pool_id": "Term ≤48", "upper": 48, "points": -20 },
+  { "variable": "ระยะผ่อน_เดือน", "type": "numeric", "pool_id": "Term 49–60", "lower": 48, "upper": 60, "points": 0 },
+  { "variable": "ระยะผ่อน_เดือน", "type": "numeric", "pool_id": "Term 61–72", "lower": 60, "upper": 72, "points": 20 },
+  { "variable": "ระยะผ่อน_เดือน", "type": "numeric", "pool_id": "Term >72", "lower": 72, "upper": null, "points": 40 },
+  { "variable": "อายุผู้กู้", "type": "numeric", "pool_id": "Age ≤30", "upper": 30, "points": 45 },
+  { "variable": "อายุผู้กู้", "type": "numeric", "pool_id": "Age 31–45", "lower": 30, "upper": 45, "points": 15 },
+  { "variable": "อายุผู้กู้", "type": "numeric", "pool_id": "Age 46–55", "lower": 45, "upper": 55, "points": -15 },
+  { "variable": "อายุผู้กู้", "type": "numeric", "pool_id": "Age >55", "lower": 55, "upper": null, "points": -35 },
+  { "variable": "ประเภทรถ", "type": "categorical", "pool_id": "Sedan/SUV", "categories": ["รถเก๋ง", "รถ SUV"], "points": 0 },
+  { "variable": "ประเภทรถ", "type": "categorical", "pool_id": "Commercial", "categories": ["รถกระบะ", "รถตู้"], "points": 35 }
+]
+

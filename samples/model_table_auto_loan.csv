@@ -1,0 +1,16 @@
+variable,type,pool_id,lower,upper,categories,points
+base_points,,,,,,520
+เงินดาวน์_pct,numeric,Down ≤15%,,15,,60
+เงินดาวน์_pct,numeric,Down 15–25%,15,25,,25
+เงินดาวน์_pct,numeric,Down 25–35%,25,35,,0
+เงินดาวน์_pct,numeric,Down >35%,35,,,-25
+ระยะผ่อน_เดือน,numeric,Term ≤48,,48,,-20
+ระยะผ่อน_เดือน,numeric,Term 49–60,48,60,,0
+ระยะผ่อน_เดือน,numeric,Term 61–72,60,72,,20
+ระยะผ่อน_เดือน,numeric,Term >72,72,,,-40
+อายุผู้กู้,numeric,Age ≤30,,30,,45
+อายุผู้กู้,numeric,Age 31–45,30,45,,15
+อายุผู้กู้,numeric,Age 46–55,45,55,,-15
+อายุผู้กู้,numeric,Age >55,55,,,-35
+ประเภทรถ,categorical,Sedan/SUV,,,รถเก๋ง|รถ SUV,0
+ประเภทรถ,categorical,Commercial,,,รถกระบะ|รถตู้,35

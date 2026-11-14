@@ -796,6 +796,169 @@ export default function BaselineRegistryPanel({
                       </div>
                     </div>
 
+                    {/* Model Card Section */}
+                    {selectedVersion.modelCard && (
+                      <div className="space-y-2 p-3.5 rounded-xl bg-slate-950/40 border border-slate-800 text-xs">
+                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">
+                          📋 ข้อมูลโมเดล (Model Card)
+                        </span>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
+                          <div><span className="text-slate-500">ผู้พัฒนา:</span> <span className="text-slate-200">{selectedVersion.modelCard.developer || '—'}</span></div>
+                          <div><span className="text-slate-500">ช่วงพัฒนา:</span> <span className="text-slate-200">{selectedVersion.modelCard.devPeriodStart || '—'} ถึง {selectedVersion.modelCard.devPeriodEnd || '—'}</span></div>
+                          <div><span className="text-slate-500">ขนาดตัวอย่าง:</span> <span className="text-slate-200">{selectedVersion.modelCard.sampleSize ? `${selectedVersion.modelCard.sampleSize.toLocaleString()} แถว` : '—'}</span></div>
+                          <div><span className="text-slate-500">Cutoff:</span> <span className="text-slate-200 font-mono">{selectedVersion.modelCard.cutoff ?? '—'}</span></div>
+                        </div>
+                        {selectedVersion.modelCard.notes && (
+                          <p className="text-[11px] text-slate-400 italic pt-1 border-t border-slate-900">
+                            หมายเหตุ: {selectedVersion.modelCard.notes}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Model Structure Table */}
+                    <div className="space-y-2 p-3.5 rounded-xl bg-slate-950/40 border border-slate-800 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider">
+                          🧬 โครงสร้างตัวแปรในโมเดลและการแบ่ง Pool (Model Structure)
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          In-Model: {Object.values(selectedVersion.featureRegistry ?? {}).filter(f => f.usedInModel !== false).length} / ทั้งหมด {Object.keys(selectedVersion.featureRegistry ?? {}).length}
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-[11px]">
+                          <thead>
+                            <tr className="border-b border-slate-800 text-slate-400 text-[10px] uppercase">
+                              <th className="py-1.5 px-2">ตัวแปร</th>
+                              <th className="py-1.5 px-2">ชนิด</th>
+                              <th className="py-1.5 px-2">บทบาท</th>
+                              <th className="py-1.5 px-2">แหล่งที่มาของ Pool / Bin</th>
+                              <th className="py-1.5 px-2">จำนวนช่วง / Pools</th>
+                              <th className="py-1.5 px-2">คะแนน Pool (Points)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/40">
+                            {Object.entries(selectedVersion.featureRegistry ?? {}).map(([key, def]) => {
+                              const t = selectedVersion.thresholds?.csi_features?.[key];
+                              const isCategorical = def.dataType === 'categorical';
+                              const isInModel = def.usedInModel !== false;
+                              const binSource = t?.source || (t?.bins?.length ? 'pool ของโมเดล' : 'แบ่งช่วงอัตโนมัติ');
+                              const poolCount = isCategorical
+                                ? (def.categoryPools?.length || '—')
+                                : (t?.bins?.length ? t.bins.length + 1 : (def.binning?.boundaries?.length ? def.binning.boundaries.length + 1 : '10'));
+                              const pointsStr = def.poolPoints && def.poolPoints.length > 0 ? def.poolPoints.join(', ') : '—';
+
+                              return (
+                                <tr key={key} className="hover:bg-slate-900/40 transition">
+                                  <td className="py-1.5 px-2 font-mono text-slate-200">
+                                    {def.displayName || key}
+                                    {def.displayName && def.displayName !== key && (
+                                      <span className="text-slate-500 text-[10px] block font-sans">{key}</span>
+                                    )}
+                                  </td>
+                                  <td className="py-1.5 px-2">
+                                    <span className={`text-[10px] px-1.5 py-0.2 rounded border ${isCategorical ? 'bg-amber-950/40 text-amber-300 border-amber-800/40' : 'bg-blue-950/40 text-blue-300 border-blue-800/40'}`}>
+                                      {def.dataType}
+                                    </span>
+                                  </td>
+                                  <td className="py-1.5 px-2">
+                                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold border ${isInModel ? 'bg-indigo-950/60 text-indigo-300 border-indigo-700/60' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                                      {isInModel ? 'In-Model' : 'Out-of-Model'}
+                                    </span>
+                                  </td>
+                                  <td className="py-1.5 px-2 text-slate-300 text-[10px]">
+                                    {binSource}
+                                  </td>
+                                  <td className="py-1.5 px-2 font-mono text-slate-300">
+                                    {poolCount}
+                                  </td>
+                                  <td className="py-1.5 px-2 font-mono text-slate-400 max-w-[200px] truncate" title={pointsStr}>
+                                    {pointsStr}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Development Statistics & Performance Comparison */}
+                    {(selectedVersion.developmentStats?.reported || selectedVersion.validationReport?.computed?.performance || selectedVersion.validationReport?.computed?.modelTableComparison) && (
+                      <div className="space-y-2 p-3.5 rounded-xl bg-slate-950/40 border border-slate-800 text-xs">
+                        <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">
+                          📊 สถิติช่วงพัฒนาและผลการตรวจสอบ (Development & Validation Statistics)
+                        </span>
+
+                        {/* Model Table Consistency if attached */}
+                        {selectedVersion.validationReport?.computed?.modelTableComparison && (
+                          <div className="p-2.5 rounded bg-slate-900/60 border border-slate-800 text-[11px] flex items-center justify-between">
+                            <span className="text-slate-300 font-medium">ความสอดคล้องกับตารางโมเดล (Model Table Consistency):</span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-slate-400">เทียบ {selectedVersion.validationReport.computed.modelTableComparison.comparedRows.toLocaleString()} แถว</span>
+                              <span className="font-mono text-amber-400">ต่างสูงสุด {selectedVersion.validationReport.computed.modelTableComparison.maxAbsDiff} pt</span>
+                              <span className={`font-mono px-2 py-0.5 rounded font-bold border ${
+                                selectedVersion.validationReport.computed.modelTableComparison.matchWithinHalfPointPct >= 95
+                                  ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/60'
+                                  : 'bg-amber-950/60 text-amber-400 border-amber-800/60'
+                              }`}>
+                                ตรงกัน {selectedVersion.validationReport.computed.modelTableComparison.matchWithinHalfPointPct}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Benchmark Table */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-[11px]">
+                            <thead>
+                              <tr className="border-b border-slate-800 text-slate-400 text-[10px] uppercase">
+                                <th className="py-1 px-2">ชุดข้อมูล (Split / Dataset)</th>
+                                <th className="py-1 px-2">AUC</th>
+                                <th className="py-1 px-2">KS</th>
+                                <th className="py-1 px-2">Gini</th>
+                                <th className="py-1 px-2">Bad Rate</th>
+                                <th className="py-1 px-2">จำนวนแถว (n)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/40 font-mono text-slate-300">
+                              {selectedVersion.developmentStats?.reported?.train && (
+                                <tr>
+                                  <td className="py-1 px-2 font-sans text-slate-400">Train (รายงานช่วงพัฒนา)</td>
+                                  <td className="py-1 px-2">{selectedVersion.developmentStats.reported.train.auc?.toFixed(4) ?? '—'}</td>
+                                  <td className="py-1 px-2">{selectedVersion.developmentStats.reported.train.ks?.toFixed(4) ?? '—'}</td>
+                                  <td className="py-1 px-2">{selectedVersion.developmentStats.reported.train.gini?.toFixed(4) ?? '—'}</td>
+                                  <td className="py-1 px-2">{selectedVersion.developmentStats.reported.train.badRate ? `${(selectedVersion.developmentStats.reported.train.badRate * 100).toFixed(2)}%` : '—'}</td>
+                                  <td className="py-1 px-2">{selectedVersion.developmentStats.reported.train.n?.toLocaleString() ?? '—'}</td>
+                                </tr>
+                              )}
+                              {selectedVersion.developmentStats?.reported?.test && (
+                                <tr>
+                                  <td className="py-1 px-2 font-sans text-slate-400">Test (รายงานช่วงพัฒนา)</td>
+                                  <td className="py-1 px-2">{selectedVersion.developmentStats.reported.test.auc?.toFixed(4) ?? '—'}</td>
+                                  <td className="py-1 px-2">{selectedVersion.developmentStats.reported.test.ks?.toFixed(4) ?? '—'}</td>
+                                  <td className="py-1 px-2">{selectedVersion.developmentStats.reported.test.gini?.toFixed(4) ?? '—'}</td>
+                                  <td className="py-1 px-2">{selectedVersion.developmentStats.reported.test.badRate ? `${(selectedVersion.developmentStats.reported.test.badRate * 100).toFixed(2)}%` : '—'}</td>
+                                  <td className="py-1 px-2">{selectedVersion.developmentStats.reported.test.n?.toLocaleString() ?? '—'}</td>
+                                </tr>
+                              )}
+                              {selectedVersion.validationReport?.computed?.performance && (
+                                <tr className="bg-indigo-950/20">
+                                  <td className="py-1 px-2 font-sans font-bold text-indigo-300">Reference Dataset (คำนวณจริง)</td>
+                                  <td className="py-1 px-2 font-bold text-emerald-400">{selectedVersion.validationReport.computed.performance.auc.toFixed(4)}</td>
+                                  <td className="py-1 px-2 font-bold text-emerald-400">{selectedVersion.validationReport.computed.performance.ks.toFixed(4)}</td>
+                                  <td className="py-1 px-2 font-bold text-emerald-400">{selectedVersion.validationReport.computed.performance.gini.toFixed(4)}</td>
+                                  <td className="py-1 px-2">{selectedVersion.validationReport.computed.badRate ? `${(selectedVersion.validationReport.computed.badRate * 100).toFixed(2)}%` : '—'}</td>
+                                  <td className="py-1 px-2">{selectedVersion.validationReport.computed.rowCount.toLocaleString()}</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Status History Timeline */}
                     <div className="space-y-2 pt-2">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">

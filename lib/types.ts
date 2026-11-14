@@ -110,6 +110,25 @@ export interface DevelopmentStats {
   diff?: Record<string, any>;
 }
 
+export interface ModelTableRow {
+  variable: string;
+  type?: 'numeric' | 'categorical';
+  pool_id?: string;
+  lower?: number | null;
+  upper?: number | null;
+  categories?: string | string[];
+  points: number;
+  woe?: number;
+  bad_rate?: number;
+  count?: number;
+}
+
+export interface ModelTableDefinition {
+  base_points?: number;
+  features: string[];
+  rows: ModelTableRow[];
+}
+
 export interface ScoringConfig {
   base_points: number;
   pdo?: number;
@@ -820,6 +839,12 @@ export interface BaselineValidationReport {
     referenceFlaggedCount: number;
     referenceFlaggedPct: number;
     multivariateFitMs: number;
+    modelTableComparison?: {
+      comparedRows: number;
+      matchedWithinHalfPointCount: number;
+      matchWithinHalfPointPct: number;
+      maxAbsDiff: number;
+    } | null;
   };
 }
 
@@ -893,6 +918,7 @@ export interface BaselineVersion {
   onboardingLog?: OnboardingLogEntry[];
   modelCard?: ModelCard;
   developmentStats?: DevelopmentStats;
+  modelTable?: ModelTableDefinition;
   createdAt: string;
   createdBy: string;
   statusHistory: BaselineStatusHistoryEntry[];

@@ -15,8 +15,11 @@ import type {
   BaselineValidationReport,
   BaselineVersion,
   DeletionAuditEntry,
+  DevelopmentStats,
   ExperimentRun,
+  ModelCard,
   ModelMetadata,
+  ModelTableDefinition,
   ModelVersionRef,
   MonitoringRun,
   MonitoringThresholds,
@@ -635,6 +638,9 @@ export async function createDraftBaselineVersion(
     ...(input.riskGrades ? { riskGrades: input.riskGrades } : {}),
     ...(input.experimentConfig ? { experimentConfig: input.experimentConfig } : {}),
     ...(input.onboardingLog ? { onboardingLog: input.onboardingLog } : {}),
+    ...(input.modelCard ? { modelCard: input.modelCard } : {}),
+    ...(input.developmentStats ? { developmentStats: input.developmentStats } : {}),
+    ...(input.modelTable ? { modelTable: input.modelTable } : {}),
     referenceDatasetId: String(input.referenceDatasetId ?? (input as any).referenceId ?? ''),
     validationReport: null,
     createdAt: existingIdx !== -1 ? stored[existingIdx].createdAt : now,
@@ -1242,6 +1248,9 @@ export async function updateBaselineVersion(
     scoreDirection?: any;
     thresholds?: MonitoringThresholds;
     driftConfig?: BaselineVersion['driftConfig'];
+    modelCard?: ModelCard;
+    developmentStats?: DevelopmentStats;
+    modelTable?: ModelTableDefinition;
   },
   opts: { by?: string; note?: string } = {},
 ): Promise<BaselineVersion> {
@@ -1291,6 +1300,9 @@ export async function updateBaselineVersion(
     scoreDirection: input.scoreDirection !== undefined ? input.scoreDirection : current.scoreDirection,
     thresholds: input.thresholds !== undefined ? input.thresholds : current.thresholds,
     driftConfig: input.driftConfig !== undefined ? input.driftConfig : current.driftConfig,
+    modelCard: input.modelCard !== undefined ? input.modelCard : current.modelCard,
+    developmentStats: input.developmentStats !== undefined ? input.developmentStats : current.developmentStats,
+    modelTable: input.modelTable !== undefined ? input.modelTable : current.modelTable,
     validationReport: hasStructuralChange ? null : current.validationReport,
     statusHistory: [
       ...current.statusHistory,

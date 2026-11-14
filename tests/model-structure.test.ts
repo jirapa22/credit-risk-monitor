@@ -16,7 +16,7 @@ import {
 } from '../lib/scorecardImport';
 import { validateBaseline } from '../lib/baselineValidation';
 import { resolveCsiFeatures } from '../lib/drift';
-import type { FeatureDefinition, ReferenceProfile } from '../lib/types';
+import type { FeatureDefinition } from '../lib/types';
 
 describe('Step 12 — Model Structure and Model Table Import', () => {
   const sampleCsv = `variable,type,pool_id,lower,upper,categories,points
@@ -82,11 +82,11 @@ var_cat,categorical,GroupB,,,C|D,30
       thresholds: { csi_features: {} },
     };
 
-    const updated = applyModelTableToBaseline(baseline, res);
+    const updated = applyModelTableToBaseline(baseline as any, res);
 
-    expect(updated.featureRegistry.var_num.usedInModel).toBe(true);
-    expect(updated.featureRegistry.var_cat.usedInModel).toBe(true);
-    expect(updated.featureRegistry.external_macro.usedInModel).toBe(false);
+    expect(updated.featureRegistry!.var_num.usedInModel).toBe(true);
+    expect(updated.featureRegistry!.var_cat.usedInModel).toBe(true);
+    expect(updated.featureRegistry!.external_macro.usedInModel).toBe(false);
 
     // Checks source tag
     expect(updated.thresholds.csi_features.var_num.source).toBe('pool ของโมเดล');

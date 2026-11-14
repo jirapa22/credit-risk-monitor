@@ -354,7 +354,24 @@ export async function recordDeletionAudit(
   entry: Omit<DeletionAuditEntry, 'id' | 'timestamp'> & { id?: string; timestamp?: string },
 ): Promise<DeletionAuditEntry> {
   const store = getStore();
-  const existing = (await store.get<DeletionAuditEntry[]>(REGISTRY_DELETION_AUDIT_KEY)) ?? [];
+  let existing: DeletionAuditEntry[] = [];
+  try {
+    existing = (await store.get<DeletionAuditEntry[]>(REGISTRY_DELETION_AUDIT_KEY)) ?? [];
+  } catch (err: any) {
+    // If WRONGTYPE error occurred (key holds a Redis LIST from earlier code),
+    // recover from LIST and migrate to String/JSON
+    if (String(err?.message || err).includes('WRONGTYPE')) {
+      try {
+        existing = await store.listRange<DeletionAuditEntry>(REGISTRY_DELETION_AUDIT_KEY, MAX_AUDIT_LOGS);
+        await store.del(REGISTRY_DELETION_AUDIT_KEY);
+      } catch {
+        existing = [];
+      }
+    } else {
+      throw err;
+    }
+  }
+
   const fullEntry: DeletionAuditEntry = {
     id: entry.id || `audit_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     timestamp: entry.timestamp || new Date().toISOString(),
@@ -375,8 +392,24 @@ export async function recordDeletionAudit(
 
 export async function listDeletionAuditLogs(limit = 100): Promise<DeletionAuditEntry[]> {
   const store = getStore();
-  const logs = (await store.get<DeletionAuditEntry[]>(REGISTRY_DELETION_AUDIT_KEY)) ?? [];
-  return logs.slice(0, limit);
+  try {
+    const logs = await store.get<DeletionAuditEntry[]>(REGISTRY_DELETION_AUDIT_KEY);
+    if (Array.isArray(logs)) return logs.slice(0, limit);
+    if (logs === null) return [];
+  } catch (err: any) {
+    if (String(err?.message || err).includes('WRONGTYPE')) {
+      try {
+        const listItems = await store.listRange<DeletionAuditEntry>(REGISTRY_DELETION_AUDIT_KEY, MAX_AUDIT_LOGS);
+        await store.del(REGISTRY_DELETION_AUDIT_KEY);
+        await store.set(REGISTRY_DELETION_AUDIT_KEY, listItems);
+        return listItems.slice(0, limit);
+      } catch {
+        return [];
+      }
+    }
+    throw err;
+  }
+  return [];
 }
 
 /**
@@ -951,10 +984,10 @@ export async function getBaselineVersionImpact(
     return vObj?.version === version || vObj?.configVersion === version || Boolean(targetRefId && refId === targetRefId);
   };
 
-  const monitoringRuns = (await getStore().get<StoredRun[]>(runsKey('monitoring', modelId))) ?? [];
+  const monitoringRuns = await listRuns<MonitoringRun>('monitoring', modelId);
   const targetMonitoring = monitoringRuns.filter(r => matchVersion(r.model, r.referenceId));
 
-  const sandboxRuns = (await getStore().get<StoredRun[]>(runsKey('sandbox', modelId))) ?? [];
+  const sandboxRuns = await listRuns<ExperimentRun>('sandbox', modelId);
   const targetSandbox = sandboxRuns.filter(r => matchVersion(r.model, r.referenceId));
 
   const events = (await getStore().get<TriggerEvent[]>(eventsKey(modelId))) ?? [];
@@ -1028,15 +1061,14 @@ export async function deleteBaselineVersion(
   };
 
   for (const kind of ['monitoring', 'sandbox'] as const) {
-    const key = runsKey(kind, modelId);
-    const runs = (await getStore().get<StoredRun[]>(key)) ?? [];
+    const runs = await listRuns(kind, modelId);
     const remainingRuns = runs.filter(r => !matchVersion(r.model, r.referenceId));
     const cleared = runs.length - remainingRuns.length;
     if (kind === 'monitoring') clearedMonitoringCount = cleared;
     else clearedSandboxCount = cleared;
     clearedRunsCount += cleared;
     if (remainingRuns.length !== runs.length) {
-      await getStore().set(key, remainingRuns);
+      await setRuns(kind, modelId, remainingRuns);
     }
   }
 
@@ -1189,10 +1221,9 @@ export async function deleteRegistryModel(
   // 2. Clear KV runs
   let clearedRunsCount = 0;
   for (const kind of ['monitoring', 'sandbox'] as const) {
-    const key = runsKey(kind, modelId);
-    const runs = (await getStore().get<StoredRun[]>(key)) ?? [];
+    const runs = await listRuns(kind, modelId);
     clearedRunsCount += runs.length;
-    await getStore().del(key);
+    await clearRuns(kind, modelId);
   }
 
   // 3. Clear KV events
@@ -1509,12 +1540,46 @@ export async function saveRun(run: StoredRun) {
   }
 }
 
+export async function setRuns(kind: StoredRun['kind'], modelId: string, runs: StoredRun[]): Promise<void> {
+  const store = getStore();
+  const key = runsKey(kind, modelId);
+  if (store.listReplace) {
+    await store.listReplace(key, runs, MAX_RUNS);
+  } else {
+    await store.del(key);
+    for (let i = runs.length - 1; i >= 0; i--) {
+      await store.listPush(key, runs[i], MAX_RUNS);
+    }
+  }
+}
+
 export async function listRuns<T extends StoredRun = StoredRun>(
   kind: T['kind'],
   modelId: string,
   opts: { configVersion?: string; limit?: number } = {},
 ): Promise<T[]> {
-  const items = await getStore().listRange<T>(runsKey(kind, modelId), opts.limit ?? MAX_RUNS);
+  const store = getStore();
+  const key = runsKey(kind, modelId);
+  let items: T[] = [];
+  try {
+    items = await store.listRange<T>(key, opts.limit ?? MAX_RUNS);
+  } catch (err: any) {
+    // If WRONGTYPE error occurred (key holds a Redis String from earlier code),
+    // recover from String and migrate to Redis LIST
+    if (String(err?.message || err).includes('WRONGTYPE')) {
+      try {
+        const raw = await store.get<T[]>(key);
+        if (Array.isArray(raw)) {
+          items = raw.slice(0, opts.limit ?? MAX_RUNS);
+          await setRuns(kind, modelId, raw);
+        }
+      } catch {
+        items = [];
+      }
+    } else {
+      throw err;
+    }
+  }
   return opts.configVersion ? items.filter(r => r.model.configVersion === opts.configVersion) : items;
 }
 

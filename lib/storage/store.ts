@@ -26,6 +26,8 @@ export interface KeyValueStore {
   /** prepend to a list and keep at most `max` items */
   listPush(key: string, value: unknown, max: number): Promise<void>;
   listRange<T>(key: string, limit: number): Promise<T[]>;
+  /** atomically replace or set a list preserving LIST data type in Redis */
+  listReplace?(key: string, values: unknown[], max: number): Promise<void>;
   /** Synchronous read/write for local MemoryStore / FileStore when called inside synchronous pipeline functions. */
   peek?<T>(key: string): T | null;
   putSync?(key: string, value: unknown): void;
@@ -70,6 +72,13 @@ class UpstashStore implements KeyValueStore {
     const items = await this.cmd<string[]>('LRANGE', key, 0, limit - 1);
     return items.map(s => JSON.parse(s) as T);
   }
+  async listReplace(key: string, values: unknown[], max: number) {
+    await this.del(key);
+    if (values.length === 0) return;
+    const slice = values.slice(0, max);
+    const cmds = slice.slice().reverse().map(v => ['LPUSH', key, JSON.stringify(v)] as (string | number)[]);
+    await this.pipeline(cmds);
+  }
 }
 
 // ─── Memory / File ──────────────────────────────────────────────────────────
@@ -89,6 +98,10 @@ class MemoryStore implements KeyValueStore {
     this.flush();
   }
   async listRange<T>(key: string, limit: number) { return ((this.data[key] as T[]) ?? []).slice(0, limit); }
+  async listReplace(key: string, values: unknown[], max: number) {
+    this.data[key] = structuredClone(values.slice(0, max));
+    this.flush();
+  }
   peek<T>(key: string): T | null { return (this.data[key] as T) ?? null; }
   putSync(key: string, value: unknown): void { this.data[key] = structuredClone(value); this.flush(); }
 }
@@ -123,3 +136,78 @@ export function getStore(): KeyValueStore {
 /** For tests. */
 export function setStore(store: KeyValueStore | undefined) { g.__crmStore = store; }
 export function createMemoryStore(): KeyValueStore { return new MemoryStore(); }
+
+/**
+ * Strict in-memory KV mock simulating Upstash Redis data type enforcement.
+ * Throws WRONGTYPE if a string key is accessed via listRange/listPush,
+ * or if a list key is accessed via get.
+ */
+export class UpstashMockStore implements KeyValueStore {
+  kind: StoreKind = 'upstash';
+  persistent = true;
+  private data: Map<string, { kind: 'string' | 'list'; value: string | string[] }> = new Map();
+
+  async get<T>(key: string): Promise<T | null> {
+    const entry = this.data.get(key);
+    if (!entry) return null;
+    if (entry.kind !== 'string') {
+      throw new Error(`Upstash GET failed: WRONGTYPE Operation against a key holding the wrong kind of value`);
+    }
+    return JSON.parse(entry.value as string) as T;
+  }
+
+  async set(key: string, value: unknown): Promise<void> {
+    this.data.set(key, { kind: 'string', value: JSON.stringify(value) });
+  }
+
+  async del(key: string): Promise<void> {
+    this.data.delete(key);
+  }
+
+  async listPush(key: string, value: unknown, max: number): Promise<void> {
+    const entry = this.data.get(key);
+    let list: string[] = [];
+    if (entry) {
+      if (entry.kind !== 'list') {
+        throw new Error(`Upstash LPUSH failed: WRONGTYPE Operation against a key holding the wrong kind of value`);
+      }
+      list = entry.value as string[];
+    }
+    const next = [JSON.stringify(value), ...list].slice(0, max);
+    this.data.set(key, { kind: 'list', value: next });
+  }
+
+  async listRange<T>(key: string, limit: number): Promise<T[]> {
+    const entry = this.data.get(key);
+    if (!entry) return [];
+    if (entry.kind !== 'list') {
+      throw new Error(`Upstash LRANGE failed: WRONGTYPE Operation against a key holding the wrong kind of value`);
+    }
+    return (entry.value as string[]).slice(0, limit).map(s => JSON.parse(s) as T);
+  }
+
+  async listReplace(key: string, values: unknown[], max: number): Promise<void> {
+    const stringified = values.slice(0, max).map(v => JSON.stringify(v));
+    this.data.set(key, { kind: 'list', value: stringified });
+  }
+
+  peek<T>(key: string): T | null {
+    const entry = this.data.get(key);
+    if (!entry) return null;
+    if (entry.kind === 'string') return JSON.parse(entry.value as string) as T;
+    return (entry.value as string[]).map(s => JSON.parse(s)) as unknown as T;
+  }
+
+  putSync(key: string, value: unknown): void {
+    if (Array.isArray(value)) {
+      this.data.set(key, { kind: 'list', value: value.map(v => JSON.stringify(v)) });
+    } else {
+      this.data.set(key, { kind: 'string', value: JSON.stringify(value) });
+    }
+  }
+}
+
+export function createUpstashMockStore(): KeyValueStore {
+  return new UpstashMockStore();
+}
+

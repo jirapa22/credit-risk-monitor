@@ -7,15 +7,18 @@
  * Each save bumps configVersion so monitoring runs stay separable.
  */
 import { NextResponse } from 'next/server';
-import { getActiveModelId, getEffectiveModel, saveThresholds, storageInfo } from '@/lib/storage/repositories';
-import { parseThresholds } from '@/lib/thresholds';
+import { getActiveModelId, getEffectiveModel, saveThresholds, storageInfo } from '../../../lib/storage/repositories';
+import { parseThresholds } from '../../../lib/thresholds';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const modelId = body.modelId || getActiveModelId();
+    const modelId = body.modelId;
+    if (!modelId || typeof modelId !== 'string' || !modelId.trim()) {
+      return NextResponse.json({ error: 'ต้องระบุ modelId ในการบันทึก threshold' }, { status: 400 });
+    }
     const current = await getEffectiveModel(modelId);
     const { value, errors } = parseThresholds(body.thresholds ?? {}, current.thresholds);
     if (!value) return NextResponse.json({ error: 'ค่า Threshold ไม่ถูกต้อง', errors }, { status: 400 });

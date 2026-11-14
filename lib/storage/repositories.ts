@@ -288,6 +288,9 @@ export function baselineToModelObject(baseline: BaselineVersion): any {
     triggerConfig: baseline.triggerConfig,
     riskGrades: baseline.riskGrades,
     experimentConfig: baseline.experimentConfig,
+    ...(baseline.modelCard ? { modelCard: baseline.modelCard } : {}),
+    ...(baseline.developmentStats ? { developmentStats: baseline.developmentStats } : {}),
+    ...(baseline.modelTable ? { modelTable: baseline.modelTable } : {}),
     builtIn: Boolean(baseline.builtIn),
     baselineVersion: baseline,
   };
@@ -419,14 +422,28 @@ export async function listDeletionAuditLogs(limit = 100): Promise<DeletionAuditE
  */
 export async function listBaselineVersions(modelId: string): Promise<BaselineVersion[]> {
   const stored = await getStoredVersions(modelId);
+  const ov = await getStore().get<ConfigOverride>(overrideKey(modelId));
+
   if (!isBuiltInModelId(modelId)) {
+    if (ov && stored.length > 0) {
+      const activeIdx = stored.findIndex(v => v.status === 'ACTIVE');
+      const targetIdx = activeIdx !== -1 ? activeIdx : 0;
+      return stored.map((v, i) =>
+        i === targetIdx
+          ? {
+              ...v,
+              thresholds: { ...v.thresholds, ...ov.thresholds },
+              version: ov.configVersion || v.version,
+            }
+          : v,
+      );
+    }
     return stored;
   }
   const hasStoredActive = stored.some(v => v.status === 'ACTIVE');
   const builtInVer = buildBuiltInBaselineVersion(modelId, hasStoredActive);
 
   // Apply stored threshold overrides (from legacy /api/model-config) to built-in if active
-  const ov = await getStore().get<ConfigOverride>(overrideKey(modelId));
   if (ov && !hasStoredActive) {
     builtInVer.thresholds = { ...builtInVer.thresholds, ...ov.thresholds };
     builtInVer.version = ov.configVersion;
@@ -532,22 +549,37 @@ export async function loadReferenceProfile(
  */
 export async function getEffectiveModel(modelId?: string) {
   const targetId = modelId || (await getDefaultModelId());
-  const active = await getActiveBaseline(targetId);
-  await loadReferenceProfile(active.referenceDatasetId, active);
-  return baselineToModelObject(active);
+  try {
+    const active = await getActiveBaseline(targetId);
+    await loadReferenceProfile(active.referenceDatasetId, active);
+    return baselineToModelObject(active);
+  } catch (err) {
+    const info = await getModel(targetId);
+    if (info && info.versions.length > 0) {
+      const latest = info.activeVersion || info.versions[0];
+      try {
+        await loadReferenceProfile(latest.referenceDatasetId, latest);
+      } catch {
+        // Ignore
+      }
+      return baselineToModelObject(latest);
+    }
+    throw err;
+  }
 }
 
 export async function getEffectiveConfig(requestedModelId?: string) {
   const { defaultModelId, models: regModels } = await listRegistryModels();
   const models: Record<string, any> = {};
   for (const m of regModels) {
-    if (m.activeVersion) {
+    const targetVer = m.activeVersion || (await listBaselineVersions(m.modelId))[0];
+    if (targetVer) {
       try {
-        await loadReferenceProfile(m.activeVersion.referenceDatasetId, m.activeVersion);
+        await loadReferenceProfile(targetVer.referenceDatasetId, targetVer);
       } catch {
         // Ignore if reference is not yet uploaded
       }
-      models[m.modelId] = baselineToModelObject(m.activeVersion);
+      models[m.modelId] = baselineToModelObject(targetVer);
     }
   }
   const activeModelId =
@@ -574,6 +606,20 @@ export async function saveThresholds(
     history: [{ version, updatedAt: now, note }, ...(prev?.history ?? [])].slice(0, 50),
   };
   await store.set(overrideKey(modelId), ov);
+
+  if (!isBuiltInModelId(modelId)) {
+    const stored = await getStoredVersions(modelId);
+    if (stored.length > 0) {
+      const activeIdx = stored.findIndex(v => v.status === 'ACTIVE');
+      const targetIdx = activeIdx !== -1 ? activeIdx : 0;
+      stored[targetIdx] = {
+        ...stored[targetIdx],
+        thresholds,
+      };
+      await saveStoredVersions(modelId, stored);
+    }
+  }
+
   return ov;
 }
 

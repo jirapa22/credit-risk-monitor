@@ -144,7 +144,7 @@ const mode = <T,>(a: T[]): T | undefined => {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
-export default function AnomalyExperimentPanel() {
+export default function AnomalyExperimentPanel({ modelId }: { modelId?: string } = {}) {
   const [section, setSection] = useState<'try' | 'full'>('try');
   return (
     <div className="space-y-4">
@@ -156,13 +156,13 @@ export default function AnomalyExperimentPanel() {
           </button>
         ))}
       </div>
-      {section === 'try' ? <TryPanel /> : <FullResultsPanel />}
+      {section === 'try' ? <TryPanel modelId={modelId} /> : <FullResultsPanel />}
     </div>
   );
 }
 
 // ─── Part 1: interactive trial ──────────────────────────────────────────────
-function TryPanel() {
+function TryPanel({ modelId }: { modelId?: string }) {
   const [type, setType] = useState<AnomalyType>('extreme_outlier');
   const [severity, setSeverity] = useState<typeof SEVS[number]>('medium');
   const [rate, setRate] = useState(0.05);
@@ -175,21 +175,35 @@ function TryPanel() {
   const kind = ANOMALY_KIND[type];
   const isA = kind === 'data_error';
 
+  useEffect(() => {
+    setResult(null);
+  }, [modelId]);
+
   const loadHistory = useCallback(() => {
-    fetch('/api/sandbox/experiments', { cache: 'no-store' })
+    const url = modelId
+      ? `/api/sandbox/experiments?modelId=${encodeURIComponent(modelId)}`
+      : '/api/sandbox/experiments';
+    fetch(url, { cache: 'no-store' })
       .then(r => r.json())
       .then(j => setHistory(((j.runs ?? []) as HistoryRun[]).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50)))
       .catch(() => { /* history is optional */ });
-  }, []);
+  }, [modelId]);
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
   const run = async () => {
     setLoading(true); setError(null);
     try {
-      const body: Record<string, unknown> = { type, seeds: Array.from({ length: nSeeds }, (_, i) => i + 1) };
+      const body: Record<string, unknown> = {
+        type,
+        seeds: Array.from({ length: nSeeds }, (_, i) => i + 1),
+        ...(modelId ? { modelId } : {}),
+      };
       if (type !== 'none') body.severity = severity;
       if (isA) body.rate = rate;
-      const r = await fetch('/api/sandbox/experiments/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const url = modelId
+        ? `/api/sandbox/experiments/run?modelId=${encodeURIComponent(modelId)}`
+        : '/api/sandbox/experiments/run';
+      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const j = (await r.json()) as RunResponse;
       if (!r.ok) throw new Error([j.error, ...(j.errors ?? [])].filter(Boolean).join(' — '));
       setResult(j);

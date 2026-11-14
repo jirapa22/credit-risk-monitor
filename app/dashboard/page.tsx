@@ -186,13 +186,13 @@ export default function Dashboard() {
 
       if (psiData.config) {
         setConfig(psiData.config);
-        const activeId = psiData.config.activeModelId;
+        const resolvedId = mId || psiData.config.activeModelId;
         if (!selectedModelId && !targetModelId) {
-          setSelectedModelId(activeId);
+          setSelectedModelId(resolvedId);
         }
-        const model = psiData.config.models[activeId];
-        if (model?.thresholds) {
-          const t = model.thresholds;
+        const currentModel = psiData.config.models[resolvedId];
+        if (currentModel?.thresholds) {
+          const t = currentModel.thresholds;
           setThresholds({
             psi_warning:  String(t.psi_warning  ?? 0.10),
             psi_critical: String(t.psi_critical ?? 0.25),
@@ -209,8 +209,8 @@ export default function Dashboard() {
                 bins: Array.isArray(cfg.bins) ? cfg.bins.map(String) : [],
               });
             }
-          } else if (model.featureRegistry) {
-            for (const [feat, def] of Object.entries(model.featureRegistry as Record<string, any>)) {
+          } else if (currentModel.featureRegistry) {
+            for (const [feat, def] of Object.entries(currentModel.featureRegistry as Record<string, any>)) {
               loaded.push({
                 key: feat,
                 label: def.displayName || feat,
@@ -234,6 +234,8 @@ export default function Dashboard() {
 
   // ── Save config ──
   const saveConfig = async () => {
+    const targetModelId = selectedModelId || config?.activeModelId;
+    if (!targetModelId) return;
     setIsSavingConfig(true);
     try {
       // Build csi_features payload from dynamic list (keyed by feature column name)
@@ -252,7 +254,7 @@ export default function Dashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          modelId: selectedModelId,
+          modelId: targetModelId,
           thresholds: {
             psi_warning: thresholds.psi_warning,
             psi_critical: thresholds.psi_critical,
@@ -268,7 +270,7 @@ export default function Dashboard() {
         alert('❌ บันทึกไม่สำเร็จ:\n• ' + (data.errors?.join('\n• ') || data.error || res.status));
         return;
       }
-      if (data.model) setConfig(prev => prev ? { ...prev, models: { ...prev.models, [prev.activeModelId]: data.model } } : prev);
+      if (data.model) setConfig(prev => prev ? { ...prev, models: { ...prev.models, [targetModelId]: data.model } } : prev);
       if (data.storage) setStorage(data.storage);
       alert(`✅ บันทึกแล้ว — Config Version ${data.configVersion}${data.warning ? `\n⚠️ ${data.warning}` : ''}`);
     } catch (err: any) {
@@ -369,17 +371,22 @@ export default function Dashboard() {
     headerBadgeText = `${currentModelId}@${activeVer.version} · ${activeVer.referenceDatasetId} · ACTIVE`;
     headerBadgeStyle = 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10';
   } else if (displayVer) {
-    headerBadgeText = `${currentModelId}@${displayVer.version} · ${displayVer.referenceDatasetId} · ${displayVer.status} (ยังไม่เปิดใช้งาน)`;
+    const statusNote = displayVer.status === 'ARCHIVED'
+      ? 'ARCHIVED (ถูกเก็บถาวร)'
+      : `${displayVer.status} (ยังไม่เปิดใช้งาน)`;
+    headerBadgeText = `${currentModelId}@${displayVer.version} · ${displayVer.referenceDatasetId} · ${statusNote}`;
     if (displayVer.status === 'VALIDATED') {
       headerBadgeStyle = 'border-blue-500/40 text-blue-300 bg-blue-500/10';
     } else if (displayVer.status === 'DRAFT') {
       headerBadgeStyle = 'border-amber-500/40 text-amber-300 bg-amber-500/10';
+    } else if (displayVer.status === 'ARCHIVED') {
+      headerBadgeStyle = 'border-slate-700 text-slate-400 bg-slate-800/40';
     } else {
       headerBadgeStyle = 'border-slate-700 text-slate-400 bg-slate-800/40';
     }
   }
 
-  const model = config ? (config.models[currentModelId] || config.models[config.activeModelId]) : null;
+  const model = config ? (config.models[currentModelId] || (currentRegModel ? null : config.models[config.activeModelId])) : null;
   const scorecard = model?.scoring?.scorecard || {};
   // featLabels: generated dynamically from csiFeatures (so scorecard table uses correct labels)
   const featLabels: Record<string, string> = Object.fromEntries(
@@ -541,12 +548,13 @@ export default function Dashboard() {
                   </div>
                   <div className="space-y-1.5">
                     {[
-                      ['Model ID', model?.id],
-                      ['Type', 'Logistic Regression + WOE'],
-                      ['Features', model?.scoring?.features?.join(', ')],
-                      ['Base Points', String(model?.scoring?.base_points ?? '—')],
-                      ['Dev Sample', `${model?.baseline?.sample_size ?? '—'} obs`],
-                      ['Bad Rate', `${((model?.baseline?.bad_rate ?? 0) * 100).toFixed(1)}%`],
+                      ['Model ID', model?.id || currentModelId],
+                      ['Model Name', model?.name || currentRegModel?.name || currentModelId],
+                      ['Type', (model as any)?.modelCard?.modelType || model?.type || (model as any)?.mode || ((model as any)?.modelTable ? 'Scorecard (Model Table)' : (model?.scoring ? 'Scorecard' : 'score_column'))],
+                      ['Features', (model as any)?.modelTable?.features?.join(', ') || model?.scoring?.features?.join(', ') || (model?.featureRegistry ? Object.keys(model.featureRegistry).filter(k => (model.featureRegistry![k] as any)?.usedInModel !== false).join(', ') : '—')],
+                      ['Base Points', String((model as any)?.modelTable?.base_points ?? model?.scoring?.base_points ?? '—')],
+                      ['Dev Sample', (model as any)?.modelCard?.sampleSize ? `${(model as any).modelCard.sampleSize.toLocaleString()} obs` : (model as any)?.developmentStats?.reported?.train?.n ? `${(model as any).developmentStats.reported.train.n.toLocaleString()} obs` : model?.baseline?.sample_size ? `${model.baseline.sample_size.toLocaleString()} obs` : '—'],
+                      ['Bad Rate', (model as any)?.developmentStats?.reported?.train?.badRate !== undefined ? `${((model as any).developmentStats.reported.train.badRate * 100).toFixed(1)}%` : model?.baseline?.bad_rate !== undefined ? `${((model.baseline.bad_rate ?? 0) * 100).toFixed(1)}%` : '—'],
                     ].map(([k, v]) => (
                       <div key={k} className="flex justify-between items-center text-xs">
                         <span className="text-slate-500">{k}:</span>
@@ -558,27 +566,72 @@ export default function Dashboard() {
 
                 {/* Baseline Performance */}
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
-                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded">📈 B. Baseline Performance (Test)</span>
-                  <div className="grid grid-cols-3 gap-2 mt-2">
-                    {[
-                      { k: 'AUC', v: model?.baseline?.performance?.test?.auc },
-                      { k: 'Gini', v: model?.baseline?.performance?.test?.gini },
-                      { k: 'KS', v: model?.baseline?.performance?.test?.ks },
-                    ].map(({ k, v }) => (
-                      <div key={k} className="bg-slate-950/50 rounded-xl p-2 text-center">
-                        <p className="text-[9px] text-slate-500 uppercase mb-1">{k}</p>
-                        <p className="text-sm font-bold font-mono text-emerald-400">{v?.toFixed(3) ?? '—'}</p>
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded">📈 B. Baseline Performance (Train / Test / OOT)</span>
+                  {(() => {
+                    const devPerf = (model as any)?.developmentStats?.reported || (model as any)?.developmentStats?.computed;
+                    const testPerf = devPerf?.test || model?.baseline?.performance?.test;
+                    const trainPerf = devPerf?.train || model?.baseline?.performance?.train;
+                    const ootPerf = devPerf?.oot;
+                    const hasDevData = Boolean(
+                      (testPerf && (testPerf.auc !== undefined || testPerf.gini !== undefined || testPerf.ks !== undefined)) ||
+                      (trainPerf && (trainPerf.auc !== undefined || trainPerf.gini !== undefined || trainPerf.ks !== undefined)) ||
+                      (ootPerf && (ootPerf.auc !== undefined || ootPerf.gini !== undefined || ootPerf.ks !== undefined))
+                    );
+
+                    if (!hasDevData) {
+                      return (
+                        <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 text-center">
+                          <p className="text-xs text-slate-500 italic">ไม่มีข้อมูลสถิติตอนพัฒนา (Train/Test/OOT)</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-3 mt-2">
+                        {testPerf && (testPerf.auc !== undefined || testPerf.gini !== undefined || testPerf.ks !== undefined) && (
+                          <div>
+                            <p className="text-[9px] text-slate-500 uppercase mb-1">Test Performance</p>
+                            <div className="grid grid-cols-3 gap-2">
+                              {[
+                                { k: 'AUC', v: testPerf?.auc },
+                                { k: 'Gini', v: testPerf?.gini },
+                                { k: 'KS', v: testPerf?.ks },
+                              ].map(({ k, v }) => (
+                                <div key={k} className="bg-slate-950/50 rounded-xl p-2 text-center">
+                                  <p className="text-[9px] text-slate-500 uppercase mb-1">{k}</p>
+                                  <p className="text-sm font-bold font-mono text-emerald-400">
+                                    {typeof v === 'number' ? v.toFixed(3) : '—'}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {trainPerf && (trainPerf.auc !== undefined || trainPerf.gini !== undefined || trainPerf.ks !== undefined) && (
+                          <div className="border-t border-slate-800 pt-2">
+                            <p className="text-[9px] text-slate-500 mb-1">Train Performance</p>
+                            <div className="flex gap-3 text-[10px] font-mono">
+                              <span className="text-slate-400">AUC: <span className="text-blue-400">{typeof trainPerf?.auc === 'number' ? trainPerf.auc.toFixed(3) : '—'}</span></span>
+                              <span className="text-slate-400">Gini: <span className="text-blue-400">{typeof trainPerf?.gini === 'number' ? trainPerf.gini.toFixed(3) : '—'}</span></span>
+                              <span className="text-slate-400">KS: <span className="text-blue-400">{typeof trainPerf?.ks === 'number' ? trainPerf.ks.toFixed(3) : '—'}</span></span>
+                            </div>
+                          </div>
+                        )}
+
+                        {ootPerf && (ootPerf.auc !== undefined || ootPerf.gini !== undefined || ootPerf.ks !== undefined) && (
+                          <div className="border-t border-slate-800 pt-2">
+                            <p className="text-[9px] text-slate-500 mb-1">OOT Performance</p>
+                            <div className="flex gap-3 text-[10px] font-mono">
+                              <span className="text-slate-400">AUC: <span className="text-purple-400">{typeof ootPerf?.auc === 'number' ? ootPerf.auc.toFixed(3) : '—'}</span></span>
+                              <span className="text-slate-400">Gini: <span className="text-purple-400">{typeof ootPerf?.gini === 'number' ? ootPerf.gini.toFixed(3) : '—'}</span></span>
+                              <span className="text-slate-400">KS: <span className="text-purple-400">{typeof ootPerf?.ks === 'number' ? ootPerf.ks.toFixed(3) : '—'}</span></span>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                  <div className="border-t border-slate-800 pt-2">
-                    <p className="text-[9px] text-slate-500 mb-1">Train Performance</p>
-                    <div className="flex gap-3 text-[10px] font-mono">
-                      <span className="text-slate-400">AUC: <span className="text-blue-400">{model?.baseline?.performance?.train?.auc?.toFixed(3)}</span></span>
-                      <span className="text-slate-400">Gini: <span className="text-blue-400">{model?.baseline?.performance?.train?.gini?.toFixed(3)}</span></span>
-                      <span className="text-slate-400">KS: <span className="text-blue-400">{model?.baseline?.performance?.train?.ks?.toFixed(3)}</span></span>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Thresholds Config */}
@@ -723,64 +776,146 @@ export default function Dashboard() {
 
               {/* Center + Right: Simulation */}
               <div className="xl:col-span-2 space-y-5">
-                {/* Scorecard Table — with IV per feature */}
+                {/* Scorecard / Model Structure Reference */}
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
-                  <h2 className="text-sm font-bold text-slate-200 mb-4">📋 Scorecard Reference</h2>
-                  <div className="space-y-5">
-                    {Object.keys(scorecard).map(feat => {
-                      const sc = scorecard[feat];
-                      const ivEntry = (model as any)?.ivSummary?.[feat];
-                      if (!sc) return null;
-                      // IV strength colour
-                      const iv = ivEntry?.iv ?? null;
-                      const ivColor = iv === null ? 'text-slate-500'
-                        : iv >= 0.30 ? 'text-emerald-400'
-                        : iv >= 0.10 ? 'text-blue-400'
-                        : iv >= 0.02 ? 'text-amber-400'
-                        : 'text-slate-500';
-                      const ivStrength = iv === null ? '—'
-                        : iv >= 0.30 ? 'Strong'
-                        : iv >= 0.10 ? 'Medium'
-                        : iv >= 0.02 ? 'Weak'
-                        : 'Negligible';
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-sm font-bold text-slate-200">
+                      📋 {(model as any)?.modelTable ? 'Model Structure (Pools & Points)' : 'Scorecard Reference'}
+                    </h2>
+                    {((model as any)?.modelTable?.base_points !== undefined || model?.scoring?.base_points !== undefined) && (
+                      <span className="text-[10px] font-mono font-bold text-indigo-400 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
+                        Base Points = {(model as any)?.modelTable?.base_points ?? model?.scoring?.base_points}
+                      </span>
+                    )}
+                  </div>
+
+                  {(() => {
+                    const mt = (model as any)?.modelTable;
+                    if (mt && Array.isArray(mt.rows) && mt.rows.length > 0) {
+                      const grouped: Record<string, any[]> = {};
+                      for (const r of mt.rows) {
+                        if (!r.variable || r.variable === 'base_points') continue;
+                        if (!grouped[r.variable]) grouped[r.variable] = [];
+                        grouped[r.variable].push(r);
+                      }
                       return (
-                        <div key={feat}>
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-[11px] font-bold text-slate-300">{featLabels[feat]}</p>
-                            {iv !== null && (
-                              <span className={`text-[10px] font-mono font-bold ${ivColor} bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800`}>
-                                IV = {iv.toFixed(4)}&nbsp;·&nbsp;{ivStrength}
-                              </span>
-                            )}
-                          </div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-[10px]">
-                              <thead>
-                                <tr className="border-b border-slate-800">
-                                  <th className="text-left pb-1 text-slate-500 font-medium">Bin</th>
-                                  <th className="text-right pb-1 text-slate-500 font-medium">Count</th>
-                                  <th className="text-right pb-1 text-slate-500 font-medium">WOE</th>
-                                  <th className="text-right pb-1 text-slate-500 font-medium">Points</th>
-                                  <th className="text-right pb-1 text-slate-500 font-medium">Bad Rate</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {sc.bin_labels.map((label: string, i: number) => (
-                                  <tr key={i} className="border-b border-slate-800/40 hover:bg-slate-800/20">
-                                    <td className="py-1 text-slate-300">{label}</td>
-                                    <td className="py-1 text-right font-mono text-slate-500">{sc.count?.[i] ?? '—'}</td>
-                                    <td className={`py-1 text-right font-mono ${(sc.woe[i] ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{(sc.woe[i] ?? 0).toFixed(4)}</td>
-                                    <td className={`py-1 text-right font-mono font-bold ${(sc.points[i] ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{(sc.points[i] ?? 0) >= 0 ? '+' : ''}{sc.points[i]}</td>
-                                    <td className="py-1 text-right font-mono text-slate-400">{((sc.bad_rate[i] ?? 0) * 100).toFixed(1)}%</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                        <div className="space-y-5">
+                          {Object.entries(grouped).map(([varName, pRows]) => (
+                            <div key={varName}>
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-[11px] font-bold text-slate-300">{featLabels[varName] || varName}</p>
+                                <span className="text-[10px] font-mono text-slate-500 bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800">
+                                  {pRows.length} pools
+                                </span>
+                              </div>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-[10px]">
+                                  <thead>
+                                    <tr className="border-b border-slate-800">
+                                      <th className="text-left pb-1 text-slate-500 font-medium">Pool ID</th>
+                                      <th className="text-left pb-1 text-slate-500 font-medium">Range / Categories</th>
+                                      <th className="text-right pb-1 text-slate-500 font-medium">Points</th>
+                                      <th className="text-right pb-1 text-slate-500 font-medium">WOE</th>
+                                      <th className="text-right pb-1 text-slate-500 font-medium">Count</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {pRows.map((r, i) => {
+                                      const rangeText = r.categories
+                                        ? (Array.isArray(r.categories) ? r.categories.join(', ') : String(r.categories))
+                                        : (r.lower !== null && r.lower !== undefined ? `${r.lower}` : '-∞') +
+                                          ' – ' +
+                                          (r.upper !== null && r.upper !== undefined ? `${r.upper}` : '+∞');
+                                      return (
+                                        <tr key={i} className="border-b border-slate-800/40 hover:bg-slate-800/20">
+                                          <td className="py-1 text-slate-300 font-mono">{r.pool_id || `P${i + 1}`}</td>
+                                          <td className="py-1 text-slate-300">{rangeText}</td>
+                                          <td className={`py-1 text-right font-mono font-bold ${(r.points ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                            {(r.points ?? 0) >= 0 ? '+' : ''}{r.points}
+                                          </td>
+                                          <td className="py-1 text-right font-mono text-slate-500">
+                                            {typeof r.woe === 'number' ? r.woe.toFixed(4) : '—'}
+                                          </td>
+                                          <td className="py-1 text-right font-mono text-slate-500">
+                                            {r.count !== undefined && r.count !== null ? r.count : '—'}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       );
-                    })}
-                  </div>
+                    }
+
+                    if (Object.keys(scorecard).length > 0) {
+                      return (
+                        <div className="space-y-5">
+                          {Object.keys(scorecard).map(feat => {
+                            const sc = scorecard[feat];
+                            const ivEntry = (model as any)?.ivSummary?.[feat];
+                            if (!sc) return null;
+                            const iv = ivEntry?.iv ?? null;
+                            const ivColor = iv === null ? 'text-slate-500'
+                              : iv >= 0.30 ? 'text-emerald-400'
+                              : iv >= 0.10 ? 'text-blue-400'
+                              : iv >= 0.02 ? 'text-amber-400'
+                              : 'text-slate-500';
+                            const ivStrength = iv === null ? '—'
+                              : iv >= 0.30 ? 'Strong'
+                              : iv >= 0.10 ? 'Medium'
+                              : iv >= 0.02 ? 'Weak'
+                              : 'Negligible';
+                            return (
+                              <div key={feat}>
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="text-[11px] font-bold text-slate-300">{featLabels[feat] || feat}</p>
+                                  {iv !== null && (
+                                    <span className={`text-[10px] font-mono font-bold ${ivColor} bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800`}>
+                                      IV = {iv.toFixed(4)}&nbsp;·&nbsp;{ivStrength}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-[10px]">
+                                    <thead>
+                                      <tr className="border-b border-slate-800">
+                                        <th className="text-left pb-1 text-slate-500 font-medium">Bin</th>
+                                        <th className="text-right pb-1 text-slate-500 font-medium">Count</th>
+                                        <th className="text-right pb-1 text-slate-500 font-medium">WOE</th>
+                                        <th className="text-right pb-1 text-slate-500 font-medium">Points</th>
+                                        <th className="text-right pb-1 text-slate-500 font-medium">Bad Rate</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {sc.bin_labels.map((label: string, i: number) => (
+                                        <tr key={i} className="border-b border-slate-800/40 hover:bg-slate-800/20">
+                                          <td className="py-1 text-slate-300">{label}</td>
+                                          <td className="py-1 text-right font-mono text-slate-500">{sc.count?.[i] ?? '—'}</td>
+                                          <td className={`py-1 text-right font-mono ${(sc.woe[i] ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{(sc.woe[i] ?? 0).toFixed(4)}</td>
+                                          <td className={`py-1 text-right font-mono font-bold ${(sc.points[i] ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{(sc.points[i] ?? 0) >= 0 ? '+' : ''}{sc.points[i]}</td>
+                                          <td className="py-1 text-right font-mono text-slate-400">{((sc.bad_rate[i] ?? 0) * 100).toFixed(1)}%</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 text-center">
+                        <p className="text-xs text-slate-500 italic">ไม่มีข้อมูลโครงสร้างโมเดล (Scorecard / Model Table)</p>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* IV Summary — ทุกตัวแปรที่พิจารณา (จาก ascore_model_report.xlsx) */}
@@ -936,7 +1071,7 @@ export default function Dashboard() {
               </div>
             </div>
             ) : (
-              <AnomalyExperimentPanel />
+              <AnomalyExperimentPanel modelId={currentModelId} />
             )}
             </div>
 

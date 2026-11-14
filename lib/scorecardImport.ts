@@ -625,6 +625,7 @@ export interface ModelTableFeatureUpdate {
 export interface ModelTableImportResult {
   ok: boolean;
   table: ModelTableDefinition;
+  scoring?: ScoringConfig;
   featureUpdates: Record<string, ModelTableFeatureUpdate>;
   scoreComparison: ScorecardComparisonReport | null;
   errors: string[];
@@ -709,13 +710,21 @@ export function importModelTableFromRows(
     let lower: number | null = null;
     if (!isBlank(rawLower)) {
       const n = parseNumber(rawLower);
-      if (Number.isFinite(n)) lower = n;
+      if (!Number.isFinite(n)) {
+        errors.push(`แถวที่ ${rowNo} (${variable}): ค่า lower "${String(rawLower)}" ไม่ใช่ตัวเลข`);
+        return;
+      }
+      lower = n;
     }
 
     let upper: number | null = null;
     if (!isBlank(rawUpper)) {
       const n = parseNumber(rawUpper);
-      if (Number.isFinite(n)) upper = n;
+      if (!Number.isFinite(n)) {
+        errors.push(`แถวที่ ${rowNo} (${variable}): ค่า upper "${String(rawUpper)}" ไม่ใช่ตัวเลข`);
+        return;
+      }
+      upper = n;
     }
 
     let parsedCats: string[] | undefined = undefined;
@@ -891,6 +900,27 @@ export function importModelTableFromRows(
     }
   }
 
+  // Build ScoringConfig from numeric pools if any
+  const scorecard: Record<string, ScorecardFeature> = {};
+  for (const feat of featureOrder) {
+    const update = featureUpdates[feat];
+    if (update && update.dataType === 'numeric' && update.binning) {
+      scorecard[feat] = {
+        bins: update.binning.boundaries,
+        points: update.poolPoints,
+        bin_labels: update.binning.binLabels,
+      };
+    }
+  }
+
+  const scoring: ScoringConfig | undefined = Object.keys(scorecard).length > 0 ? {
+    base_points: basePoints,
+    factor: 28.8539,
+    offset: 600,
+    features: Object.keys(scorecard),
+    scorecard,
+  } : undefined;
+
   return {
     ok: errors.length === 0 && featureOrder.length > 0,
     table: {
@@ -898,6 +928,7 @@ export function importModelTableFromRows(
       features: featureOrder,
       rows: rawRows,
     },
+    scoring,
     featureUpdates,
     scoreComparison,
     errors,
@@ -961,12 +992,15 @@ export function importModelTableFromBuffer(
  *   (ก) Sets usedInModel=true for variables in table, false for others
  *   (ข) Uses pools in table as CSI bins, with label "pool ของโมเดล"
  */
-export function applyModelTableToBaseline<T extends { featureRegistry?: Record<string, FeatureDefinition>; thresholds?: any; modelTable?: ModelTableDefinition }>(
+export function applyModelTableToBaseline<T extends { featureRegistry?: Record<string, FeatureDefinition>; thresholds?: any; modelTable?: ModelTableDefinition; scoring?: ScoringConfig }>(
   baseline: T,
   importResult: ModelTableImportResult,
 ): T {
   const model = structuredClone(baseline);
   model.modelTable = importResult.table;
+  if (importResult.scoring && !model.scoring) {
+    model.scoring = importResult.scoring;
+  }
   const tableVars = new Set(importResult.table.features);
 
   if (!model.featureRegistry) {

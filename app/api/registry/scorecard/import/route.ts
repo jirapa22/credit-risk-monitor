@@ -7,6 +7,8 @@
  */
 import { NextResponse } from 'next/server';
 import {
+  importModelTableFromBuffer,
+  importModelTableFromText,
   importScorecardFromBuffer,
   importScorecardFromCsv,
   type ScorecardImportOptions,
@@ -76,11 +78,38 @@ export async function POST(request: Request) {
       }
     }
 
-    const result = fileBuffer
-      ? importScorecardFromBuffer(fileBuffer, fileName, importOpts)
-      : importScorecardFromCsv(csvText, importOpts);
+    // Auto-detect format: if header contains pool_id, lower, upper
+    const textSample = fileBuffer
+      ? (!fileName.toLowerCase().endsWith('.xlsx') ? fileBuffer.toString('utf8', 0, Math.min(2048, fileBuffer.length)) : '')
+      : csvText.slice(0, 2048);
+    const firstLine = textSample.split(/\r?\n/)[0]?.toLowerCase() || '';
+    const isModelTable =
+      (firstLine.includes('pool_id') || firstLine.includes('lower') || firstLine.includes('upper') || firstLine.includes('categories')) &&
+      !firstLine.includes('upper_bound') &&
+      !firstLine.includes('bin_label');
 
-    return NextResponse.json(result, { status: result.ok ? 200 : 422 });
+    let result: any;
+    if (isModelTable) {
+      const mtResult = fileBuffer
+        ? importModelTableFromBuffer(fileBuffer, fileName, importOpts)
+        : importModelTableFromText(csvText, importOpts);
+      result = {
+        ...mtResult,
+        scoring: mtResult.scoring ?? { base_points: mtResult.table?.base_points ?? 0, factor: 1, offset: 0, features: [], scorecard: {} },
+        format: 'model_table',
+      };
+    } else {
+      const scResult = fileBuffer
+        ? importScorecardFromBuffer(fileBuffer, fileName, importOpts)
+        : importScorecardFromCsv(csvText, importOpts);
+      result = {
+        ...scResult,
+        format: 'scorecard',
+      };
+    }
+
+    const errorMsg = result.errors?.length ? result.errors.join('; ') : undefined;
+    return NextResponse.json({ ...result, error: errorMsg }, { status: result.ok ? 200 : 422 });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

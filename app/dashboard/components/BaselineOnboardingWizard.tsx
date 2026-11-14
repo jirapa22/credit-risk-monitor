@@ -323,7 +323,7 @@ export default function BaselineOnboardingWizard({
     }
   };
 
-  // ── Step 3 helpers: Scorecard import ──
+  // ── Step 3 helpers: Scorecard / Model Table import ──
   const handleScorecardUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const scFile = e.target.files?.[0];
     if (!scFile) return;
@@ -335,18 +335,73 @@ export default function BaselineOnboardingWizard({
       const form = new FormData();
       form.append('file', scFile);
       if (referenceId) form.append('referenceId', referenceId);
+      const scoreCol = Object.entries(columnMapping).find(([_, v]) => v.role === 'score')?.[0];
+      if (scoreCol) form.append('scoreColumn', scoreCol);
 
       const res = await fetch('/api/registry/scorecard/import', {
         method: 'POST',
         body: form,
       });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'นำเข้า Scorecard ไม่สำเร็จ');
+      if (!res.ok || !data.ok) {
+        const errorMsg = data.error || (Array.isArray(data.errors) && data.errors.length > 0 ? data.errors.join('\n') : 'นำเข้า Scorecard ไม่สำเร็จ');
+        throw new Error(errorMsg);
       }
 
-      setScorecardConfig(data.scoring);
-      const rep: string[] = [`นำเข้าสำเร็จ: ${data.scoring.features.length} ตัวแปร, base points = ${data.scoring.base_points}`];
+      if (data.table) {
+        setModelTableConfig(data.table);
+      }
+      if (data.featureUpdates) {
+        // (ก) ตั้ง usedInModel=true ให้ตัวแปรที่อยู่ในตารางและ false ให้ตัวอื่น
+        const tableVars = new Set(data.table?.features || Object.keys(data.featureUpdates));
+        setFeatureDefs(prev => {
+          const next: any = { ...prev };
+          for (const [col, def] of Object.entries(next)) {
+            next[col] = {
+              ...(def as any),
+              usedInModel: tableVars.has(col),
+            };
+          }
+          for (const [col, update] of Object.entries(data.featureUpdates as Record<string, any>)) {
+            if (!next[col]) {
+              next[col] = {
+                displayName: col,
+                dataType: update.dataType,
+                required: true,
+                monitoringEnabled: true,
+                usedInModel: true,
+                binning: update.binning,
+                categoryPools: update.categoryPools,
+                poolPoints: update.poolPoints,
+              };
+            } else {
+              next[col] = {
+                ...next[col],
+                dataType: update.dataType || next[col].dataType,
+                usedInModel: true,
+                binning: update.binning ?? next[col].binning,
+                categoryPools: update.categoryPools ?? next[col].categoryPools,
+                poolPoints: update.poolPoints ?? next[col].poolPoints,
+              };
+            }
+          }
+          return next;
+        });
+      }
+
+      if (data.scoring) {
+        setScorecardConfig(data.scoring);
+      }
+
+      const rep: string[] = [];
+      if (data.format === 'model_table' || data.table) {
+        const varCount = data.table?.features?.length ?? Object.keys(data.featureUpdates ?? {}).length;
+        const poolCount = data.table?.rows?.length ?? 0;
+        rep.push(`นำเข้าตารางโมเดลสำเร็จ: ${varCount} ตัวแปรในโมเดล, ${poolCount} pools, base points = ${data.table?.base_points ?? data.scoring?.base_points ?? 0}`);
+      } else {
+        rep.push(`นำเข้าสำเร็จ: ${data.scoring?.features?.length ?? 0} ตัวแปร, base points = ${data.scoring?.base_points ?? 0}`);
+      }
+
       if (data.scoreComparison) {
         rep.push(`เทียบกับ Reference: ตรงกัน ${data.scoreComparison.matchWithinHalfPointPct}% (ต่างสูงสุด ${data.scoreComparison.maxAbsDiff} pt)`);
       }
@@ -576,7 +631,7 @@ export default function BaselineOnboardingWizard({
           driftConfig: { thresholdMode },
           featureRegistry: registryPayload,
           ...(mode === 'scorecard' && scorecardConfig ? { scoring: scorecardConfig } : {}),
-          ...(mode === 'score_column' && modelTableConfig ? { modelTable: modelTableConfig } : {}),
+          ...(modelTableConfig ? { modelTable: modelTableConfig } : {}),
           onboardingLog: columnSuggestions.map(cs => ({
             timestamp: new Date().toISOString(),
             field: cs.column,
@@ -1192,7 +1247,7 @@ export default function BaselineOnboardingWizard({
                 </button>
                 <button
                   onClick={() => setStep(4)}
-                  disabled={!modelId.trim() || (mode === 'scorecard' && !scorecardConfig)}
+                  disabled={!modelId.trim() || (mode === 'scorecard' && !scorecardConfig && !modelTableConfig)}
                   className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition disabled:opacity-50"
                 >
                   ถัดไป (ตั้งค่าตัวแปร) →

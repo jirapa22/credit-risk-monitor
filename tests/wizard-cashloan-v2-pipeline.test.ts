@@ -92,7 +92,8 @@ describe('Wizard Cash Loan v2 Pipeline Integration Test (Mock Store)', () => {
         dataType: fs.dataType,
         minValue: fs.minValue ?? undefined,
         maxValue: fs.maxValue ?? undefined,
-        missingStrategy: (fs.missingStrategy === 'fillMean' ? 'mean' : fs.missingStrategy === 'fillMedian' ? 'median' : fs.missingStrategy === 'fillMode' ? 'mode' : 'reject'),
+        rangeSource: (fs.minValue !== undefined || fs.maxValue !== undefined) ? 'auto' : undefined,
+        missingStrategy: (fs.missingStrategy === 'fillMean' ? 'mean' : fs.missingStrategy === 'fillMedian' ? 'median' : fs.missingStrategy === 'fillMode' ? 'mode' : fs.missingStrategy === 'ignore' ? 'ignore' : 'reject'),
         allowedCategories: fs.categories ?? [],
         rareCategoryThreshold: 0.01,
         anomalyTransform: fs.anomalyTransform,
@@ -170,20 +171,21 @@ describe('Wizard Cash Loan v2 Pipeline Integration Test (Mock Store)', () => {
     for (const f of features) {
       const def = featureDefs[f];
       if (!def) continue;
-      const isModelVar = def.usedInModel === true;
-      const missingStrat = isModelVar || def.missingStrategy === 'reject'
-        ? 'reject'
-        : def.missingStrategy === 'mean' ? 'fillMean' : def.missingStrategy === 'median' ? 'fillMedian' : def.missingStrategy === 'mode' ? 'fillMode' : 'reject';
+      const missingStrat = def.missingStrategy === 'mean' ? 'fillMean'
+        : def.missingStrategy === 'median' ? 'fillMedian'
+        : def.missingStrategy === 'mode' ? 'fillMode'
+        : def.missingStrategy === 'ignore' ? 'ignore'
+        : 'reject';
       registryPayload[f] = {
         columnName: f,
         displayName: def.displayName || f,
         dataType: def.dataType,
-        required: isModelVar || def.missingStrategy === 'reject',
+        required: def.missingStrategy === 'reject',
         monitoringEnabled: true,
         validation: {
           minValue: def.minValue,
           maxValue: def.maxValue,
-          rangeSource: def.rangeSource ?? (def.minValue !== undefined ? 'user' : undefined),
+          rangeSource: def.rangeSource ?? (def.minValue !== undefined || def.maxValue !== undefined ? 'auto' : undefined),
           baselineMin: def.baselineMin,
           baselineMax: def.baselineMax,
           missingStrategy: missingStrat,
@@ -316,5 +318,135 @@ describe('Wizard Cash Loan v2 Pipeline Integration Test (Mock Store)', () => {
     expect(m04Data.validation.warningRows).toBe(37); // 36 duplicates + 1 income warning
     expect(m04Data.trigger.action).toBe('INVESTIGATE_DATA');
     expect(m04Data.trigger.matchedRuleId).toBe('R1b');
+  });
+
+  it('respects user choice when changing missing strategy of an in-model feature to median and does not overwrite with reject', async () => {
+    // 1. Setup in-model feature config where user chose 'median' in Step 4
+    const featureDefs: Record<string, any> = {
+      credit_util_pct: {
+        displayName: 'credit_util_pct',
+        dataType: 'numeric',
+        minValue: 0,
+        maxValue: 109.93,
+        rangeSource: 'auto',
+        missingStrategy: 'median', // User explicitly selected 'median' in Step 4
+        usedInModel: true,
+      },
+      occupation: {
+        displayName: 'occupation',
+        dataType: 'categorical',
+        missingStrategy: 'reject',
+        usedInModel: true,
+      },
+    };
+
+    // 2. Build registry payload like Step 5 (must respect user choice)
+    const registryPayload: Record<string, FeatureDefinition> = {};
+    for (const [f, def] of Object.entries(featureDefs)) {
+      const missingStrat = def.missingStrategy === 'mean' ? 'fillMean'
+        : def.missingStrategy === 'median' ? 'fillMedian'
+        : def.missingStrategy === 'mode' ? 'fillMode'
+        : def.missingStrategy === 'ignore' ? 'ignore'
+        : 'reject';
+      registryPayload[f] = {
+        columnName: f,
+        displayName: def.displayName || f,
+        dataType: def.dataType,
+        required: def.missingStrategy === 'reject',
+        monitoringEnabled: true,
+        validation: {
+          minValue: def.minValue,
+          maxValue: def.maxValue,
+          rangeSource: def.rangeSource ?? (def.minValue !== undefined || def.maxValue !== undefined ? 'auto' : undefined),
+          missingStrategy: missingStrat,
+        },
+        usedInModel: def.usedInModel,
+      };
+    }
+
+    // Assert: in-model feature credit_util_pct must have fillMedian and required: false (NOT overwritten by reject)
+    expect(registryPayload['credit_util_pct'].validation?.missingStrategy).toBe('fillMedian');
+    expect(registryPayload['credit_util_pct'].required).toBe(false);
+
+    expect(registryPayload['occupation'].validation?.missingStrategy).toBe('reject');
+    expect(registryPayload['occupation'].required).toBe(true);
+  });
+
+  it('defaults rangeSource to auto for system-suggested ranges, and user when edited by user', async () => {
+    // Scenario 1: Step 1 heuristic suggestions (non-model feature & model feature) without user edits
+    const uneditedDefs: Record<string, any> = {
+      loan_amount: {
+        displayName: 'loan_amount',
+        dataType: 'numeric',
+        minValue: 10000,
+        maxValue: 500000,
+        rangeSource: 'auto', // suggested by system
+        missingStrategy: 'median',
+        usedInModel: false,
+      },
+      monthly_income: {
+        displayName: 'monthly_income',
+        dataType: 'numeric',
+        minValue: 4490,
+        maxValue: 130610,
+        rangeSource: 'auto', // suggested by scorecard import
+        missingStrategy: 'reject',
+        usedInModel: true,
+      },
+    };
+
+    // Scenario 2: User explicitly edited minValue of loan_amount in Step 4
+    const editedDefs: Record<string, any> = {
+      ...uneditedDefs,
+      loan_amount: {
+        ...uneditedDefs['loan_amount'],
+        minValue: 15000,
+        rangeSource: 'user', // set to 'user' on user change in Step 4
+      },
+    };
+
+    // Build payload for unedited
+    const uneditedPayload: Record<string, FeatureDefinition> = {};
+    for (const [f, def] of Object.entries(uneditedDefs)) {
+      uneditedPayload[f] = {
+        columnName: f,
+        displayName: f,
+        dataType: def.dataType,
+        required: def.missingStrategy === 'reject',
+        monitoringEnabled: true,
+        validation: {
+          minValue: def.minValue,
+          maxValue: def.maxValue,
+          rangeSource: def.rangeSource ?? (def.minValue !== undefined || def.maxValue !== undefined ? 'auto' : undefined),
+          missingStrategy: def.missingStrategy === 'median' ? 'fillMedian' : 'reject',
+        },
+      };
+    }
+
+    // Build payload for edited
+    const editedPayload: Record<string, FeatureDefinition> = {};
+    for (const [f, def] of Object.entries(editedDefs)) {
+      editedPayload[f] = {
+        columnName: f,
+        displayName: f,
+        dataType: def.dataType,
+        required: def.missingStrategy === 'reject',
+        monitoringEnabled: true,
+        validation: {
+          minValue: def.minValue,
+          maxValue: def.maxValue,
+          rangeSource: def.rangeSource ?? (def.minValue !== undefined || def.maxValue !== undefined ? 'auto' : undefined),
+          missingStrategy: def.missingStrategy === 'median' ? 'fillMedian' : 'reject',
+        },
+      };
+    }
+
+    // Assert: Unedited keeps 'auto' for both non-model and model features
+    expect(uneditedPayload['loan_amount'].validation?.rangeSource).toBe('auto');
+    expect(uneditedPayload['monthly_income'].validation?.rangeSource).toBe('auto');
+
+    // Assert: User-edited feature gets 'user'
+    expect(editedPayload['loan_amount'].validation?.rangeSource).toBe('user');
+    expect(editedPayload['monthly_income'].validation?.rangeSource).toBe('auto');
   });
 });

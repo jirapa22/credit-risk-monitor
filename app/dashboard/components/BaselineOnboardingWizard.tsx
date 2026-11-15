@@ -128,7 +128,7 @@ export default function BaselineOnboardingWizard({
     rangeSource?: 'user' | 'auto';
     baselineMin?: number;
     baselineMax?: number;
-    missingStrategy: 'reject' | 'mean' | 'median' | 'mode';
+    missingStrategy: 'reject' | 'mean' | 'median' | 'mode' | 'ignore';
     allowedCategories: string[];
     rareCategoryThreshold: number;
     anomalyTransform?: 'none' | 'log1p';
@@ -254,7 +254,8 @@ export default function BaselineOnboardingWizard({
           dataType: fs.dataType,
           minValue: fs.minValue ?? undefined,
           maxValue: fs.maxValue ?? undefined,
-          missingStrategy: (fs.missingStrategy === 'fillMean' ? 'mean' : fs.missingStrategy === 'fillMedian' ? 'median' : fs.missingStrategy === 'fillMode' ? 'mode' : 'reject'),
+          rangeSource: (fs.minValue !== undefined || fs.maxValue !== undefined) ? 'auto' : undefined,
+          missingStrategy: (fs.missingStrategy === 'fillMean' ? 'mean' : fs.missingStrategy === 'fillMedian' ? 'median' : fs.missingStrategy === 'fillMode' ? 'mode' : fs.missingStrategy === 'ignore' ? 'ignore' : 'reject'),
           allowedCategories: fs.categories ?? [],
           rareCategoryThreshold: 0.01,
           anomalyTransform: fs.anomalyTransform,
@@ -616,20 +617,21 @@ export default function BaselineOnboardingWizard({
       for (const f of features) {
         const def = featureDefs[f];
         if (!def) continue;
-        const isModelVar = (def as any).usedInModel === true;
-        const missingStrat = isModelVar || def.missingStrategy === 'reject'
-          ? 'reject'
-          : def.missingStrategy === 'mean' ? 'fillMean' : def.missingStrategy === 'median' ? 'fillMedian' : def.missingStrategy === 'mode' ? 'fillMode' : 'reject';
+        const missingStrat = def.missingStrategy === 'mean' ? 'fillMean'
+          : def.missingStrategy === 'median' ? 'fillMedian'
+          : def.missingStrategy === 'mode' ? 'fillMode'
+          : def.missingStrategy === 'ignore' ? 'ignore'
+          : 'reject';
         registryPayload[f] = {
           columnName: f,
           displayName: def.displayName || f,
           dataType: def.dataType,
-          required: isModelVar || def.missingStrategy === 'reject',
+          required: def.missingStrategy === 'reject',
           monitoringEnabled: true,
           validation: {
             minValue: def.minValue,
             maxValue: def.maxValue,
-            rangeSource: def.rangeSource ?? (def.minValue !== undefined ? 'user' : undefined),
+            rangeSource: def.rangeSource ?? (def.minValue !== undefined || def.maxValue !== undefined ? 'auto' : undefined),
             baselineMin: def.baselineMin,
             baselineMax: def.baselineMax,
             missingStrategy: missingStrat,
@@ -1434,7 +1436,7 @@ export default function BaselineOnboardingWizard({
                           <select
                             value={def.missingStrategy}
                             onChange={e => {
-                              const v = e.target.value as 'reject' | 'mean' | 'median' | 'mode';
+                              const v = e.target.value as 'reject' | 'mean' | 'median' | 'mode' | 'ignore';
                               setFeatureDefs(prev => ({
                                 ...prev,
                                 [col]: { ...prev[col], missingStrategy: v },
@@ -1442,10 +1444,31 @@ export default function BaselineOnboardingWizard({
                             }}
                             className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 outline-none focus:border-indigo-500"
                           >
-                            <option value="reject">Reject (ห้ามว่าง)</option>
-                            <option value="mean">Mean (แทนด้วยค่าเฉลี่ย)</option>
-                            <option value="median">Median (แทนด้วยมัธยฐาน)</option>
+                            <option value="reject">ตัดแถว (Reject)</option>
+                            <option value="median">เติมค่ากลาง (Median)</option>
+                            <option value="mean">เติมค่าเฉลี่ย (Mean)</option>
+                            <option value="mode">เติมฐานนิยม (Mode)</option>
+                            <option value="ignore">เก็บไว้และเตือนอย่างเดียว (Warning)</option>
                           </select>
+                          {def.missingStrategy === 'reject' && (
+                            <p className="text-[9px] text-slate-400 mt-1">ตัดแถวที่ค่าว่างออก (Error)</p>
+                          )}
+                          {def.missingStrategy === 'median' && (
+                            <p className="text-[9px] text-amber-400/90 mt-1">แทนค่าว่างด้วยมัธยฐานจาก Baseline (Warning)</p>
+                          )}
+                          {def.missingStrategy === 'mean' && (
+                            <p className="text-[9px] text-amber-400/90 mt-1">แทนค่าว่างด้วยค่าเฉลี่ยจาก Baseline (Warning)</p>
+                          )}
+                          {def.missingStrategy === 'mode' && (
+                            <p className="text-[9px] text-amber-400/90 mt-1">แทนค่าว่างด้วยฐานนิยมจาก Baseline (Warning)</p>
+                          )}
+                          {def.missingStrategy === 'ignore' && (
+                            <p className="text-[9px] text-amber-400/90 mt-1">
+                              {(def as any).usedInModel !== false
+                                ? '⚠️ ในโมเดล: หากเก็บค่าว่างไว้ จะไม่สามารถคำนวณคะแนนตามตารางได้ (ได้ 0 pt หรือเกิดข้อผิดพลาด)'
+                                : 'เก็บแถวไว้และแจ้งเตือน (Warning) โดยไม่ตัดแถว'}
+                            </p>
+                          )}
                         </div>
                         <div>
                           <label className="text-[10px] text-slate-500 block mb-0.5">Transform</label>
@@ -1470,6 +1493,39 @@ export default function BaselineOnboardingWizard({
                     {/* Categorical fields */}
                     {def.dataType === 'categorical' && (
                       <div className="space-y-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-500 text-[10px]">Missing Strategy:</span>
+                            <select
+                              value={def.missingStrategy}
+                              onChange={e => {
+                                const v = e.target.value as 'reject' | 'mode' | 'ignore';
+                                setFeatureDefs(prev => ({
+                                  ...prev,
+                                  [col]: { ...prev[col], missingStrategy: v },
+                                }));
+                              }}
+                              className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-slate-300 outline-none focus:border-indigo-500"
+                            >
+                              <option value="reject">ตัดแถว (Reject)</option>
+                              <option value="mode">เติมฐานนิยม (Mode)</option>
+                              <option value="ignore">เก็บไว้และเตือนอย่างเดียว (Warning)</option>
+                            </select>
+                          </div>
+                          {def.missingStrategy === 'reject' && (
+                            <span className="text-[9px] text-slate-400">ตัดแถวที่ค่าว่างออก (Error)</span>
+                          )}
+                          {def.missingStrategy === 'mode' && (
+                            <span className="text-[9px] text-amber-400/90">แทนค่าว่างด้วยฐานนิยมจาก Baseline (Warning)</span>
+                          )}
+                          {def.missingStrategy === 'ignore' && (
+                            <span className="text-[9px] text-amber-400/90">
+                              {(def as any).usedInModel !== false
+                                ? '⚠️ ในโมเดล: หากเก็บค่าว่างไว้ จะไม่สามารถคำนวณคะแนนตามตารางได้ (ได้ 0 pt หรือเกิดข้อผิดพลาด)'
+                                : 'เก็บแถวไว้และแจ้งเตือน (Warning) โดยไม่ตัดแถว'}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-3">
                           <span className="text-slate-500 text-[10px]">เกณฑ์หมวดหายาก (Rare Threshold):</span>
                           <input

@@ -376,15 +376,28 @@ export default function BaselineOnboardingWizard({
                 binning: update.binning,
                 categoryPools: update.categoryPools,
                 poolPoints: update.poolPoints,
+                minValue: update.minValue,
+                maxValue: update.maxValue,
+                rangeSource: update.rangeSource ?? (update.minValue !== undefined ? 'auto' : undefined),
+                baselineMin: update.baselineMin,
+                baselineMax: update.baselineMax,
+                missingStrategy: 'reject',
               };
             } else {
               next[col] = {
                 ...next[col],
                 dataType: update.dataType || next[col].dataType,
                 usedInModel: true,
+                required: true,
+                missingStrategy: 'reject',
                 binning: update.binning ?? next[col].binning,
                 categoryPools: update.categoryPools ?? next[col].categoryPools,
                 poolPoints: update.poolPoints ?? next[col].poolPoints,
+                minValue: update.minValue ?? next[col].minValue,
+                maxValue: update.maxValue ?? next[col].maxValue,
+                rangeSource: update.rangeSource ?? (update.minValue !== undefined ? 'auto' : next[col].rangeSource),
+                baselineMin: update.baselineMin ?? next[col].baselineMin,
+                baselineMax: update.baselineMax ?? next[col].baselineMax,
               };
             }
           }
@@ -519,23 +532,25 @@ export default function BaselineOnboardingWizard({
               poolPoints: update.poolPoints,
               minValue: update.minValue,
               maxValue: update.maxValue,
+              rangeSource: update.rangeSource ?? (update.minValue !== undefined ? 'auto' : undefined),
+              baselineMin: update.baselineMin,
+              baselineMax: update.baselineMax,
+              missingStrategy: 'reject',
             };
           } else {
             next[col] = {
               ...next[col],
               usedInModel: true,
+              required: true,
+              missingStrategy: 'reject',
               binning: update.binning ?? next[col].binning,
               categoryPools: update.categoryPools ?? next[col].categoryPools,
               poolPoints: update.poolPoints,
-              minValue: (next[col].minValue !== undefined && next[col].minValue !== null && next[col].minValue !== 0)
-                ? next[col].minValue
-                : (update.minValue ?? next[col].minValue),
-              maxValue: (next[col].maxValue !== undefined && next[col].maxValue !== null)
-                ? next[col].maxValue
-                : (update.maxValue ?? next[col].maxValue),
-              rangeSource: update.rangeSource ?? 'auto',
-              baselineMin: update.baselineMin,
-              baselineMax: update.baselineMax,
+              minValue: update.minValue ?? next[col].minValue,
+              maxValue: update.maxValue ?? next[col].maxValue,
+              rangeSource: update.rangeSource ?? (update.minValue !== undefined ? 'auto' : next[col].rangeSource),
+              baselineMin: update.baselineMin ?? next[col].baselineMin,
+              baselineMax: update.baselineMax ?? next[col].baselineMax,
             };
           }
         }
@@ -601,12 +616,15 @@ export default function BaselineOnboardingWizard({
       for (const f of features) {
         const def = featureDefs[f];
         if (!def) continue;
-        const missingStrat = def.missingStrategy === 'mean' ? 'fillMean' : def.missingStrategy === 'median' ? 'fillMedian' : def.missingStrategy === 'mode' ? 'fillMode' : 'reject';
+        const isModelVar = (def as any).usedInModel === true;
+        const missingStrat = isModelVar || def.missingStrategy === 'reject'
+          ? 'reject'
+          : def.missingStrategy === 'mean' ? 'fillMean' : def.missingStrategy === 'median' ? 'fillMedian' : def.missingStrategy === 'mode' ? 'fillMode' : 'reject';
         registryPayload[f] = {
           columnName: f,
           displayName: def.displayName || f,
           dataType: def.dataType,
-          required: def.missingStrategy === 'reject',
+          required: isModelVar || def.missingStrategy === 'reject',
           monitoringEnabled: true,
           validation: {
             minValue: def.minValue,

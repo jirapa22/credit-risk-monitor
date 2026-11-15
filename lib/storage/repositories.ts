@@ -22,6 +22,7 @@ import type {
   ModelTableDefinition,
   ModelVersionRef,
   MonitoringRun,
+  MonitoringRunDetail,
   MonitoringThresholds,
   StoredRun,
   TriggerEvent,
@@ -34,6 +35,8 @@ import {
   isBuiltInReferenceId,
   loadReferenceDatasetBlob,
   saveReferenceDatasetBlob,
+  loadRunDetailBlob,
+  deleteRunDetailBlob,
   type ReferenceDatasetBlob,
 } from './blob';
 import { computeModelTablePoolStats, computeDevelopmentStability } from '../poolStats';
@@ -521,6 +524,8 @@ export async function recordDeletionAudit(
     referenceDatasetId: entry.referenceDatasetId,
     blobDeleted: Boolean(entry.blobDeleted),
     note: entry.note,
+    runId: entry.runId,
+    fileName: entry.fileName,
   };
   const nextList = [fullEntry, ...existing].slice(0, MAX_AUDIT_LOGS);
   await store.set(REGISTRY_DELETION_AUDIT_KEY, nextList);
@@ -1891,6 +1896,112 @@ export async function listRuns<T extends StoredRun = StoredRun>(
 
 export async function clearRuns(kind: StoredRun['kind'], modelId: string) {
   await getStore().del(runsKey(kind, modelId));
+}
+
+export async function recordRunDeletionAudit(opts: {
+  modelId: string;
+  runId: string;
+  fileName: string;
+  timestamp?: string;
+  actor?: string;
+  note?: string;
+  blobDeleted?: boolean;
+}): Promise<DeletionAuditEntry> {
+  return recordDeletionAudit({
+    action: 'RUN_DELETED',
+    actor: opts.actor || 'system',
+    modelId: opts.modelId,
+    timestamp: opts.timestamp || new Date().toISOString(),
+    runId: opts.runId,
+    fileName: opts.fileName,
+    note: opts.note,
+    clearedCounts: {
+      monitoringRuns: 1,
+      sandboxRuns: 0,
+      events: 0,
+      reviews: 0,
+      total: 1,
+    },
+    blobDeleted: Boolean(opts.blobDeleted),
+  });
+}
+
+export async function deleteMonitoringRuns(
+  modelId: string,
+  runIds: string[],
+  actor = 'system',
+): Promise<{ deletedCount: number; remainingCount: number }> {
+  if (!modelId || !modelId.trim()) {
+    throw new Error('ต้องระบุ modelId');
+  }
+  if (!Array.isArray(runIds) || runIds.length === 0) {
+    return { deletedCount: 0, remainingCount: 0 };
+  }
+  const runIdSet = new Set(runIds);
+  const currentRuns = await listRuns<MonitoringRun>('monitoring', modelId);
+  const toDelete = currentRuns.filter(r => runIdSet.has(r.runId));
+  const remaining = currentRuns.filter(r => !runIdSet.has(r.runId));
+
+  for (const r of toDelete) {
+    if (r.detailBlobUrl) {
+      try {
+        await deleteRunDetailBlob(r.detailBlobUrl);
+      } catch (err) {
+        console.warn(`Failed to delete blob for run ${r.runId}:`, err);
+      }
+    }
+    await recordRunDeletionAudit({
+      modelId,
+      runId: r.runId,
+      fileName: r.fileName,
+      timestamp: new Date().toISOString(),
+      actor,
+    });
+  }
+
+  await setRuns('monitoring', modelId, remaining);
+
+  try {
+    const store = getStore();
+    const evKey = eventsKey(modelId);
+    const evList = (await store.get<TriggerEvent[]>(evKey)) ?? [];
+    const filteredEv = evList.filter(e => !runIdSet.has(e.runId));
+    if (filteredEv.length !== evList.length) {
+      await store.set(evKey, filteredEv);
+    }
+  } catch (err) {
+    console.warn('Failed to clean up trigger events for deleted runs:', err);
+  }
+
+  return {
+    deletedCount: toDelete.length,
+    remainingCount: remaining.length,
+  };
+}
+
+export async function getMonitoringRunDetail(
+  modelId: string,
+  runId: string,
+): Promise<{ run: MonitoringRun | null; detail: MonitoringRunDetail | null; hasDetail: boolean }> {
+  if (!modelId || !runId) return { run: null, detail: null, hasDetail: false };
+  const runs = await listRuns<MonitoringRun>('monitoring', modelId);
+  const run = runs.find(r => r.runId === runId);
+  if (!run) return { run: null, detail: null, hasDetail: false };
+
+  if (run.detail) {
+    return { run, detail: run.detail, hasDetail: true };
+  }
+  if (run.detailBlobUrl) {
+    try {
+      const blobDetail = await loadRunDetailBlob(run.detailBlobUrl);
+      if (blobDetail) {
+        return { run, detail: blobDetail as MonitoringRunDetail, hasDetail: true };
+      }
+    } catch (err) {
+      console.warn(`Failed to load blob detail for run ${run.runId}:`, err);
+    }
+  }
+  return { run, detail: null, hasDetail: false };
 }
 
 export function storageInfo() {

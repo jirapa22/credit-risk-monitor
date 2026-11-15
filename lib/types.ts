@@ -740,6 +740,38 @@ export interface MonitoringRun {
   excludedRows?: number[];
   uploadSummary?: unknown;
   notes?: string;
+  sha256?: string | null;
+  detail?: MonitoringRunDetail | null;
+  detailBlobUrl?: string | null;
+}
+
+export interface MonitoringRunDetail {
+  runId: string;
+  modelId: string;
+  version: string;
+  configVersion: string;
+  referenceId: string;
+  fileName: string;
+  sha256: string;
+  createdAt: string;
+  thresholdMode: 'fixed' | 'calibrated';
+  validation: ValidationResult;
+  drift: DriftResult | null;
+  csiDetail?: Record<string, any> | null;
+  riskGradeDist?: any[];
+  riskGradeStatus?: string;
+  scoredCustomers?: any[]; // up to 20 rows
+  uploadSummary?: any;
+  anomaly?: AnomalyResult | null;
+  driftReport?: DriftReport | null;
+  trigger?: TriggerDecision | null;
+  psi?: number;
+  psiStatus?: string;
+  devPsi?: number | null;
+  devStability?: any | null;
+  status?: string;
+  processedRows?: number;
+  skippedRows?: number;
 }
 
 /** Sandbox anomaly types (see lib/injection.ts). Legacy 'outlier_injection' is accepted by the API as an alias of 'extreme_outlier'. */
@@ -972,7 +1004,7 @@ export interface DetectedColumnSchema {
 
 export interface DeletionAuditEntry {
   id: string;
-  action: 'delete_version' | 'archive_version' | 'delete_model';
+  action: 'delete_version' | 'archive_version' | 'delete_model' | 'RUN_DELETED';
   actor: string;
   timestamp: string;
   modelId: string;
@@ -988,5 +1020,7 @@ export interface DeletionAuditEntry {
   referenceDatasetId?: string;
   blobDeleted: boolean;
   note?: string;
+  runId?: string;
+  fileName?: string;
 }
 

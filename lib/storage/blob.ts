@@ -33,6 +33,9 @@ export interface ReferenceBlobStore {
   list(): Promise<ReferenceDatasetMeta[]>;
   peekSync?(referenceId: string): ReferenceDatasetBlob | null;
   putSync?(referenceId: string, blob: ReferenceDatasetBlob): void;
+  saveRunDetail?(runId: string, detail: unknown): Promise<string>;
+  loadRunDetail?(runId: string): Promise<unknown | null>;
+  delRunDetail?(runId: string): Promise<void>;
 }
 
 export const BUILT_IN_REFERENCE_IDS = new Set<string>(['ascore_v1_dev855']);
@@ -193,6 +196,82 @@ export class VercelBlobStore implements ReferenceBlobStore {
     }
   }
 
+  async saveRunDetail(runId: string, detail: unknown): Promise<string> {
+    const pathname = `run-details/${runId}.json`;
+    const res = await fetch(`${this.baseUrl}/${pathname}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'content-type': 'application/json',
+        'x-add-random-suffix': '0',
+        'x-cache-control-max-age': '60',
+        'x-vercel-blob-access': 'private',
+      },
+      body: JSON.stringify(detail),
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      const snippet = await extractErrorSnippet(res, this.token);
+      throw new Error(
+        `Vercel Blob PUT run detail "${runId}" failed: HTTP ${res.status}${snippet ? `: ${snippet}` : ''}`,
+      );
+    }
+    const data = (await res.json().catch(() => null)) as { url?: string } | null;
+    return data?.url || `${this.baseUrl}/${pathname}`;
+  }
+
+  async loadRunDetail(runId: string): Promise<unknown | null> {
+    const prefix = `run-details/${runId}.json`;
+    const listRes = await fetch(
+      `${this.baseUrl}?prefix=${encodeURIComponent(prefix)}&limit=1`,
+      {
+        headers: { Authorization: `Bearer ${this.token}` },
+        cache: 'no-store',
+      },
+    );
+    if (!listRes.ok) return null;
+    const listBody = (await listRes.json()) as {
+      blobs?: { pathname: string; url: string; downloadUrl?: string }[];
+    };
+    const match = listBody.blobs?.find(b => b.pathname === prefix);
+    if (!match) return null;
+
+    const dlUrl = match.downloadUrl || match.url;
+    const dlRes = await fetch(dlUrl, {
+      headers: { Authorization: `Bearer ${this.token}` },
+      cache: 'no-store',
+    });
+    if (!dlRes.ok) return null;
+    return (await dlRes.json()) as unknown;
+  }
+
+  async delRunDetail(runId: string): Promise<void> {
+    const prefix = `run-details/${runId}.json`;
+    const listRes = await fetch(
+      `${this.baseUrl}?prefix=${encodeURIComponent(prefix)}&limit=1`,
+      {
+        headers: { Authorization: `Bearer ${this.token}` },
+        cache: 'no-store',
+      },
+    );
+    if (!listRes.ok) return;
+    const listBody = (await listRes.json()) as {
+      blobs?: { url: string }[];
+    };
+    const match = listBody.blobs?.[0];
+    if (!match) return;
+
+    await fetch(`${this.baseUrl}/delete`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ urls: [match.url] }),
+      cache: 'no-store',
+    });
+  }
+
   async list(): Promise<ReferenceDatasetMeta[]> {
     const listRes = await fetch(`${this.baseUrl}?prefix=references/&limit=100`, {
       headers: { Authorization: `Bearer ${this.token}` },
@@ -233,6 +312,7 @@ class MemoryBlobStore implements ReferenceBlobStore {
   kind: BlobStoreKind = 'memory';
   persistent = false;
   protected blobs = new Map<string, ReferenceDatasetBlob>();
+  protected runDetails = new Map<string, unknown>();
 
   async get(referenceId: string): Promise<ReferenceDatasetBlob | null> {
     const b = this.blobs.get(referenceId);
@@ -258,6 +338,20 @@ class MemoryBlobStore implements ReferenceBlobStore {
 
   putSync(referenceId: string, blob: ReferenceDatasetBlob): void {
     this.blobs.set(referenceId, structuredClone(blob));
+  }
+
+  async saveRunDetail(runId: string, detail: unknown): Promise<string> {
+    this.runDetails.set(runId, structuredClone(detail));
+    return `memory://run-details/${runId}.json`;
+  }
+
+  async loadRunDetail(runId: string): Promise<unknown | null> {
+    const hit = this.runDetails.get(runId);
+    return hit ? structuredClone(hit) : null;
+  }
+
+  async delRunDetail(runId: string): Promise<void> {
+    this.runDetails.delete(runId);
   }
 }
 
@@ -315,6 +409,45 @@ class FileBlobStore extends MemoryBlobStore {
     await super.del(referenceId);
     try {
       fs.unlinkSync(this.filePath(referenceId));
+    } catch {
+      // ignore if absent
+    }
+  }
+
+  private runDetailPath(runId: string): string {
+    const safe = runId.replace(/[^a-zA-Z0-9._-]/g, '_');
+    return path.join(this.dir, 'run_details', `${safe}.json`);
+  }
+
+  override async saveRunDetail(runId: string, detail: unknown): Promise<string> {
+    await super.saveRunDetail(runId, detail);
+    const fp = this.runDetailPath(runId);
+    fs.mkdirSync(path.dirname(fp), { recursive: true });
+    fs.writeFileSync(fp, JSON.stringify(detail, null, 2));
+    return `file://${fp}`;
+  }
+
+  override async loadRunDetail(runId: string): Promise<unknown | null> {
+    const mem = await super.loadRunDetail(runId);
+    if (mem) return mem;
+    const fp = this.runDetailPath(runId);
+    if (fs.existsSync(fp)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(fp, 'utf8'));
+        await super.saveRunDetail(runId, parsed);
+        return parsed;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  override async delRunDetail(runId: string): Promise<void> {
+    await super.delRunDetail(runId);
+    const fp = this.runDetailPath(runId);
+    try {
+      fs.unlinkSync(fp);
     } catch {
       // ignore if absent
     }
@@ -392,5 +525,38 @@ export async function loadReferenceDatasetBlob(
     return hit;
   }
   return null;
+}
+
+export async function saveRunDetailBlob(runId: string, detail: unknown): Promise<string> {
+  const store = getBlobStore();
+  if (store.saveRunDetail) {
+    return store.saveRunDetail(runId, detail);
+  }
+  throw new Error('Blob store does not support saveRunDetail');
+}
+
+export async function loadRunDetailBlob(runIdOrUrl: string): Promise<unknown | null> {
+  const store = getBlobStore();
+  const runId = runIdOrUrl
+    .replace(/^.*\/run-details\//, '')
+    .replace(/\.json.*$/, '')
+    .replace(/^memory:\/\/run-details\//, '')
+    .replace(/^file:\/\/.*\/run_details\//, '');
+  if (store.loadRunDetail) {
+    return store.loadRunDetail(runId);
+  }
+  return null;
+}
+
+export async function deleteRunDetailBlob(runIdOrUrl: string): Promise<void> {
+  const store = getBlobStore();
+  const runId = runIdOrUrl
+    .replace(/^.*\/run-details\//, '')
+    .replace(/\.json.*$/, '')
+    .replace(/^memory:\/\/run-details\//, '')
+    .replace(/^file:\/\/.*\/run_details\//, '');
+  if (store.delRunDetail) {
+    await store.delRunDetail(runId);
+  }
 }
 

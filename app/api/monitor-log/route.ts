@@ -6,7 +6,7 @@
  * so logs of different model/config versions never mix.
  */
 import { NextResponse } from 'next/server';
-import { clearRuns, getActiveModelId, listRuns, storageInfo } from '@/lib/storage/repositories';
+import { clearRuns, deleteMonitoringRuns, getActiveModelId, listRuns, storageInfo } from '@/lib/storage/repositories';
 import { toLegacyLog } from '@/lib/legacy';
 import type { MonitoringRun } from '@/lib/types';
 
@@ -33,10 +33,42 @@ export async function GET(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    await clearRuns('monitoring', searchParams.get('modelId') || getActiveModelId());
-    return NextResponse.json({ success: true });
+    const url = new URL(request.url);
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      // ignore JSON parse error for URL-only requests
+    }
+
+    const modelId = body.modelId || url.searchParams.get('modelId');
+    if (!modelId || !String(modelId).trim()) {
+      return NextResponse.json({ error: 'ต้องระบุ modelId' }, { status: 400 });
+    }
+
+    const rawRunIds = body.runIds || (body.runId ? [body.runId] : url.searchParams.getAll('runId'));
+    const runIds: string[] = Array.isArray(rawRunIds)
+      ? rawRunIds.filter(Boolean).map(String)
+      : rawRunIds
+        ? [String(rawRunIds)]
+        : [];
+
+    if (runIds.length > 0) {
+      const result = await deleteMonitoringRuns(modelId, runIds);
+      return NextResponse.json({ success: true, ...result });
+    }
+
+    if (body.clearAll === true || url.searchParams.get('clearAll') === 'true') {
+      await clearRuns('monitoring', modelId);
+      return NextResponse.json({ success: true, clearedAll: true });
+    }
+
+    return NextResponse.json(
+      { error: 'ต้องระบุ runIds หรือ runId ที่ต้องการลบ' },
+      { status: 400 },
+    );
   } catch (error) {
+    console.error('DELETE /api/monitor-log error:', error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

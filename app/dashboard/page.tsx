@@ -65,6 +65,9 @@ interface MonitorLog {
   results: { psi: number; csi: Record<string, number>; status: string } | null;
   uploadSummary?: UploadSummary;
   verdict: string;
+  triggerAction?: string | null;
+  flaggedRows?: number | null;
+  hasDetail?: boolean;
 }
 
 interface ValidationIssueGroup { type: string; severity: 'error' | 'warning'; column?: string; count: number; sampleRows: number[]; message: string }
@@ -150,6 +153,30 @@ export default function Dashboard() {
   const [reference, setReference] = useState<ReferenceMeta | null>(null);
   const [storage, setStorage] = useState<StorageInfo | null>(null);
   const [onlyCurrentVersion, setOnlyCurrentVersion] = useState(true);
+  const [duplicateUploadWarning, setDuplicateUploadWarning] = useState<string | null>(null);
+  const [viewingHistoricalRun, setViewingHistoricalRun] = useState<{
+    runId: string;
+    fileName: string;
+    uploadedAt: string;
+    hasDetail: boolean;
+  } | null>(null);
+  const [latestUploadSession, setLatestUploadSession] = useState<{
+    uploadedMetrics: any;
+    uploadedCsiDetail: any;
+    uploadedRiskGrades: any[];
+    previewCustomers: any[];
+    validation: ValidationResult | null;
+    uploadSummary: UploadSummary | null;
+    fileName: string;
+    rowCount: number;
+  } | null>(null);
+  const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState<{
+    type: 'single' | 'multiple';
+    ids: string[];
+    displayInfo: string;
+  } | null>(null);
+  const [isDeletingLog, setIsDeletingLog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadLogs = useCallback(async (targetModelId?: string) => {
@@ -344,10 +371,26 @@ export default function Dashboard() {
           await loadLogs();
           throw new Error(data.error || data.detail || 'เกิดข้อผิดพลาดในการประมวลผล');
         }
+        if (data.duplicateWarning) {
+          setDuplicateUploadWarning(data.duplicateWarning);
+        } else {
+          setDuplicateUploadWarning(null);
+        }
         setUploadedMetrics(data);
         setUploadedCsiDetail(data.csiDetail || null);
         setUploadedRiskGrades(data.riskGradeDist || []);
         setPreviewCustomers(data.scoredCustomers || []);
+        setLatestUploadSession({
+          uploadedMetrics: data,
+          uploadedCsiDetail: data.csiDetail || null,
+          uploadedRiskGrades: data.riskGradeDist || [],
+          previewCustomers: data.scoredCustomers || [],
+          validation: data.validation || null,
+          uploadSummary: data.uploadSummary || null,
+          fileName: file.name,
+          rowCount: data.validation?.totalRows || 0,
+        });
+        setViewingHistoricalRun(null);
         await loadLogs();
       } catch (err: any) {
         setUploadError(err.message || 'เกิดข้อผิดพลาด');
@@ -357,6 +400,99 @@ export default function Dashboard() {
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleSelectLog = async (log: MonitorLog) => {
+    if (viewingHistoricalRun?.runId === log.logId) {
+      setViewingHistoricalRun(null);
+      if (latestUploadSession) {
+        setUploadedMetrics(latestUploadSession.uploadedMetrics);
+        setUploadedCsiDetail(latestUploadSession.uploadedCsiDetail);
+        setUploadedRiskGrades(latestUploadSession.uploadedRiskGrades);
+        setPreviewCustomers(latestUploadSession.previewCustomers);
+        setValidation(latestUploadSession.validation);
+        setUploadSummary(latestUploadSession.uploadSummary);
+        setFileName(latestUploadSession.fileName);
+        setRowCount(latestUploadSession.rowCount);
+      } else {
+        setUploadedMetrics(null);
+        setUploadedCsiDetail(null);
+        setUploadedRiskGrades([]);
+        setPreviewCustomers([]);
+        setValidation(null);
+        setUploadSummary(null);
+        setFileName('');
+        setRowCount(0);
+      }
+      return;
+    }
+
+    try {
+      const mId = selectedModelId || config?.activeModelId || '';
+      const res = await fetch(`/api/monitor-log/detail?runId=${encodeURIComponent(log.logId)}&modelId=${encodeURIComponent(mId)}`);
+      const data = await res.json();
+      if (data.ok && data.hasDetail && data.detail) {
+        setViewingHistoricalRun({
+          runId: log.logId,
+          fileName: log.fileName,
+          uploadedAt: log.uploadedAt,
+          hasDetail: true,
+        });
+        setUploadedMetrics(data.detail);
+        setUploadedCsiDetail(data.detail.csiDetail || null);
+        setUploadedRiskGrades(data.detail.riskGradeDist || []);
+        setPreviewCustomers(data.detail.scoredCustomers || []);
+        setValidation(data.detail.validation);
+        setUploadSummary(data.detail.uploadSummary || null);
+        setFileName(log.fileName);
+        setRowCount(data.detail.validation?.totalRows || 0);
+        setSelectedLog(log);
+        window.scrollTo({ top: 300, behavior: 'smooth' });
+      } else {
+        setViewingHistoricalRun({
+          runId: log.logId,
+          fileName: log.fileName,
+          uploadedAt: log.uploadedAt,
+          hasDetail: false,
+        });
+        setSelectedLog(log);
+        setUploadedMetrics(null);
+        setUploadedCsiDetail(null);
+        setUploadedRiskGrades([]);
+        setPreviewCustomers([]);
+        setValidation(null);
+        setUploadSummary(log.uploadSummary || null);
+        setFileName(log.fileName);
+        setRowCount(log.rowCount || 0);
+      }
+    } catch (err) {
+      console.error('Failed to load log detail:', err);
+    }
+  };
+
+  const handleDeleteConfirmed = async () => {
+    if (!confirmDelete || confirmDelete.ids.length === 0) return;
+    setIsDeletingLog(true);
+    try {
+      const mId = selectedModelId || config?.activeModelId || '';
+      const res = await fetch('/api/monitor-log', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelId: mId, runIds: confirmDelete.ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'ลบไม่สำเร็จ');
+      setSelectedLogIds(new Set());
+      setConfirmDelete(null);
+      if (viewingHistoricalRun && confirmDelete.ids.includes(viewingHistoricalRun.runId)) {
+        setViewingHistoricalRun(null);
+      }
+      await loadLogs(mId);
+    } catch (err: any) {
+      alert(`เกิดข้อผิดพลาดในการลบ: ${err.message}`);
+    } finally {
+      setIsDeletingLog(false);
+    }
   };
 
   const currentModelId = selectedModelId || config?.activeModelId || '';
@@ -1272,6 +1408,84 @@ export default function Dashboard() {
           ════════════════════════════════════════════════════════ */
           ) : (
             <div className="space-y-6">
+              {/* Duplicate upload warning */}
+              {duplicateUploadWarning && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between gap-3 text-xs text-amber-300">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">⚠️</span>
+                    <span>คำเตือน: {duplicateUploadWarning}</span>
+                  </div>
+                  <button
+                    onClick={() => setDuplicateUploadWarning(null)}
+                    className="text-amber-400 hover:text-amber-200 px-2 py-1 text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Historical view banner */}
+              {viewingHistoricalRun && (
+                <div className="bg-indigo-950/60 border border-indigo-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-lg shadow-indigo-950/30">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-mono font-bold border border-indigo-500/30 flex items-center gap-1.5">
+                      <span>🕒</span> ดูย้อนหลัง · {viewingHistoricalRun.fileName} · {new Date(viewingHistoricalRun.uploadedAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
+                    </span>
+                    {!viewingHistoricalRun.hasDetail && (
+                      <span className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full font-medium">
+                        ⚠️ ไม่มีรายละเอียด (บันทึกก่อนอัปเดต)
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setViewingHistoricalRun(null);
+                      if (latestUploadSession) {
+                        setUploadedMetrics(latestUploadSession.uploadedMetrics);
+                        setUploadedCsiDetail(latestUploadSession.uploadedCsiDetail);
+                        setUploadedRiskGrades(latestUploadSession.uploadedRiskGrades);
+                        setPreviewCustomers(latestUploadSession.previewCustomers);
+                        setValidation(latestUploadSession.validation);
+                        setUploadSummary(latestUploadSession.uploadSummary);
+                        setFileName(latestUploadSession.fileName);
+                        setRowCount(latestUploadSession.rowCount);
+                      } else {
+                        setUploadedMetrics(null);
+                        setUploadedCsiDetail(null);
+                        setUploadedRiskGrades([]);
+                        setPreviewCustomers([]);
+                        setValidation(null);
+                        setUploadSummary(null);
+                        setFileName('');
+                        setRowCount(0);
+                      }
+                    }}
+                    className="text-xs px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors flex items-center gap-1.5 shadow"
+                  >
+                    <span>⬅️</span> กลับไปมุมมองล่าสุด
+                  </button>
+                </div>
+              )}
+
+              {/* Legacy summary if viewing historical run without detail */}
+              {viewingHistoricalRun && !viewingHistoricalRun.hasDetail && selectedLog && (
+                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-200">สรุปข้อมูลการรัน (บันทึกก่อนอัปเดต)</h4>
+                      <p className="text-xs text-slate-400 mt-0.5">{selectedLog.fileName} · {new Date(selectedLog.uploadedAt).toLocaleString('th-TH')}</p>
+                    </div>
+                    <Badge status={selectedLog.verdict} />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <MetricCard label="PSI" value={selectedLog.results?.psi ?? null} color={selectedLog.results?.psi !== undefined && selectedLog.results.psi < psiWarningNum ? 'text-emerald-400' : 'text-amber-400'} />
+                    <MetricCard label="Processed / Total" value={`${(selectedLog.processedRows ?? selectedLog.rowCount).toLocaleString()} / ${selectedLog.rowCount.toLocaleString()}`} color="text-slate-200" />
+                    <MetricCard label="Trigger Action" value={selectedLog.triggerAction ?? '—'} color="text-indigo-400" />
+                    <MetricCard label="Anomaly Flagged" value={selectedLog.flaggedRows ? `${selectedLog.flaggedRows} แถว` : '—'} color="text-amber-400" />
+                  </div>
+                </div>
+              )}
+
               {/* Upload + baseline info row */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Active Model Info */}
@@ -1767,7 +1981,23 @@ export default function Dashboard() {
               {/* Monitor Log Table */}
               <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden">
                 <div className="px-5 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-bold text-slate-200">🗂️ Monitoring Log</h3>
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-bold text-slate-200">🗂️ Monitoring Log</h3>
+                    {selectedLogIds.size > 0 && (
+                      <button
+                        onClick={() => {
+                          setConfirmDelete({
+                            type: 'multiple',
+                            ids: Array.from(selectedLogIds),
+                            displayInfo: `เลือกไว้ทั้งหมด ${selectedLogIds.size} รายการ`,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-medium transition-colors flex items-center gap-1.5"
+                      >
+                        🗑️ ลบที่เลือก ({selectedLogIds.size})
+                      </button>
+                    )}
+                  </div>
                   <div className="flex items-center gap-3">
                     <label className="flex items-center gap-1.5 text-[10px] text-slate-400 cursor-pointer">
                       <input id="log-only-current-version" type="checkbox" checked={onlyCurrentVersion} onChange={e => setOnlyCurrentVersion(e.target.checked)} className="accent-indigo-500" />
@@ -1788,6 +2018,20 @@ export default function Dashboard() {
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-slate-800 bg-slate-950/30">
+                          <th className="py-2.5 px-3 w-8">
+                            <input
+                              type="checkbox"
+                              className="accent-indigo-500 rounded cursor-pointer"
+                              checked={visibleLogs.length > 0 && selectedLogIds.size === visibleLogs.length}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setSelectedLogIds(new Set(visibleLogs.map(l => l.logId)));
+                                } else {
+                                  setSelectedLogIds(new Set());
+                                }
+                              }}
+                            />
+                          </th>
                           {/* Headers — dynamic CSI columns */}
                           {['วันที่', 'ไฟล์', 'Config', 'Valid / Rows', 'PSI',
                             ...csiFeatures.map(f => `CSI — ${f.label || f.key}`),
@@ -1795,20 +2039,45 @@ export default function Dashboard() {
                           ].map(h => (
                             <th key={h} className="text-left py-2.5 px-3 text-slate-500 font-medium whitespace-nowrap">{h}</th>
                           ))}
+                          <th className="py-2.5 px-3 w-10 text-right"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {visibleLogs.map(log => {
                           const psi = log.results?.psi;
                           const psiColor = psi === undefined ? 'text-slate-600' : psi < psiWarningNum ? 'text-emerald-400' : psi < psiCriticalNum ? 'text-amber-400' : 'text-rose-400';
-                          const isSelected = selectedLog?.logId === log.logId;
+                          const isSelected = selectedLog?.logId === log.logId || viewingHistoricalRun?.runId === log.logId;
                           const csiStatus = (log.results as any)?.csiStatus as Record<string, string> | undefined;
                           return (
                             <Fragment key={log.logId}>
-                            <tr className="border-b border-slate-800/40 hover:bg-slate-800/20 cursor-pointer"
-                              onClick={() => setSelectedLog(isSelected ? null : log)}>
+                            <tr
+                              className={`border-b border-slate-800/40 hover:bg-slate-800/20 cursor-pointer ${isSelected ? 'bg-indigo-950/20' : ''}`}
+                              onClick={() => handleSelectLog(log)}
+                            >
+                              <td className="py-2.5 px-3" onClick={e => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  className="accent-indigo-500 rounded cursor-pointer"
+                                  checked={selectedLogIds.has(log.logId)}
+                                  onChange={e => {
+                                    const next = new Set(selectedLogIds);
+                                    if (e.target.checked) next.add(log.logId);
+                                    else next.delete(log.logId);
+                                    setSelectedLogIds(next);
+                                  }}
+                                />
+                              </td>
                               <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">{new Date(log.uploadedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</td>
-                              <td className="py-2.5 px-3 text-slate-300 max-w-32 truncate">{log.fileName}</td>
+                              <td className="py-2.5 px-3 text-slate-300 max-w-32 truncate" title={log.fileName}>
+                                <div className="flex items-center gap-1.5">
+                                  <span>{log.fileName}</span>
+                                  {log.hasDetail && (
+                                    <span className="text-[9px] px-1 rounded bg-indigo-500/20 text-indigo-400 font-mono" title="มีรายละเอียดการรัน">
+                                      detail
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                               <td className="py-2.5 px-3 font-mono text-[10px] text-slate-500">{log.configVersion ? `v${log.configVersion}` : '—'}</td>
                               <td className="py-2.5 px-3 font-mono text-slate-400">{(log.processedRows ?? log.rowCount).toLocaleString()} / {log.rowCount.toLocaleString()}</td>
                               <td className={`py-2.5 px-3 font-mono font-bold ${psiColor}`}>{psi !== undefined ? psi.toFixed(4) : '—'}</td>
@@ -1824,10 +2093,25 @@ export default function Dashboard() {
                             );
                           })}
                               <td className="py-2.5 px-3"><Badge status={log.verdict} /></td>
+                              <td className="py-2.5 px-3 text-right" onClick={e => e.stopPropagation()}>
+                                <button
+                                  onClick={() => {
+                                    setConfirmDelete({
+                                      type: 'single',
+                                      ids: [log.logId],
+                                      displayInfo: `${log.fileName} (${new Date(log.uploadedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })})`,
+                                    });
+                                  }}
+                                  title="ลบรายการนี้"
+                                  className="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition-colors"
+                                >
+                                  🗑️
+                                </button>
+                              </td>
                             </tr>
-                            {isSelected && (
+                            {isSelected && !viewingHistoricalRun?.hasDetail && (
                               <tr key={`${log.logId}-detail`} className="bg-slate-950/40">
-                                <td colSpan={6 + csiFeatures.length} className="px-4 py-3">
+                                <td colSpan={8 + csiFeatures.length} className="px-4 py-3">
                                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     <div>
                                       <p className="text-[9px] font-bold text-cyan-400 uppercase tracking-wider mb-2">🗓️ ช่วงเวลาของไฟล์นี้</p>
@@ -1907,6 +2191,44 @@ export default function Dashboard() {
           )
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 text-lg">
+                ⚠️
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-100">ยืนยันการลบประวัติการรัน</h4>
+                <p className="text-xs text-slate-400 mt-0.5">การลบนี้จะลบรายละเอียดและบันทึกประวัติ Audit Log</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 font-mono">
+              {confirmDelete.displayInfo}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={isDeletingLog}
+                className="px-4 py-2 text-xs rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleDeleteConfirmed}
+                disabled={isDeletingLog}
+                className="px-4 py-2 text-xs rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors flex items-center gap-1.5"
+              >
+                {isDeletingLog ? 'กำลังลบ...' : 'ยืนยันการลบ'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

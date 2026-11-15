@@ -38,5 +38,6 @@ export function toLegacyLog(run: MonitoringRun) {
     // ── Trigger Decision (Step 9) ──
     triggerAction: run.trigger?.action ?? null,
     triggerSeverity: run.trigger?.severity ?? null,
+    hasDetail: Boolean(run.detail || run.detailBlobUrl),
   };
 }

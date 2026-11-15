@@ -1080,6 +1080,73 @@ export function buildDriftReport(
         ? `อัตราผิดนัดชำระหนี้ (Bad Rate) เปลี่ยนแปลงอย่างมีนัยสำคัญ: Reference ${(refBadRate * 100).toFixed(2)}% → ใหม่ ${(actBadRate * 100).toFixed(2)}% (เปลี่ยนแปลง ${relPctStr}, p=${pValue.toFixed(4)})`
         : `อัตราผิดนัดชำระหนี้ (Bad Rate) อยู่ในเกณฑ์ปกติ: Reference ${(refBadRate * 100).toFixed(2)}% → ใหม่ ${(actBadRate * 100).toFixed(2)}% (เปลี่ยนแปลง ${relPctStr}, p=${pValue.toFixed(4)})`;
 
+    // ── Score-adjusted expected bad rate (display only) ──
+    let scoreAdjusted: any = undefined;
+    let expectedBadRate: number | null = null;
+    let diffFromExpected: number | null = null;
+    let adjustedZStat: number | null = null;
+    let adjustedPValue: number | null = null;
+    let explainableByScoreShift: boolean | undefined = undefined;
+    let scoreAdjustmentReason: string | undefined = undefined;
+
+    if (
+      reference.hasScores &&
+      reference.scores.length > 0 &&
+      actualScores.length > 0 &&
+      reference.scoreBoundaries &&
+      reference.scoreBoundaries.length > 0
+    ) {
+      const bounds = reference.scoreBoundaries;
+      const numBins = bounds.length + 1;
+      const refBinCount = new Array(numBins).fill(0);
+      const refBinBad = new Array(numBins).fill(0);
+
+      for (let i = 0; i < reference.scores.length; i++) {
+        const s = reference.scores[i];
+        const l = reference.labels[i];
+        if (s !== undefined && Number.isFinite(s) && (l === 0 || l === 1)) {
+          const b = getBinIndex(s, bounds);
+          refBinCount[b]++;
+          if (l === 1) refBinBad[b]++;
+        }
+      }
+      const refBinBadRate = refBinCount.map((cnt, i) => (cnt > 0 ? refBinBad[i] / cnt : refBadRate));
+
+      const actBinCount = new Array(numBins).fill(0);
+      for (const s of actualScores) {
+        actBinCount[getBinIndex(s, bounds)]++;
+      }
+      const totalActScores = actualScores.length || 1;
+      let expBR = 0;
+      for (let b = 0; b < numBins; b++) {
+        expBR += (actBinCount[b] / totalActScores) * refBinBadRate[b];
+      }
+
+      expectedBadRate = +expBR.toFixed(6);
+      diffFromExpected = +(actBadRate - expBR).toFixed(6);
+
+      const n = actLabeledCount;
+      const seExp = Math.sqrt((expBR * (1 - expBR)) / n);
+      adjustedZStat = seExp > 1e-12 ? +((actBadRate - expBR) / seExp).toFixed(4) : 0;
+      adjustedPValue = seExp > 1e-12 ? +normalTwoSidedPValue(adjustedZStat).toFixed(4) : 1;
+      explainableByScoreShift = adjustedPValue >= dc.labelPValueThreshold;
+
+      const diffPctStr = ((actBadRate - expBR) * 100).toFixed(2);
+      scoreAdjustmentReason = explainableByScoreShift
+        ? `การเปลี่ยนของ bad rate อธิบายได้ด้วยการเปลี่ยนของคะแนน (ประชากรเปลี่ยน) — อัตราผิดนัดจริง ${(actBadRate * 100).toFixed(2)}% ใกล้เคียงกับค่าคาดหมาย ${(expBR * 100).toFixed(2)}% ตามช่วงคะแนน (ผลต่าง ${diffPctStr}%pts, p=${adjustedPValue.toFixed(4)})`
+        : `อัตราผิดนัดจริง ${(actBadRate * 100).toFixed(2)}% ต่างจากค่าคาดหมาย ${(expBR * 100).toFixed(2)}% อย่างมีนัยสำคัญ (ผลต่าง ${diffPctStr}%pts, p=${adjustedPValue.toFixed(4)})`;
+
+      scoreAdjusted = {
+        expectedBadRate,
+        actualBadRate: actBadRate,
+        diffFromExpected,
+        zStat: adjustedZStat,
+        pValue: adjustedPValue,
+        explainableByScoreShift,
+        reason: scoreAdjustmentReason,
+      };
+    }
+
     const metrics: LabelDriftMetrics = {
       referenceLabeledRows: refLabeledCount,
       referenceBadCount: refBadCount,
@@ -1097,6 +1164,8 @@ export function buildDriftReport(
         relChangeCritical: dc.labelRelChangeCritical,
         pValueThreshold: dc.labelPValueThreshold,
       },
+      ...(scoreAdjusted ? { scoreAdjusted } : {}),
+      ...(expectedBadRate !== null ? { expectedBadRate, diffFromExpected, adjustedZStat, adjustedPValue, explainableByScoreShift, scoreAdjustmentReason } : {}),
     };
     labelSection = { status: lStatus, reason: lReason, metrics };
   }

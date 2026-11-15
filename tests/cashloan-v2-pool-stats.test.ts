@@ -422,7 +422,7 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
       date: String(r['app_date'] || ''),
       score: Number(r['credit_score']),
       label: r['default_12m'] !== undefined ? Number(r['default_12m']) : null,
-      values: {},
+      values: { credit_score: Number(r['credit_score']) },
       categories: {},
     }));
     const reportM05 = buildDriftReport(prof, valResult.version, { cleanRows: m05Clean as any, rawRows: m05Rows });
@@ -432,6 +432,10 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
     expect(reportM05.label.metrics!.actualBadRate).toBeCloseTo(0.1885, 3);
     expect(reportM05.label.metrics!.relativeChange).toBeGreaterThan(0.50); // > +50%
     expect(reportM05.label.metrics!.pValue).toBeLessThan(0.001);
+    expect(reportM05.label.metrics!.scoreAdjusted).toBeDefined();
+    expect(reportM05.label.metrics!.scoreAdjusted!.expectedBadRate).toBeGreaterThan(0.165);
+    expect(reportM05.label.metrics!.scoreAdjusted!.expectedBadRate).toBeLessThan(0.180);
+    expect(reportM05.label.metrics!.scoreAdjusted!.explainableByScoreShift).toBe(true);
 
     const m06Text = readFileSync(join(root, 'samples/cashloan_v2/m06_v2_2025-12_เศรษฐกิจชะลอตัว.csv'), 'utf8');
     const { rows: m06Rows } = parseCsv(m06Text);
@@ -441,7 +445,7 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
       date: String(r['app_date'] || ''),
       score: Number(r['credit_score']),
       label: r['default_12m'] !== undefined ? Number(r['default_12m']) : null,
-      values: {},
+      values: { credit_score: Number(r['credit_score']) },
       categories: {},
     }));
     const reportM06 = buildDriftReport(prof, valResult.version, { cleanRows: m06Clean as any, rawRows: m06Rows });
@@ -451,6 +455,10 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
     expect(reportM06.label.metrics!.actualBadRate).toBeCloseTo(0.1550, 3);
     expect(reportM06.label.metrics!.relativeChange).toBeGreaterThan(0.20); // > +20%
     expect(reportM06.label.metrics!.pValue).toBeLessThan(0.05);
+    expect(reportM06.label.metrics!.scoreAdjusted).toBeDefined();
+    expect(reportM06.label.metrics!.scoreAdjusted!.expectedBadRate).toBeGreaterThan(0.115);
+    expect(reportM06.label.metrics!.scoreAdjusted!.expectedBadRate).toBeLessThan(0.125);
+    expect(reportM06.label.metrics!.scoreAdjusted!.explainableByScoreShift).toBe(false);
   });
 });
 

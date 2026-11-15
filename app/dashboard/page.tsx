@@ -1725,6 +1725,42 @@ export default function Dashboard() {
                     );
                   })()}
 
+                  {/* ── ติดตาม Label Drift & Bad Rate คาดหมายตามช่วงคะแนน ── */}
+                  {uploadedMetrics.driftReport?.label && uploadedMetrics.driftReport.label.status !== 'NOT_AVAILABLE' && uploadedMetrics.driftReport.label.metrics && (() => {
+                    const lm = uploadedMetrics.driftReport.label.metrics;
+                    const adj = lm.scoreAdjusted;
+                    const isCrit = uploadedMetrics.driftReport.label.status === 'CRITICAL';
+                    const isWarn = uploadedMetrics.driftReport.label.status === 'WARNING';
+                    const borderColor = isCrit ? 'border-rose-500/40 bg-rose-500/5' : isWarn ? 'border-amber-500/40 bg-amber-500/5' : 'border-slate-800 bg-slate-900/60';
+
+                    return (
+                      <div className={`border rounded-2xl p-5 ${borderColor}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="text-sm font-bold text-slate-200">🎯 การติดตามอัตราผิดนัดชำระหนี้ (Label Drift & Expected Bad Rate)</h3>
+                          <Badge status={uploadedMetrics.driftReport.label.status} />
+                        </div>
+                        <p className="text-[11px] text-slate-300 mb-4">{uploadedMetrics.driftReport.label.reason}</p>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                          <MetricCard small label="Baseline Bad Rate" value={`${(lm.referenceBadRate * 100).toFixed(2)}%`} color="text-slate-300" />
+                          <MetricCard small label="Actual Bad Rate" value={`${(lm.actualBadRate * 100).toFixed(2)}%`} color={isCrit ? 'text-rose-400' : isWarn ? 'text-amber-400' : 'text-emerald-400'} />
+                          {adj && (
+                            <>
+                              <MetricCard small label="Expected Bad Rate (ช่วงคะแนน)" value={`${(adj.expectedBadRate * 100).toFixed(2)}%`} color="text-cyan-400" />
+                              <MetricCard small label="ผลต่างเทียบค่าคาด" value={`${adj.diffFromExpected >= 0 ? '+' : ''}${(adj.diffFromExpected * 100).toFixed(2)}%pts`} color={adj.explainableByScoreShift ? 'text-emerald-400' : 'text-amber-400'} />
+                            </>
+                          )}
+                        </div>
+
+                        {adj && (
+                          <div className={`text-[11px] rounded-xl px-3 py-2 border ${adj.explainableByScoreShift ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
+                            {adj.explainableByScoreShift ? '💡 ' : '⚠️ '}{adj.reason}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                 </div>
               )}
 

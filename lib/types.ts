@@ -418,6 +418,16 @@ export interface MissingFeatureReport {
   reason: string;
 }
 
+export interface ScoreAdjustedLabelMetrics {
+  expectedBadRate: number;
+  actualBadRate: number;
+  diffFromExpected: number;
+  zStat: number | null;
+  pValue: number | null;
+  explainableByScoreShift: boolean;
+  reason: string;
+}
+
 export interface LabelDriftMetrics {
   referenceLabeledRows: number;
   referenceBadCount: number;
@@ -435,6 +445,13 @@ export interface LabelDriftMetrics {
     relChangeCritical: number;
     pValueThreshold: number;
   };
+  scoreAdjusted?: ScoreAdjustedLabelMetrics;
+  expectedBadRate?: number | null;
+  diffFromExpected?: number | null;
+  adjustedZStat?: number | null;
+  adjustedPValue?: number | null;
+  explainableByScoreShift?: boolean;
+  scoreAdjustmentReason?: string;
 }
 
 export interface ConceptBinBadRate {

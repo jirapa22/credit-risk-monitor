@@ -486,16 +486,31 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
     });
 
     const run = runResult.run;
-    expect(run.validation.rejectedRows).toBe(162);
+    expect(run.validation.rejectedRows).toBe(79); // 79 rows from credit_util_pct missing error (income is warning, not rejected)
     expect(run.trigger?.action).toBe('INVESTIGATE_DATA');
 
-    // Find OUT_OF_RANGE error group on monthly_income
+    // Find OUT_OF_RANGE warning group on monthly_income
     const incomeIssueGroup = run.validation.groups.find(
       g => g.column === 'monthly_income' && g.type === 'OUT_OF_RANGE',
     );
     expect(incomeIssueGroup).toBeDefined();
-    expect(incomeIssueGroup!.count).toBe(90); // Exactly 90 corrupted rows caught in Data Validation!
-    expect(incomeIssueGroup!.severity).toBe('error');
+    expect(incomeIssueGroup!.count).toBe(90); // Exactly 90 corrupted rows caught in Data Validation as warning!
+    expect(incomeIssueGroup!.severity).toBe('warning');
+    expect(incomeIssueGroup!.message).toContain('(auto)');
+
+    // Verify m04 has 0 rejected rows from range check (high income row 861 is warned, not rejected)
+    const m04Text = readFileSync(join(root, 'samples/cashloan_v2/m04_v2_2025-10_ส่งข้อมูลซ้ำ.csv'), 'utf8');
+    const runResultM04 = runMonitoring({
+      model: sharedValResult.version,
+      fileName: 'm04_v2_2025-10_ส่งข้อมูลซ้ำ.csv',
+      csvText: m04Text,
+      maxValidationIssues: Infinity,
+      maxStoredFlaggedRows: Infinity,
+      history: [],
+      recordTriggerEvent: false,
+    });
+    expect(runResultM04.run.validation.rejectedRows).toBe(0);
+    expect(runResultM04.run.trigger?.action).toBe('INVESTIGATE_DATA'); // Triggered by R8 Duplicate Rows
   });
 });
 

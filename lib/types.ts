@@ -37,6 +37,9 @@ export interface FeatureDefinition {
   validation?: {
     minValue?: number | null;
     maxValue?: number | null;
+    rangeSource?: 'user' | 'auto';
+    baselineMin?: number | null;
+    baselineMax?: number | null;
     allowNull?: boolean;
     defaultValue?: number | string | null;
     missingStrategy?: MissingStrategy;

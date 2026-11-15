@@ -125,6 +125,9 @@ export default function BaselineOnboardingWizard({
     dataType: FeatureDataType;
     minValue?: number;
     maxValue?: number;
+    rangeSource?: 'user' | 'auto';
+    baselineMin?: number;
+    baselineMax?: number;
     missingStrategy: 'reject' | 'mean' | 'median' | 'mode';
     allowedCategories: string[];
     rareCategoryThreshold: number;
@@ -530,6 +533,9 @@ export default function BaselineOnboardingWizard({
               maxValue: (next[col].maxValue !== undefined && next[col].maxValue !== null)
                 ? next[col].maxValue
                 : (update.maxValue ?? next[col].maxValue),
+              rangeSource: update.rangeSource ?? 'auto',
+              baselineMin: update.baselineMin,
+              baselineMax: update.baselineMax,
             };
           }
         }
@@ -605,6 +611,9 @@ export default function BaselineOnboardingWizard({
           validation: {
             minValue: def.minValue,
             maxValue: def.maxValue,
+            rangeSource: def.rangeSource ?? (def.minValue !== undefined ? 'user' : undefined),
+            baselineMin: def.baselineMin,
+            baselineMax: def.baselineMax,
             missingStrategy: missingStrat,
           },
           ...(def.dataType === 'categorical' ? {
@@ -1359,7 +1368,14 @@ export default function BaselineOnboardingWizard({
                     {def.dataType === 'numeric' && (
                       <div className="grid grid-cols-4 gap-3 text-xs">
                         <div>
-                          <label className="text-[10px] text-slate-500 block mb-0.5">Min (ขอบล่าง)</label>
+                          <div className="flex items-center justify-between mb-0.5">
+                            <label className="text-[10px] text-slate-500 block">Min (ขอบล่าง)</label>
+                            {def.minValue !== undefined && (
+                              <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${def.rangeSource === 'auto' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400 bg-slate-800'}`}>
+                                {def.rangeSource === 'auto' ? 'auto' : 'user'}
+                              </span>
+                            )}
+                          </div>
                           <input
                             type="number"
                             value={def.minValue ?? ''}
@@ -1367,14 +1383,21 @@ export default function BaselineOnboardingWizard({
                               const v = e.target.value === '' ? undefined : Number(e.target.value);
                               setFeatureDefs(prev => ({
                                 ...prev,
-                                [col]: { ...prev[col], minValue: v },
+                                [col]: { ...prev[col], minValue: v, rangeSource: 'user' },
                               }));
                             }}
                             className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-emerald-400 outline-none focus:border-indigo-500"
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-slate-500 block mb-0.5">Max (ขอบบน)</label>
+                          <div className="flex items-center justify-between mb-0.5">
+                            <label className="text-[10px] text-slate-500 block">Max (ขอบบน)</label>
+                            {def.maxValue !== undefined && (
+                              <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${def.rangeSource === 'auto' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400 bg-slate-800'}`}>
+                                {def.rangeSource === 'auto' ? 'auto' : 'user'}
+                              </span>
+                            )}
+                          </div>
                           <input
                             type="number"
                             value={def.maxValue ?? ''}
@@ -1382,7 +1405,7 @@ export default function BaselineOnboardingWizard({
                               const v = e.target.value === '' ? undefined : Number(e.target.value);
                               setFeatureDefs(prev => ({
                                 ...prev,
-                                [col]: { ...prev[col], maxValue: v },
+                                [col]: { ...prev[col], maxValue: v, rangeSource: 'user' },
                               }));
                             }}
                             className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-emerald-400 outline-none focus:border-indigo-500"

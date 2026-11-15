@@ -949,14 +949,21 @@ export async function createDraftBaselineVersion(
                     fDef.validation = {
                       minValue: curMin ?? defMin,
                       maxValue: curMax ?? defMax,
+                      rangeSource: 'auto',
+                      baselineMin: vMin,
+                      baselineMax: vMax,
                       missingStrategy: 'reject',
                     };
                   } else {
                     if (curMin === null || curMin === undefined) {
                       fDef.validation.minValue = defMin;
+                      fDef.validation.rangeSource = 'auto';
+                      fDef.validation.baselineMin = vMin;
                     }
                     if (curMax === null || curMax === undefined) {
                       fDef.validation.maxValue = defMax;
+                      fDef.validation.rangeSource = 'auto';
+                      fDef.validation.baselineMax = vMax;
                     }
                   }
                 }

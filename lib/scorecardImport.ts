@@ -622,6 +622,9 @@ export interface ModelTableFeatureUpdate {
   poolPoints: number[];
   minValue?: number;
   maxValue?: number;
+  rangeSource?: 'user' | 'auto';
+  baselineMin?: number;
+  baselineMax?: number;
 }
 
 export interface ModelTableImportResult {
@@ -816,6 +819,8 @@ export function importModelTableFromRows(
       // Compute default minValue / maxValue from baseline reference rows if available (10% range margin)
       let defaultMin: number | undefined = undefined;
       let defaultMax: number | undefined = undefined;
+      let baseMinVal: number | undefined = undefined;
+      let baseMaxVal: number | undefined = undefined;
       if (options.referenceRows && options.referenceRows.length > 0) {
         const numVals = options.referenceRows
           .map(r => parseNumber(r[feat]))
@@ -823,6 +828,8 @@ export function importModelTableFromRows(
         if (numVals.length > 0) {
           const vMin = Math.min(...numVals);
           const vMax = Math.max(...numVals);
+          baseMinVal = vMin;
+          baseMaxVal = vMax;
           const vRange = vMax - vMin;
           const margin = vRange > 0 ? 0.10 * vRange : (Math.abs(vMin) * 0.10 || 1);
           defaultMin = vMin >= 0 ? Math.max(0, +(vMin - margin).toFixed(4)) : +(vMin - margin).toFixed(4);
@@ -835,8 +842,13 @@ export function importModelTableFromRows(
         usedInModel: true,
         binning: { boundaries, binLabels },
         poolPoints,
-        ...(defaultMin !== undefined ? { minValue: defaultMin } : {}),
-        ...(defaultMax !== undefined ? { maxValue: defaultMax } : {}),
+        ...(defaultMin !== undefined ? {
+          minValue: defaultMin,
+          maxValue: defaultMax,
+          rangeSource: 'auto',
+          baselineMin: baseMinVal,
+          baselineMax: baseMaxVal,
+        } : {}),
       };
     }
   }
@@ -1072,14 +1084,21 @@ export function applyModelTableToBaseline<T extends { featureRegistry?: Record<s
           def.validation = {
             minValue: update.minValue,
             maxValue: update.maxValue,
+            rangeSource: update.rangeSource ?? 'auto',
+            baselineMin: update.baselineMin,
+            baselineMax: update.baselineMax,
             missingStrategy: 'reject',
           };
         } else {
           if (def.validation.minValue === undefined || def.validation.minValue === null) {
             def.validation.minValue = update.minValue;
+            def.validation.rangeSource = 'auto';
+            def.validation.baselineMin = update.baselineMin;
           }
           if (def.validation.maxValue === undefined || def.validation.maxValue === null) {
             def.validation.maxValue = update.maxValue;
+            def.validation.rangeSource = 'auto';
+            def.validation.baselineMax = update.baselineMax;
           }
         }
       }

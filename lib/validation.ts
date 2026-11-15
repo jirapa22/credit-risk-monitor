@@ -244,12 +244,35 @@ export function validateDataset(
         }
         const min = def.validation?.minValue !== undefined ? def.validation.minValue : (def as any).minValue;
         const max = def.validation?.maxValue !== undefined ? def.validation.maxValue : (def as any).maxValue;
+        const rangeSource = def.validation?.rangeSource ?? (def as any).rangeSource ?? 'user';
+        const baselineMin = def.validation?.baselineMin ?? (def as any).baselineMin;
+
         if ((typeof min === 'number' && n < min) || (typeof max === 'number' && n > max)) {
-          add('OUT_OF_RANGE', 'error', col, v,
-            `"${def.displayName}" = ${fmt(n)} อยู่นอกช่วงที่ยอมรับ [${typeof min === 'number' ? fmt(min) : '−∞'}, ${typeof max === 'number' ? fmt(max) : '∞'}]`);
-          continue;
+          const isNegativeViolation =
+            n < 0 &&
+            (baselineMin !== undefined && baselineMin !== null
+              ? baselineMin >= 0
+              : (typeof min === 'number' && min >= 0));
+
+          if (rangeSource === 'auto' && !isNegativeViolation) {
+            add(
+              'OUT_OF_RANGE',
+              'warning',
+              col,
+              v,
+              `"${def.displayName}" = ${fmt(n)} อยู่นอกช่วงที่ประมาณจาก Baseline (auto) [${typeof min === 'number' ? fmt(min) : '−∞'}, ${typeof max === 'number' ? fmt(max) : '∞'}]`,
+            );
+            if (isLabel) label = n; else values[key] = n;
+          } else {
+            const reason = isNegativeViolation
+              ? `"${def.displayName}" = ${fmt(n)} มีค่าติดลบ ซึ่งไม่เคยพบใน Baseline`
+              : `"${def.displayName}" = ${fmt(n)} อยู่นอกช่วงที่ยอมรับ [${typeof min === 'number' ? fmt(min) : '−∞'}, ${typeof max === 'number' ? fmt(max) : '∞'}]`;
+            add('OUT_OF_RANGE', 'error', col, v, reason);
+            continue;
+          }
+        } else {
+          if (isLabel) label = n; else values[key] = n;
         }
-        if (isLabel) label = n; else values[key] = n;
       }
     }
 

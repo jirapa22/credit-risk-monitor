@@ -514,6 +514,8 @@ export default function BaselineOnboardingWizard({
               binning: update.binning,
               categoryPools: update.categoryPools,
               poolPoints: update.poolPoints,
+              minValue: update.minValue,
+              maxValue: update.maxValue,
             };
           } else {
             next[col] = {
@@ -522,6 +524,12 @@ export default function BaselineOnboardingWizard({
               binning: update.binning ?? next[col].binning,
               categoryPools: update.categoryPools ?? next[col].categoryPools,
               poolPoints: update.poolPoints,
+              minValue: (next[col].minValue !== undefined && next[col].minValue !== null && next[col].minValue !== 0)
+                ? next[col].minValue
+                : (update.minValue ?? next[col].minValue),
+              maxValue: (next[col].maxValue !== undefined && next[col].maxValue !== null)
+                ? next[col].maxValue
+                : (update.maxValue ?? next[col].maxValue),
             };
           }
         }

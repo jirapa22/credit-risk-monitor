@@ -620,6 +620,8 @@ export interface ModelTableFeatureUpdate {
   binning?: { boundaries: number[]; binLabels: string[] };
   categoryPools?: Array<{ label: string; categories: string[] }>;
   poolPoints: number[];
+  minValue?: number;
+  maxValue?: number;
 }
 
 export interface ModelTableImportResult {
@@ -811,11 +813,30 @@ export function importModelTableFromRows(
       });
       const poolPoints = ordered.map(item => item.points);
 
+      // Compute default minValue / maxValue from baseline reference rows if available (10% range margin)
+      let defaultMin: number | undefined = undefined;
+      let defaultMax: number | undefined = undefined;
+      if (options.referenceRows && options.referenceRows.length > 0) {
+        const numVals = options.referenceRows
+          .map(r => parseNumber(r[feat]))
+          .filter((n): n is number => Number.isFinite(n));
+        if (numVals.length > 0) {
+          const vMin = Math.min(...numVals);
+          const vMax = Math.max(...numVals);
+          const vRange = vMax - vMin;
+          const margin = vRange > 0 ? 0.10 * vRange : (Math.abs(vMin) * 0.10 || 1);
+          defaultMin = vMin >= 0 ? Math.max(0, +(vMin - margin).toFixed(4)) : +(vMin - margin).toFixed(4);
+          defaultMax = +(vMax + margin).toFixed(4);
+        }
+      }
+
       featureUpdates[feat] = {
         dataType: 'numeric',
         usedInModel: true,
         binning: { boundaries, binLabels },
         poolPoints,
+        ...(defaultMin !== undefined ? { minValue: defaultMin } : {}),
+        ...(defaultMax !== undefined ? { maxValue: defaultMax } : {}),
       };
     }
   }
@@ -1044,6 +1065,25 @@ export function applyModelTableToBaseline<T extends { featureRegistry?: Record<s
     const def = model.featureRegistry[varName];
     def.usedInModel = true;
     def.poolPoints = update.poolPoints;
+
+    if (update.dataType === 'numeric') {
+      if (update.minValue !== undefined || update.maxValue !== undefined) {
+        if (!def.validation) {
+          def.validation = {
+            minValue: update.minValue,
+            maxValue: update.maxValue,
+            missingStrategy: 'reject',
+          };
+        } else {
+          if (def.validation.minValue === undefined || def.validation.minValue === null) {
+            def.validation.minValue = update.minValue;
+          }
+          if (def.validation.maxValue === undefined || def.validation.maxValue === null) {
+            def.validation.maxValue = update.maxValue;
+          }
+        }
+      }
+    }
 
     if (update.dataType === 'numeric' && update.binning) {
       def.binning = update.binning;

@@ -23,6 +23,7 @@ import { buildDriftReport } from '../lib/driftReport';
 
 describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
   const root = process.cwd();
+  let sharedValResult: any = null;
   const mtText = readFileSync(join(root, 'samples/cashloan_v2/model_table_cashloan.csv'), 'utf8');
   const baseText = readFileSync(join(root, 'samples/cashloan_v2/baseline_cashloan_v2_2024.csv'), 'utf8');
   const { rows } = parseCsv(baseText);
@@ -393,6 +394,7 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
 
     // Step 5: Validate baseline version
     const valResult = await validateBaselineVersion(modelId, '1.0.0', { calibrationResamples: 5 });
+    sharedValResult = valResult;
     expect(valResult.ok).toBe(true);
     expect(valResult.report.computed.performance?.auc).toBeCloseTo(0.753, 3);
 
@@ -459,6 +461,41 @@ describe('Cash Loan v2 Pool Statistics & Development Stability Tests', () => {
     expect(reportM06.label.metrics!.scoreAdjusted!.expectedBadRate).toBeGreaterThan(0.115);
     expect(reportM06.label.metrics!.scoreAdjusted!.expectedBadRate).toBeLessThan(0.125);
     expect(reportM06.label.metrics!.scoreAdjusted!.explainableByScoreShift).toBe(false);
+  });
+
+  it('(10) populates default minValue and maxValue for numeric features from Baseline (10% range margin) and catches 90 corrupted income rows in m03 at validation layer', async () => {
+    expect(sharedValResult).toBeDefined();
+    // Check that sharedValResult.version.featureRegistry has default minValue/maxValue populated from Baseline
+    const incomeDef = sharedValResult.version.featureRegistry['monthly_income'];
+    expect(incomeDef).toBeDefined();
+    expect(incomeDef.validation).toBeDefined();
+    expect(incomeDef.validation?.minValue).toBeCloseTo(4490, 0); // 15,000 - 10,510
+    expect(incomeDef.validation?.maxValue).toBeCloseTo(130610, 0); // 120,100 + 10,510
+
+    // Run monitoring on m03 with this model
+    const { runMonitoring } = await import('../lib/monitoring');
+    const m03Text = readFileSync(join(root, 'samples/cashloan_v2/m03_v2_2025-09_ระบบต้นทางมีปัญหา.csv'), 'utf8');
+    const runResult = runMonitoring({
+      model: sharedValResult.version,
+      fileName: 'm03_v2_2025-09_ระบบต้นทางมีปัญหา.csv',
+      csvText: m03Text,
+      maxValidationIssues: Infinity,
+      maxStoredFlaggedRows: Infinity,
+      history: [],
+      recordTriggerEvent: false,
+    });
+
+    const run = runResult.run;
+    expect(run.validation.rejectedRows).toBe(162);
+    expect(run.trigger?.action).toBe('INVESTIGATE_DATA');
+
+    // Find OUT_OF_RANGE error group on monthly_income
+    const incomeIssueGroup = run.validation.groups.find(
+      g => g.column === 'monthly_income' && g.type === 'OUT_OF_RANGE',
+    );
+    expect(incomeIssueGroup).toBeDefined();
+    expect(incomeIssueGroup!.count).toBe(90); // Exactly 90 corrupted rows caught in Data Validation!
+    expect(incomeIssueGroup!.severity).toBe('error');
   });
 });
 

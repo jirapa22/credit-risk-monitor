@@ -1118,23 +1118,30 @@ export function buildDriftReport(
       }
       const totalActScores = actualScores.length || 1;
       let expBR = 0;
+      let vRef = 0;
       for (let b = 0; b < numBins; b++) {
-        expBR += (actBinCount[b] / totalActScores) * refBinBadRate[b];
+        const wb = actBinCount[b] / totalActScores;
+        expBR += wb * refBinBadRate[b];
+        const pb = refBinBadRate[b];
+        const varPb = (pb * (1 - pb)) / Math.max(1, refBinCount[b]);
+        vRef += wb * wb * varPb;
       }
 
       expectedBadRate = +expBR.toFixed(6);
       diffFromExpected = +(actBadRate - expBR).toFixed(6);
 
       const n = actLabeledCount;
-      const seExp = Math.sqrt((expBR * (1 - expBR)) / n);
-      adjustedZStat = seExp > 1e-12 ? +((actBadRate - expBR) / seExp).toFixed(4) : 0;
-      adjustedPValue = seExp > 1e-12 ? +normalTwoSidedPValue(adjustedZStat).toFixed(4) : 1;
+      const vAct = (expBR * (1 - expBR)) / n;
+      const seTotal = Math.sqrt(vAct + vRef);
+      adjustedZStat = seTotal > 1e-12 ? +((actBadRate - expBR) / seTotal).toFixed(4) : 0;
+      adjustedPValue = seTotal > 1e-12 ? +normalTwoSidedPValue(adjustedZStat).toFixed(4) : 1;
       explainableByScoreShift = adjustedPValue >= dc.labelPValueThreshold;
 
       const diffPctStr = ((actBadRate - expBR) * 100).toFixed(2);
+      const diffPrefix = (actBadRate - expBR) >= 0 ? '+' : '';
       scoreAdjustmentReason = explainableByScoreShift
-        ? `การเปลี่ยนของ bad rate อธิบายได้ด้วยการเปลี่ยนของคะแนน (ประชากรเปลี่ยน) — อัตราผิดนัดจริง ${(actBadRate * 100).toFixed(2)}% ใกล้เคียงกับค่าคาดหมาย ${(expBR * 100).toFixed(2)}% ตามช่วงคะแนน (ผลต่าง ${diffPctStr}%pts, p=${adjustedPValue.toFixed(4)})`
-        : `อัตราผิดนัดจริง ${(actBadRate * 100).toFixed(2)}% ต่างจากค่าคาดหมาย ${(expBR * 100).toFixed(2)}% อย่างมีนัยสำคัญ (ผลต่าง ${diffPctStr}%pts, p=${adjustedPValue.toFixed(4)})`;
+        ? `ไม่พบความต่างอย่างมีนัยสำคัญจากค่าคาดหมายตามช่วงคะแนน (Actual ${(actBadRate * 100).toFixed(2)}% vs Expected ${(expBR * 100).toFixed(2)}%, ผลต่าง ${diffPrefix}${diffPctStr}%pts, p=${adjustedPValue.toFixed(4)}) [คำนวณจากสัดส่วนคะแนนจริง × อัตราผิดนัด Baseline รายช่วงคะแนน รวมความคลาดเคลื่อนทั้งสองฝั่ง]`
+        : `พบความต่างจากค่าคาดหมายตามช่วงคะแนนอย่างมีนัยสำคัญ (Actual ${(actBadRate * 100).toFixed(2)}% vs Expected ${(expBR * 100).toFixed(2)}%, ผลต่าง ${diffPrefix}${diffPctStr}%pts, p=${adjustedPValue.toFixed(4)}) [คำนวณจากสัดส่วนคะแนนจริง × อัตราผิดนัด Baseline รายช่วงคะแนน รวมความคลาดเคลื่อนทั้งสองฝั่ง]`;
 
       scoreAdjusted = {
         expectedBadRate,

@@ -922,6 +922,48 @@ export async function createDraftBaselineVersion(
           await saveReferenceDatasetBlob(refBlob);
           registerReferenceDataset(refBlob.meta, refBlob.rows);
         }
+
+        // Default minValue / maxValue for numeric features from Baseline (10% range margin) when user hasn't specified (for models from model table)
+        if (draft.featureRegistry && (draft.modelTable || draft.mode === 'scorecard')) {
+          const parseVal = (v: unknown): number => {
+            if (typeof v === 'number') return v;
+            const s = String(v ?? '').trim().replace(/,/g, '');
+            return s === '' ? NaN : Number(s);
+          };
+          for (const [colName, fDef] of Object.entries(draft.featureRegistry)) {
+            if (fDef.dataType === 'numeric') {
+              const curMin = fDef.validation?.minValue;
+              const curMax = fDef.validation?.maxValue;
+              if (curMin === null || curMin === undefined || curMax === null || curMax === undefined) {
+                const vals = refBlob.rows
+                  .map(r => parseVal(r[colName]))
+                  .filter((n): n is number => Number.isFinite(n));
+                if (vals.length > 0) {
+                  const vMin = Math.min(...vals);
+                  const vMax = Math.max(...vals);
+                  const vRange = vMax - vMin;
+                  const margin = vRange > 0 ? 0.10 * vRange : (Math.abs(vMin) * 0.10 || 1);
+                  const defMin = vMin >= 0 ? Math.max(0, +(vMin - margin).toFixed(4)) : +(vMin - margin).toFixed(4);
+                  const defMax = +(vMax + margin).toFixed(4);
+                  if (!fDef.validation) {
+                    fDef.validation = {
+                      minValue: curMin ?? defMin,
+                      maxValue: curMax ?? defMax,
+                      missingStrategy: 'reject',
+                    };
+                  } else {
+                    if (curMin === null || curMin === undefined) {
+                      fDef.validation.minValue = defMin;
+                    }
+                    if (curMax === null || curMax === undefined) {
+                      fDef.validation.maxValue = defMax;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     } catch {
       // non-fatal

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setStore, UpstashMockStore } from '../lib/storage/store';
-import { createMemoryBlobStore, setBlobStore } from '../lib/storage/blob';
+import { createMemoryBlobStore, getBlobStore, setBlobStore } from '../lib/storage/blob';
 import { listBaselineVersions, listDeletionAuditLogs } from '../lib/storage/repositories';
 
 // Route handlers
@@ -147,6 +147,48 @@ describe('Archive, Re-activate Governance and Monitoring Integration Tests', () 
     expect(latestActStep).toBeDefined();
     expect(latestActStep.by).toBe('registry-panel');
     expect(latestActStep.note).toBe('Re-activated via registry-panel');
+  });
+
+  it('if re-validation fails during re-activate, the version status REMAINS strictly ARCHIVED (does not become DRAFT or VALIDATED)', async () => {
+    const modelId = 'test_failed_reactivate_model';
+    await createAndActivateModel(modelId, '1.0.0');
+
+    // Archive 1.0.0
+    await archiveVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web-user' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    // Verify it is ARCHIVED
+    const versionsBefore = await listBaselineVersions(modelId);
+    expect(versionsBefore.find(v => v.version === '1.0.0')?.status).toBe('ARCHIVED');
+
+    // Make validation fail by deleting reference dataset blob
+    await getBlobStore().del(`ref_${modelId}`);
+
+    // Try to re-activate
+    const reactRes = await reactivateVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/reactivate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'registry-panel' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    expect(reactRes.status).toBe(400);
+    const data = await reactRes.json();
+    expect(data.ok).toBe(false);
+    expect(data.code).toBe('REVALIDATION_FAILED');
+    expect(data.error).toContain('ไม่ผ่านการตรวจสอบ');
+    expect(data.error).toContain('สถานะยังคงเป็น ARCHIVED');
+
+    // CRITICAL: verify in stored versions that status is STILL 'ARCHIVED', not 'DRAFT' and not 'VALIDATED'
+    const versionsAfter = await listBaselineVersions(modelId);
+    const v100 = versionsAfter.find(v => v.version === '1.0.0')!;
+    expect(v100.status).toBe('ARCHIVED');
+    expect(v100.status).not.toBe('DRAFT');
+    expect(v100.status).not.toBe('VALIDATED');
+    expect(v100.validationReport?.ok).toBe(false);
+    expect(v100.validationReport?.errors[0].code).toBe('REFERENCE_NOT_FOUND');
   });
 
   it('re-activate auto-archives any other currently ACTIVE version and records statusHistory and audit', async () => {

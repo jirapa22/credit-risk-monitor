@@ -1084,7 +1084,9 @@ export async function validateBaselineVersion(
     ? current.status === 'ACTIVE'
       ? 'ACTIVE'
       : 'VALIDATED'
-    : 'DRAFT';
+    : current.status === 'ARCHIVED'
+      ? 'ARCHIVED'
+      : 'DRAFT';
 
   let calibratedThresholds = current.calibratedThresholds;
   if (report.ok) {
@@ -1228,23 +1230,58 @@ export async function reactivateBaselineVersion(
   opts: { by?: string; note?: string } = {},
 ): Promise<{ ok: boolean; baseline: BaselineVersion; report: BaselineValidationReport }> {
   const actor = opts.by || 'registry-panel';
-  const valNote = opts.note ? `Re-validation: ${opts.note}` : 'Re-validation before re-activation';
-  const { ok, version: validated, report } = await validateBaselineVersion(modelId, version, {
+
+  // 1. Dry-run validation first so that if it fails, status remains strictly ARCHIVED
+  const dryRunResult = await validateBaselineVersion(modelId, version, {
     by: actor,
-    note: valNote,
+    dryRun: true,
   });
-  if (!ok) {
+
+  if (!dryRunResult.ok) {
+    // Persist validation report on the stored version so failure reason is traceable,
+    // while keeping status as ARCHIVED
+    const stored = await getStoredVersions(modelId);
+    const idx = stored.findIndex(v => v.version === version);
+    if (idx !== -1 && stored[idx].status === 'ARCHIVED') {
+      const updatedArchived: BaselineVersion = {
+        ...stored[idx],
+        status: 'ARCHIVED',
+        validationReport: dryRunResult.report,
+      };
+      const nextList = [...stored];
+      nextList[idx] = updatedArchived;
+      await saveStoredVersions(modelId, nextList);
+    }
+
     throw new RegistryError(
-      `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ (${report.errors.length} ข้อผิดพลาด) จึงไม่สามารถเรียกกลับมาใช้งานได้`,
+      `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ (${dryRunResult.report.errors.length} ข้อผิดพลาด) จึงไม่สามารถเรียกกลับมาใช้งานได้ (สถานะยังคงเป็น ARCHIVED)`,
       400,
       'REVALIDATION_FAILED',
     );
   }
+
+  // 2. Validation passed -> persist validation transition
+  const valNote = opts.note ? `Re-validation: ${opts.note}` : 'Re-validation before re-activation';
+  const { ok, report } = await validateBaselineVersion(modelId, version, {
+    by: actor,
+    note: valNote,
+  });
+
+  if (!ok) {
+    throw new RegistryError(
+      `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ จึงไม่สามารถเรียกกลับมาใช้งานได้ (สถานะยังคงเป็น ARCHIVED)`,
+      400,
+      'REVALIDATION_FAILED',
+    );
+  }
+
+  // 3. Activate
   const actNote = opts.note || `Re-activated via ${actor}`;
   const activated = await activateBaselineVersion(modelId, version, {
     by: actor,
     note: actNote,
   });
+
   return { ok: true, baseline: activated, report };
 }
 

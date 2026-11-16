@@ -80,6 +80,7 @@ export class RegistryError extends Error {
   constructor(
     message: string,
     public status: 400 | 403 | 404 | 409 | 422 = 400,
+    public code?: string,
   ) {
     super(message);
     this.name = 'RegistryError';
@@ -644,10 +645,10 @@ export async function getActiveBaseline(modelId?: string): Promise<BaselineVersi
   const targetId = modelId || (await getDefaultModelId());
   const info = await getModel(targetId);
   if (!info) {
-    throw new RegistryError(`ไม่พบโมเดล "${targetId}" ใน Registry`, 404);
+    throw new RegistryError(`ไม่พบโมเดล "${targetId}" ใน Registry`, 404, 'MODEL_NOT_FOUND');
   }
   if (!info.activeVersion) {
-    throw new RegistryError(`โมเดล "${targetId}" ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE)`, 404);
+    throw new RegistryError(`โมเดล "${targetId}" ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE)`, 404, 'NO_ACTIVE_VERSION');
   }
   return info.activeVersion;
 }
@@ -1156,6 +1157,7 @@ export async function activateBaselineVersion(
   const by = opts.by || 'user';
 
   // Archive any currently ACTIVE stored version of the same model automatically
+  const autoArchivedVersions: BaselineVersion[] = [];
   const nextList = stored.map((v, i) => {
     if (i === idx) {
       return {
@@ -1174,6 +1176,7 @@ export async function activateBaselineVersion(
       };
     }
     if (v.status === 'ACTIVE') {
+      autoArchivedVersions.push(v);
       return {
         ...v,
         status: 'ARCHIVED' as const,
@@ -1193,9 +1196,56 @@ export async function activateBaselineVersion(
   });
 
   await saveStoredVersions(modelId, nextList);
+
+  for (const prev of autoArchivedVersions) {
+    await recordDeletionAudit({
+      action: 'archive_version',
+      actor: 'system',
+      modelId,
+      version: prev.version,
+      previousStatus: 'ACTIVE',
+      clearedCounts: {
+        monitoringRuns: 0,
+        sandboxRuns: 0,
+        events: 0,
+        reviews: 0,
+        total: 0,
+      },
+      referenceDatasetId: prev.referenceDatasetId,
+      blobDeleted: false,
+      note: `Archived automatically when version ${version} was activated`,
+    });
+  }
+
   const activated = nextList[idx];
   await loadReferenceProfile(activated.referenceDatasetId, activated);
   return activated;
+}
+
+export async function reactivateBaselineVersion(
+  modelId: string,
+  version: string,
+  opts: { by?: string; note?: string } = {},
+): Promise<{ ok: boolean; baseline: BaselineVersion; report: BaselineValidationReport }> {
+  const actor = opts.by || 'registry-panel';
+  const valNote = opts.note ? `Re-validation: ${opts.note}` : 'Re-validation before re-activation';
+  const { ok, version: validated, report } = await validateBaselineVersion(modelId, version, {
+    by: actor,
+    note: valNote,
+  });
+  if (!ok) {
+    throw new RegistryError(
+      `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ (${report.errors.length} ข้อผิดพลาด) จึงไม่สามารถเรียกกลับมาใช้งานได้`,
+      400,
+      'REVALIDATION_FAILED',
+    );
+  }
+  const actNote = opts.note || `Re-activated via ${actor}`;
+  const activated = await activateBaselineVersion(modelId, version, {
+    by: actor,
+    note: actNote,
+  });
+  return { ok: true, baseline: activated, report };
 }
 
 export async function archiveBaselineVersion(

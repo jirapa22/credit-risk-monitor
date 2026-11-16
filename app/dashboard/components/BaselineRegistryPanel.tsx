@@ -31,6 +31,7 @@ interface BaselineRegistryPanelProps {
   selectedModelId: string;
   onSelectModel: (modelId: string) => void;
   onModelActivated?: (modelId: string, version: string, openMonitoring?: boolean) => void;
+  onRegistryChange?: (modelId?: string) => void;
 }
 
 const STATUS_STYLE: Record<BaselineStatus, string> = {
@@ -44,6 +45,7 @@ export default function BaselineRegistryPanel({
   selectedModelId,
   onSelectModel,
   onModelActivated,
+  onRegistryChange,
 }: BaselineRegistryPanelProps) {
   const [models, setModels] = useState<ModelRegistryEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -62,6 +64,25 @@ export default function BaselineRegistryPanel({
   // Audit logs state
   const [auditLogs, setAuditLogs] = useState<DeletionAuditEntry[]>([]);
   const [showAuditLogs, setShowAuditLogs] = useState<boolean>(false);
+
+  // Archive modal state
+  const [archiveModal, setArchiveModal] = useState<{
+    isOpen: boolean;
+    version: BaselineVersion | null;
+    isOnlyActive: boolean;
+    confirmCheck: boolean;
+    isProcessing: boolean;
+    errorMessage: string;
+  }>({
+    isOpen: false,
+    version: null,
+    isOnlyActive: false,
+    confirmCheck: false,
+    isProcessing: false,
+    errorMessage: '',
+  });
+
+  const [isReactivating, setIsReactivating] = useState<string | null>(null);
 
   // Delete version modal state
   const [deleteModelIfEmpty, setDeleteModelIfEmpty] = useState<boolean>(true);
@@ -205,6 +226,7 @@ export default function BaselineRegistryPanel({
         setSelectedVersion(null);
       }
       await loadRegistry();
+      onRegistryChange?.(v.modelId);
       alert(
         action === 'archive'
           ? `📦 เก็บถาวร (Archive) เวอร์ชัน v${v.version} เรียบร้อยแล้ว`
@@ -216,6 +238,86 @@ export default function BaselineRegistryPanel({
         isProcessing: false,
         errorMessage: err instanceof Error ? err.message : String(err),
       }));
+    }
+  };
+
+  const openArchiveModal = (v: BaselineVersion) => {
+    const activeCount = (activeModel?.versions || []).filter(item => item.status === 'ACTIVE').length;
+    const isOnlyActive = v.status === 'ACTIVE' && activeCount <= 1;
+    setArchiveModal({
+      isOpen: true,
+      version: v,
+      isOnlyActive,
+      confirmCheck: false,
+      isProcessing: false,
+      errorMessage: '',
+    });
+  };
+
+  const closeArchiveModal = () => {
+    setArchiveModal({
+      isOpen: false,
+      version: null,
+      isOnlyActive: false,
+      confirmCheck: false,
+      isProcessing: false,
+      errorMessage: '',
+    });
+  };
+
+  const handleArchiveSubmit = async () => {
+    const v = archiveModal.version;
+    if (!v) return;
+    setArchiveModal(prev => ({ ...prev, isProcessing: true, errorMessage: '' }));
+    try {
+      const res = await fetch(`/api/registry/models/${v.modelId}/versions/${v.version}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: 'web-user', note: 'Archived via confirmation modal' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'เก็บถาวรไม่สำเร็จ');
+
+      closeArchiveModal();
+      await loadRegistry();
+      onRegistryChange?.(v.modelId);
+      alert(`📦 เก็บถาวร (Archive) เวอร์ชัน v${v.version} เรียบร้อยแล้ว`);
+    } catch (err: unknown) {
+      setArchiveModal(prev => ({
+        ...prev,
+        isProcessing: false,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      }));
+    }
+  };
+
+  const handleReactivate = async (v: BaselineVersion) => {
+    if (!confirm(`ยืนยันการเรียกกลับมาใช้งาน (Re-activate) สำหรับเวอร์ชัน v${v.version} ของโมเดล "${activeModel?.name || v.modelId}"?\n\nระบบจะทำการตรวจสอบข้อมูล (Re-validate) และเปิดใช้งาน (ACTIVE) ทันที`)) {
+      return;
+    }
+    setIsReactivating(v.version);
+    try {
+      const res = await fetch(`/api/registry/models/${v.modelId}/versions/${v.version}/reactivate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actor: 'registry-panel',
+          note: 'Re-activated via registry-panel (เรียกกลับมาใช้งาน)',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'เรียกกลับมาใช้งานไม่สำเร็จ');
+      }
+      await loadRegistry();
+      onSelectModel(v.modelId);
+      onModelActivated?.(v.modelId, v.version, false);
+      onRegistryChange?.(v.modelId);
+      alert(`⚡ เรียกกลับมาเปิดใช้งาน (ACTIVE) เวอร์ชัน v${v.version} สำเร็จแล้ว`);
+    } catch (err: unknown) {
+      alert(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsReactivating(null);
     }
   };
 
@@ -255,6 +357,12 @@ export default function BaselineRegistryPanel({
 
       closeDeleteModelModal();
       await loadRegistry();
+      const remaining = models.filter((item) => item.modelId !== m.modelId);
+      const nextId = remaining.length > 0 ? remaining[0].modelId : '';
+      if (nextId) {
+        onSelectModel(nextId);
+      }
+      onRegistryChange?.(nextId);
       alert(`🗑️ ลบโมเดล "${m.name}" (${m.modelId}) และข้อมูลทั้งหมดเรียบร้อยแล้ว`);
     } catch (err: unknown) {
       setDeleteModelModal(prev => ({
@@ -429,6 +537,10 @@ export default function BaselineRegistryPanel({
 
   // Status transitions
   const handleTransition = async (action: 'validate' | 'activate' | 'archive', ver: BaselineVersion) => {
+    if (action === 'archive') {
+      openArchiveModal(ver);
+      return;
+    }
     if (!confirm(`ยืนยันการเปลี่ยนสถานะ (${action.toUpperCase()}) สำหรับเวอร์ชัน ${ver.version}?`)) return;
 
     try {
@@ -445,6 +557,7 @@ export default function BaselineRegistryPanel({
         onSelectModel(ver.modelId);
         onModelActivated?.(ver.modelId, ver.version, false);
       }
+      onRegistryChange?.(ver.modelId);
     } catch (err: unknown) {
       alert(`❌ ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -467,12 +580,20 @@ export default function BaselineRegistryPanel({
   // Launch wizard for brand new model
   const openNewModelWizard = () => {
     setWizardInitialData(undefined);
+    closeDeleteModal();
+    closeDeleteModelModal();
+    closeEditModal();
+    closeArchiveModal();
     setShowWizard(true);
   };
 
   // Launch wizard to create new baseline version of active model
   const openNewVersionWizard = () => {
     if (!activeModel) return;
+    closeDeleteModal();
+    closeDeleteModelModal();
+    closeEditModal();
+    closeArchiveModal();
     const curVer = selectedVersion?.version || '1.0.0';
     const parts = curVer.split('.').map(n => parseInt(n, 10) || 0);
     const bumped = `${parts[0] || 1}.${parts[1] || 0}.${(parts[2] || 0) + 1}`;
@@ -497,6 +618,7 @@ export default function BaselineRegistryPanel({
     if (onModelActivated) {
       onModelActivated(mId, ver, openMonitoring);
     }
+    onRegistryChange?.(mId);
   };
 
   return (
@@ -682,7 +804,8 @@ export default function BaselineRegistryPanel({
                                 {new Date(v.createdAt).toLocaleDateString('th-TH')}
                               </td>
                               <td className="py-2.5 px-3 text-right">
-                                <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
+                                  {/* Safe Actions */}
                                   {v.status === 'DRAFT' && (
                                     <button
                                       onClick={() => handleTransition('validate', v)}
@@ -699,12 +822,14 @@ export default function BaselineRegistryPanel({
                                       Activate
                                     </button>
                                   )}
-                                  {v.status !== 'ARCHIVED' && (
+                                  {v.status === 'ARCHIVED' && (
                                     <button
-                                      onClick={() => handleTransition('archive', v)}
-                                      className="px-2 py-0.5 hover:bg-slate-800 border border-slate-700 text-slate-400 rounded text-[10px] transition"
+                                      onClick={() => handleReactivate(v)}
+                                      disabled={isReactivating === v.version}
+                                      title="ตรวจสอบและเรียกกลับมาเปิดใช้งาน (ACTIVE)"
+                                      className="px-2 py-0.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 rounded text-[10px] font-semibold transition flex items-center gap-1"
                                     >
-                                      Archive
+                                      {isReactivating === v.version ? 'กำลังเปิดใช้งาน...' : '⚡ เรียกกลับมาใช้งาน (Re-activate)'}
                                     </button>
                                   )}
                                   <button
@@ -732,13 +857,29 @@ export default function BaselineRegistryPanel({
                                       แก้ไข
                                     </button>
                                   )}
+
+                                  {/* Danger Actions Divider */}
+                                  {!v.builtIn && (
+                                    <span className="w-px h-3.5 bg-slate-800 mx-1" />
+                                  )}
+
+                                  {/* Danger Actions: Archive & Delete (Separated & Styled as Danger) */}
+                                  {!v.builtIn && v.status !== 'ARCHIVED' && (
+                                    <button
+                                      onClick={() => openArchiveModal(v)}
+                                      title="เก็บถาวรเวอร์ชันนี้ (ต้องยืนยัน)"
+                                      className="px-2 py-0.5 border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 rounded text-[10px] font-medium transition"
+                                    >
+                                      📦 Archive
+                                    </button>
+                                  )}
                                   {!v.builtIn && (
                                     <button
                                       onClick={() => openDeleteModal(v)}
                                       title="ลบ Baseline"
-                                      className="px-2 py-0.5 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 rounded text-[10px] transition"
+                                      className="px-2 py-0.5 border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 rounded text-[10px] font-medium transition ml-1"
                                     >
-                                      ลบ
+                                      🗑️ ลบ
                                     </button>
                                   )}
                                 </div>
@@ -1059,6 +1200,11 @@ export default function BaselineRegistryPanel({
                     <p className="text-[11px] text-amber-200/90 leading-relaxed">
                       ตามนโยบาย MLOps Governance: เวอร์ชันที่มีสถานะ ACTIVE กำลังเปิดใช้งานสำหรับติดตามผล (Monitoring) อยู่ในระบบ เพื่อป้องกันระบบขัดข้อง กรุณาเปลี่ยนสถานะเป็น ARCHIVED ก่อน หรือเปิดใช้งานเวอร์ชันอื่นแทนจึงจะสามารถลบได้
                     </p>
+                    {(activeModel?.versions || []).filter(item => item.status === 'ACTIVE').length <= 1 && (
+                      <p className="text-[11px] text-rose-300 font-semibold pt-1 border-t border-amber-500/20">
+                        ⚠️ คำเตือนสำคัญ: นี่คือเวอร์ชัน ACTIVE เพียงตัวเดียวของโมเดลนี้ — หากเก็บถาวร (Archive) Monitoring ของโมเดลนี้จะใช้ไม่ได้จนกว่าจะเปิดใช้งานเวอร์ชันใหม่
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
@@ -1184,6 +1330,107 @@ export default function BaselineRegistryPanel({
           </div>
         );
       })()}
+
+      {/* ── Archive Baseline Modal ── */}
+      {archiveModal.isOpen && archiveModal.version && activeModel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📦</span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-100">ยืนยันการเก็บถาวร (Archive Baseline)</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    {activeModel.name} ({activeModel.modelId}) · v{archiveModal.version.version}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={closeArchiveModal}
+                disabled={archiveModal.isProcessing}
+                className="text-slate-400 hover:text-slate-200 text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            {archiveModal.errorMessage && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                ❌ {archiveModal.errorMessage}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs space-y-1">
+                <div className="flex justify-between text-slate-400">
+                  <span>โมเดล:</span>
+                  <span className="text-slate-200 font-medium">{activeModel.name} ({activeModel.modelId})</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>เวอร์ชัน:</span>
+                  <span className="text-slate-200 font-mono">v{archiveModal.version.version}</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>สถานะปัจจุบัน:</span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${STATUS_STYLE[archiveModal.version.status] || ''}`}>
+                    {archiveModal.version.status}
+                  </span>
+                </div>
+              </div>
+
+              {archiveModal.isOnlyActive ? (
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs space-y-3">
+                  <p className="font-bold text-amber-300 flex items-center gap-1.5 text-sm">
+                    <span>⚠️</span> คำเตือนสำคัญ: กำลังเก็บถาวรเวอร์ชัน ACTIVE เพียงตัวเดียว!
+                  </p>
+                  <p className="text-xs text-amber-200 font-semibold leading-relaxed">
+                    Monitoring ของโมเดลนี้จะใช้ไม่ได้จนกว่าจะเปิดใช้งานเวอร์ชันใหม่
+                  </p>
+                  <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                    เมื่อเก็บถาวรแล้ว โมเดลนี้จะไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE) เหลืออยู่ การอัปโหลดข้อมูลติดตามผลจะหยุดทำงานทันทีจนกว่าคุณจะเปิดใช้งานเวอร์ชันอื่นหรือกดเรียกกลับมาใช้งาน (Re-activate)
+                  </p>
+                  <label className="flex items-start gap-2 pt-2 border-t border-amber-500/30 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={archiveModal.confirmCheck}
+                      onChange={e => setArchiveModal(prev => ({ ...prev, confirmCheck: e.target.checked }))}
+                      className="mt-0.5 rounded bg-slate-900 border-amber-500/60 text-amber-500 focus:ring-0"
+                    />
+                    <span className="text-xs text-amber-200 font-medium">
+                      ฉันเข้าใจผลกระทบ และยืนยันที่จะเก็บถาวรเวอร์ชันนี้
+                    </span>
+                  </label>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/60 text-xs text-slate-300 space-y-1">
+                  <p className="font-medium text-slate-200">ℹ️ ผลของการเก็บถาวร (Archive):</p>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    เวอร์ชันนี้จะถูกเปลี่ยนสถานะเป็น ARCHIVED และจะไม่ถูกนำมาใช้คำนวณในการติดตามผล แต่ข้อมูลประวัติยังคงถูกเก็บรักษาไว้ครบถ้วน และสามารถกด "เรียกกลับมาใช้งาน (Re-activate)" ได้ทุกเมื่อ
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-800">
+                <button
+                  onClick={closeArchiveModal}
+                  disabled={archiveModal.isProcessing}
+                  className="px-4 py-2 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded-xl text-xs transition"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleArchiveSubmit}
+                  disabled={archiveModal.isProcessing || (archiveModal.isOnlyActive && !archiveModal.confirmCheck)}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:hover:bg-amber-600 text-white font-bold rounded-xl text-xs shadow-lg shadow-amber-500/20 transition"
+                >
+                  {archiveModal.isProcessing ? 'กำลังเก็บถาวร...' : '📦 ยืนยันเก็บถาวร (Archive)'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit Baseline Modal */}
       {editModal.isOpen && editModal.version && (() => {
         const v = editModal.version;

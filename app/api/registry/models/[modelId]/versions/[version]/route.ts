@@ -17,6 +17,7 @@ import {
   BuiltInProtectedError,
   deleteBaselineVersion,
   getBaselineVersionImpact,
+  listBaselineVersions,
   RegistryError,
   updateBaselineVersion,
 } from '../../../../../../../lib/storage/repositories';
@@ -89,7 +90,9 @@ export async function DELETE(
 
     if (action === 'archive') {
       const updated = await archiveBaselineVersion(modelId, version, { by: 'api-user' });
-      return NextResponse.json({ ok: true, action: 'archived', baseline: updated });
+      const allVersions = await listBaselineVersions(modelId);
+      const hasActive = allVersions.some(v => v.status === 'ACTIVE');
+      return NextResponse.json({ ok: true, action: 'archived', baseline: updated, leavesNoActive: !hasActive });
     }
 
     const result = await deleteBaselineVersion(modelId, version, {

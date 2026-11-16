@@ -1,0 +1,222 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { setStore, UpstashMockStore } from '../lib/storage/store';
+import { createMemoryBlobStore, setBlobStore } from '../lib/storage/blob';
+import { listBaselineVersions, listDeletionAuditLogs } from '../lib/storage/repositories';
+
+// Route handlers
+import { POST as referencesHandler } from '../app/api/registry/references/route';
+import { POST as scorecardImportHandler } from '../app/api/registry/scorecard/import/route';
+import { POST as createVersionHandler } from '../app/api/registry/models/[modelId]/versions/route';
+import { POST as validateVersionHandler } from '../app/api/registry/models/[modelId]/versions/[version]/validate/route';
+import { POST as activateVersionHandler } from '../app/api/registry/models/[modelId]/versions/[version]/activate/route';
+import { POST as archiveVersionHandler } from '../app/api/registry/models/[modelId]/versions/[version]/archive/route';
+import { POST as reactivateVersionHandler } from '../app/api/registry/models/[modelId]/versions/[version]/reactivate/route';
+import { POST as monitorUploadHandler } from '../app/api/monitor-upload/route';
+
+describe('Archive, Re-activate Governance and Monitoring Integration Tests', () => {
+  const root = process.cwd();
+  let mockStore: UpstashMockStore;
+
+  beforeEach(() => {
+    mockStore = new UpstashMockStore();
+    setStore(mockStore);
+    setBlobStore(createMemoryBlobStore());
+  });
+
+  afterEach(() => {
+    setStore(undefined);
+    setBlobStore(undefined);
+  });
+
+  async function createAndActivateModel(modelId: string, version = '1.0.0') {
+    const baseText = readFileSync(join(root, 'samples/cashloan_v2/baseline_cashloan_v2_2024.csv'), 'utf8');
+    const mtText = readFileSync(join(root, 'samples/cashloan_v2/model_table_cashloan.csv'), 'utf8');
+    const referenceId = `ref_${modelId}`;
+
+    await referencesHandler(new Request('http://localhost/api/registry/references', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ referenceId, csvText: baseText, modelId, version, labelColumn: 'default_12m' }),
+    }));
+
+    const scRes = await scorecardImportHandler(new Request('http://localhost/api/registry/scorecard/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csvText: mtText, referenceId, scoreColumn: 'credit_score' }),
+    }));
+    const scData = await scRes.json();
+
+    await createVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        version,
+        name: `Model ${modelId}`,
+        referenceId,
+        mode: 'scorecard',
+        scoreDirection: 'higher_better',
+        featureRegistry: {},
+        columns: { idColumn: 'app_id', dateColumn: 'app_date', labelColumn: 'default_12m', scoreColumn: 'credit_score' },
+        modelTable: scData.table,
+        scoring: scData.scoring,
+      }),
+    }), { params: Promise.resolve({ modelId }) });
+
+    await validateVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/${version}/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'test-user' }),
+    }), { params: Promise.resolve({ modelId, version }) });
+
+    await activateVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/${version}/activate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'test-user' }),
+    }), { params: Promise.resolve({ modelId, version }) });
+  }
+
+  it('archive single ACTIVE version via route returns leavesNoActive: true', async () => {
+    const modelId = 'test_archive_model';
+    await createAndActivateModel(modelId, '1.0.0');
+
+    const res = await archiveVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web-user', note: 'Archived via confirmation modal' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.baseline.status).toBe('ARCHIVED');
+    expect(data.leavesNoActive).toBe(true);
+
+    const history = data.baseline.statusHistory;
+    expect(history.length).toBeGreaterThan(0);
+    const lastHistory = history[history.length - 1];
+    expect(lastHistory.to).toBe('ARCHIVED');
+    expect(lastHistory.by).toBe('web-user');
+    expect(lastHistory.note).toBe('Archived via confirmation modal');
+
+    const versions = await listBaselineVersions(modelId);
+    expect(versions.some(v => v.status === 'ACTIVE')).toBe(false);
+  });
+
+  it('re-activate from ARCHIVED must fail direct activate without validate, and succeed via reactivate route', async () => {
+    const modelId = 'test_reactivate_model';
+    await createAndActivateModel(modelId, '1.0.0');
+
+    // Archive it first
+    await archiveVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web-user' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    // 1. Direct activate on ARCHIVED should fail (status must be VALIDATED first)
+    const directActRes = await activateVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/activate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web-user' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+    expect(directActRes.status).toBe(400);
+    const directActData = await directActRes.json();
+    expect(directActData.error).toContain('ต้องเป็น "VALIDATED" เท่านั้น');
+
+    // 2. Call reactivate route (which runs validate first, then activates)
+    const reactRes = await reactivateVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/reactivate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'registry-panel', note: 'Re-activated via registry-panel' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    expect(reactRes.status).toBe(200);
+    const reactData = await reactRes.json();
+    expect(reactData.ok).toBe(true);
+    expect(reactData.baseline.status).toBe('ACTIVE');
+
+    // Check statusHistory progression: ARCHIVED -> VALIDATED -> ACTIVE
+    const history = reactData.baseline.statusHistory;
+    const valStep = history.find((h: any) => h.from === 'ARCHIVED' && h.to === 'VALIDATED');
+    expect(valStep).toBeDefined();
+    expect(valStep.by).toBe('registry-panel');
+
+    const actSteps = history.filter((h: any) => h.from === 'VALIDATED' && h.to === 'ACTIVE');
+    const latestActStep = actSteps[actSteps.length - 1];
+    expect(latestActStep).toBeDefined();
+    expect(latestActStep.by).toBe('registry-panel');
+    expect(latestActStep.note).toBe('Re-activated via registry-panel');
+  });
+
+  it('re-activate auto-archives any other currently ACTIVE version and records statusHistory and audit', async () => {
+    const modelId = 'test_multi_version_reactivate';
+    await createAndActivateModel(modelId, '1.0.0');
+
+    // Archive 1.0.0
+    await archiveVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web-user' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    // Create and activate 1.0.1
+    await createAndActivateModel(modelId, '1.0.1');
+
+    // Now 1.0.1 is ACTIVE, 1.0.0 is ARCHIVED
+    const versionsBefore = await listBaselineVersions(modelId);
+    expect(versionsBefore.find(v => v.version === '1.0.1')?.status).toBe('ACTIVE');
+    expect(versionsBefore.find(v => v.version === '1.0.0')?.status).toBe('ARCHIVED');
+
+    // Re-activate 1.0.0
+    const reactRes = await reactivateVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/reactivate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'registry-panel', note: 'Re-activated v1.0.0' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+    expect(reactRes.status).toBe(200);
+
+    // Verify 1.0.0 is now ACTIVE
+    const versionsAfter = await listBaselineVersions(modelId);
+    expect(versionsAfter.find(v => v.version === '1.0.0')?.status).toBe('ACTIVE');
+
+    // Verify 1.0.1 was auto-archived with statusHistory and audit log
+    const v101 = versionsAfter.find(v => v.version === '1.0.1')!;
+    expect(v101.status).toBe('ARCHIVED');
+    const autoArchivedStep = v101.statusHistory[v101.statusHistory.length - 1];
+    expect(autoArchivedStep.to).toBe('ARCHIVED');
+    expect(autoArchivedStep.by).toBe('system');
+    expect(autoArchivedStep.note).toContain('Archived automatically when version 1.0.0 was activated');
+
+    const auditLogs = await listDeletionAuditLogs();
+    const auditEntry = auditLogs.find(a => a.modelId === modelId && a.version === '1.0.1' && a.action === 'archive_version');
+    expect(auditEntry).toBeDefined();
+    expect(auditEntry?.actor).toBe('system');
+    expect(auditEntry?.note).toContain('Archived automatically when version 1.0.0 was activated');
+  });
+
+  it('monitor-upload with a model having no ACTIVE version responds with Thai message and NO_ACTIVE_VERSION code', async () => {
+    const modelId = 'test_no_active_model';
+    await createAndActivateModel(modelId, '1.0.0');
+
+    // Archive the only version so 0 ACTIVE versions remain
+    await archiveVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web-user' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    const m01Text = readFileSync(join(root, 'samples/cashloan_v2/m01_v2_2025-07_ปกติ.csv'), 'utf8');
+
+    const uploadRes = await monitorUploadHandler(new Request('http://localhost/api/monitor-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csvText: m01Text, fileName: 'm01.csv', modelId }),
+    }));
+
+    expect(uploadRes.status).toBe(404);
+    const data = await uploadRes.json();
+    expect(data.code).toBe('NO_ACTIVE_VERSION');
+    expect(data.error).toContain('ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE)');
+  });
+});

@@ -148,6 +148,7 @@ export default function Dashboard() {
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [uploadErrorCode, setUploadErrorCode] = useState('');
   const [selectedLog, setSelectedLog] = useState<MonitorLog | null>(null);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [reference, setReference] = useState<ReferenceMeta | null>(null);
@@ -340,6 +341,7 @@ export default function Dashboard() {
     if (!file) return;
     setFileName(file.name);
     setUploadError('');
+    setUploadErrorCode('');
     setUploadedMetrics(null);
     setUploadedCsiDetail(null);
     setUploadedRiskGrades([]);
@@ -369,7 +371,17 @@ export default function Dashboard() {
         if (data.uploadSummary) setUploadSummary(data.uploadSummary);
         if (!res.ok) {
           await loadLogs();
-          throw new Error(data.error || data.detail || 'เกิดข้อผิดพลาดในการประมวลผล');
+          let errText = data.error || data.detail || 'เกิดข้อผิดพลาดในการประมวลผล';
+          const isNoActive =
+            data.code === 'NO_ACTIVE_VERSION' ||
+            errText.includes('ยังไม่มีเวอร์ชันที่เปิดใช้งาน') ||
+            (res.status === 404 && errText.includes('ACTIVE'));
+          if (isNoActive) {
+            setUploadErrorCode('NO_ACTIVE_VERSION');
+            errText = `โมเดล "${selectedModelId || currentModelId}" ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE) — การติดตามผลต้องใช้โมเดลสถานะ ACTIVE เท่านั้น`;
+          }
+          setUploadError(errText);
+          throw new Error(errText);
         }
         if (data.duplicateWarning) {
           setDuplicateUploadWarning(data.duplicateWarning);
@@ -684,6 +696,11 @@ export default function Dashboard() {
                 loadData(mId);
                 loadLogs(mId);
                 if (openMon) setActiveTab('monitor');
+              }}
+              onRegistryChange={mId => {
+                const target = mId || selectedModelId;
+                loadData(target);
+                loadLogs(target);
               }}
             />
           ) :
@@ -1515,10 +1532,47 @@ export default function Dashboard() {
 
                 {/* Upload Zone */}
                 <div className="lg:col-span-2 bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
-                  <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider mb-3">📤 Upload New Data for Monitoring</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider">📤 Upload New Data for Monitoring</p>
+                    {!activeVer && (
+                      <span className="text-[10px] text-amber-400 font-mono bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
+                        ไม่มีเวอร์ชัน ACTIVE
+                      </span>
+                    )}
+                  </div>
+
+                  {!activeVer && (
+                    <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 text-xs text-amber-200 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <span className="text-lg leading-none">⚠️</span>
+                        <div className="space-y-0.5">
+                          <p className="font-semibold text-amber-300">
+                            โมเดล "{currentModelId}" ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE)
+                          </p>
+                          <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                            Monitoring ของโมเดลนี้จะใช้ไม่ได้จนกว่าจะเปิดใช้งานเวอร์ชันใหม่ กรุณาไปที่แท็บ Baseline Registry เพื่อเปิดใช้งานหรือเรียกกลับมาใช้งาน (Re-activate) เวอร์ชันที่ต้องการ
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setActiveTab('registry')}
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition shadow-sm whitespace-nowrap"
+                      >
+                        ไปที่แท็บ Registry
+                      </button>
+                    </div>
+                  )}
+
                   <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl p-6 cursor-pointer transition-all text-center group"
+                    onClick={() => {
+                      if (!activeVer) {
+                        setUploadErrorCode('NO_ACTIVE_VERSION');
+                        setUploadError(`โมเดล "${currentModelId}" ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE) — กรุณาไปที่แท็บ Registry เพื่อเปิดใช้งานเวอร์ชันก่อนทำการอัปโหลด`);
+                        return;
+                      }
+                      fileInputRef.current?.click();
+                    }}
+                    className={`border-2 border-dashed ${!activeVer ? 'border-amber-500/40 bg-amber-500/5' : 'border-slate-700 hover:border-indigo-500'} rounded-xl p-6 cursor-pointer transition-all text-center group`}
                   >
                     {isUploading ? (
                       <div className="text-slate-400 text-sm animate-pulse">⏳ กำลังประมวลผล...</div>
@@ -1538,7 +1592,22 @@ export default function Dashboard() {
                     )}
                   </div>
                   <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                  {uploadError && <p className="text-xs text-rose-400 mt-2">❌ {uploadError}</p>}
+                  {uploadError && (
+                    <div className="mt-3 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs text-rose-300">
+                      <p className="flex items-center gap-1.5">
+                        <span>❌</span>
+                        <span>{uploadError}</span>
+                      </p>
+                      {(uploadErrorCode === 'NO_ACTIVE_VERSION' || !activeVer) && (
+                        <button
+                          onClick={() => setActiveTab('registry')}
+                          className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-xs transition whitespace-nowrap"
+                        >
+                          ไปที่แท็บ Registry
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

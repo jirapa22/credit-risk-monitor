@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import {
   archiveBaselineVersion,
   BuiltInProtectedError,
+  listBaselineVersions,
   RegistryError,
 } from '../../../../../../../../lib/storage/repositories';
 
@@ -35,7 +36,12 @@ export async function POST(
     }
 
     const archived = await archiveBaselineVersion(modelId, version, { by: actor, note });
-    return NextResponse.json({ baseline: archived });
+    const allVersions = await listBaselineVersions(modelId);
+    const hasActive = allVersions.some(v => v.status === 'ACTIVE');
+    return NextResponse.json({
+      baseline: archived,
+      leavesNoActive: !hasActive,
+    });
   } catch (error) {
     if (error instanceof BuiltInProtectedError) {
       return NextResponse.json({ error: error.message }, { status: 403 });

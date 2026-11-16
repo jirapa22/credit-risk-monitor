@@ -15,7 +15,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { runMonitoring } from '../../../lib/monitoring';
-import { getDefaultModelId, getEffectiveModel, listRuns, loadReferenceProfile, saveRun, storageInfo } from '../../../lib/storage/repositories';
+import { getDefaultModelId, getEffectiveModel, listRuns, loadReferenceProfile, RegistryError, saveRun, storageInfo } from '../../../lib/storage/repositories';
 import { saveRunDetailBlob } from '../../../lib/storage/blob';
 import type { MonitoringRun, MonitoringRunDetail } from '../../../lib/types';
 import { getReferenceMeta } from '../../../lib/reference';
@@ -164,6 +164,16 @@ export async function POST(request: Request) {
       duplicateWarning,
     });
   } catch (error) {
+    if (error instanceof RegistryError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: error.code || (error.message.includes('ยังไม่มีเวอร์ชันที่เปิดใช้งาน') ? 'NO_ACTIVE_VERSION' : 'REGISTRY_ERROR'),
+          detail: error.message,
+        },
+        { status: error.status },
+      );
+    }
     console.error('Error POST /api/monitor-upload:', error);
     return NextResponse.json({ error: 'Internal Server Error', detail: String(error) }, { status: 500 });
   }

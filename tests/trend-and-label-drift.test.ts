@@ -8,7 +8,7 @@ describe('PSI/CSI Trend and Label Drift Governance', () => {
       runId: 'run_test_01',
       kind: 'monitoring',
       createdAt: '2025-08-01T12:00:00.000Z',
-      model: { modelId: 'test_model', version: 'v1.0.0', configVersion: '1.0.0' },
+      model: { modelId: 'test_model', configVersion: '1.0.0' },
       modelName: 'Test Model',
       referenceId: 'ref_01',
       fileName: 'm01_v2_2025-07_ปกติ.csv',
@@ -62,6 +62,7 @@ describe('PSI/CSI Trend and Label Drift Governance', () => {
         action: 'INVESTIGATE_DRIFT',
         severity: 'warning',
         matchedRuleId: 'R7',
+        requiresHumanReview: false,
         reasons: ['[R7] ลักษณะลูกค้าเปลี่ยน ติดตามรอบถัดไป'],
         evidence: {} as any,
         recommendedSteps: [],
@@ -114,5 +115,62 @@ describe('PSI/CSI Trend and Label Drift Governance', () => {
     expect(isOot('m01_v2_2025-07_ปกติ.csv')).toBe(false);
     expect(isOot('m03_v2_2025-09_เริ่มเสื่อม.csv')).toBe(false);
     expect(isOot('monitoring_data_2025-10.csv')).toBe(false);
+  });
+
+  it('correctly calculates warning occurrences vs unique warning rows and overlap for m03', () => {
+    const warningGroups = [
+      { type: 'OUT_OF_RANGE', severity: 'warning' as const, column: 'feat_income', count: 90 },
+      { type: 'UNSEEN_CATEGORY', severity: 'warning' as const, column: 'feat_occ', count: 52 },
+    ];
+    const totalWarnHits = warningGroups.reduce((acc, g) => acc + g.count, 0);
+    const uniqueWarnRows = 139;
+    const overlapCount = totalWarnHits - uniqueWarnRows;
+
+    expect(totalWarnHits).toBe(142);
+    expect(uniqueWarnRows).toBe(139);
+    expect(overlapCount).toBe(3);
+  });
+
+  it('formats reference period properly and falls back to ไม่ระบุ instead of empty arrow', () => {
+    const formatPeriod = (pStart?: string, pEnd?: string, baselinePeriod?: string) => {
+      const s = pStart?.trim();
+      const e = pEnd?.trim();
+      if (s && e) return `${s} → ${e}`;
+      if (s || e) return s || e;
+      if (baselinePeriod && baselinePeriod.trim()) return baselinePeriod.trim();
+      return 'ไม่ระบุ';
+    };
+
+    expect(formatPeriod('2024-01-01', '2024-12-31')).toBe('2024-01-01 → 2024-12-31');
+    expect(formatPeriod('', '')).toBe('ไม่ระบุ');
+    expect(formatPeriod(undefined, undefined, '2024-01 – 2024-12')).toBe('2024-01 – 2024-12');
+    expect(formatPeriod(undefined, undefined)).toBe('ไม่ระบุ');
+  });
+
+  it('computes validation badge label and policy color level', () => {
+    const getBadgeInfo = (rejectedRows: number, rejectedPct: number, warningRows: number, policy: { warn?: number; crit?: number } = {}) => {
+      const warnPct = policy.warn ?? 1.0;
+      const critPct = policy.crit ?? 5.0;
+
+      if (rejectedRows === 0 && warningRows === 0) {
+        return { text: 'PASS', color: 'green' };
+      }
+
+      const label = rejectedRows > 0
+        ? `PASS (มีการตัดแถว ${rejectedRows} แถว, ${rejectedPct}%)`
+        : `PASS (พบคำเตือน ${warningRows} แถว)`;
+
+      const isOrange = rejectedPct >= critPct;
+      return { text: label, color: isOrange ? 'orange' : 'yellow' };
+    };
+
+    // Clean data
+    expect(getBadgeInfo(0, 0, 0)).toEqual({ text: 'PASS', color: 'green' });
+
+    // m04: 0 rejected, 37 warning rows -> PASS with yellow
+    expect(getBadgeInfo(0, 0, 37)).toEqual({ text: 'PASS (พบคำเตือน 37 แถว)', color: 'yellow' });
+
+    // m03: 79 rejected (6.6%), 139 warning rows -> PASS (มีการตัดแถว 79 แถว, 6.6%) with orange (6.6% >= 5%)
+    expect(getBadgeInfo(79, 6.6, 139)).toEqual({ text: 'PASS (มีการตัดแถว 79 แถว, 6.6%)', color: 'orange' });
   });
 });

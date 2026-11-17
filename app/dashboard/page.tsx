@@ -79,6 +79,7 @@ interface ValidationIssueGroup { type: string; severity: 'error' | 'warning'; co
 interface ValidationIssue { type: string; severity: 'error' | 'warning'; column?: string; row?: number; value?: string; message: string }
 interface ValidationResult {
   ok: boolean; totalRows: number; validRows: number; rejectedRows: number; rejectedPct: number;
+  warningRows?: number; warningRowPct?: number;
   blockingErrors: ValidationIssue[]; warnings: ValidationIssue[]; groups: ValidationIssueGroup[]; issues: ValidationIssue[];
 }
 interface ReferenceMeta { referenceId: string; version: string; rowCount: number; badRate: number; periodStart: string; periodEnd: string; sha256: string; source: string }
@@ -1723,7 +1724,25 @@ export default function Dashboard() {
                       <div className="text-[10px] text-slate-400 space-y-0.5 mt-2 font-mono">
                         <p><span className="text-slate-500">ID:</span> {reference.referenceId} <span className="text-slate-600">v{reference.version}</span></p>
                         <p><span className="text-slate-500">N:</span> {reference.rowCount.toLocaleString()} · <span className="text-slate-500">Bad:</span> {(reference.badRate * 100).toFixed(2)}%</p>
-                        <p><span className="text-slate-500">ช่วง:</span> {reference.periodStart} → {reference.periodEnd}</p>
+                        {(() => {
+                          const pStart = reference.periodStart?.trim();
+                          const pEnd = reference.periodEnd?.trim();
+                          let periodDisplay = 'ไม่ระบุ';
+                          if (pStart && pEnd) {
+                            periodDisplay = `${pStart} → ${pEnd}`;
+                          } else if (pStart || pEnd) {
+                            periodDisplay = pStart || pEnd;
+                          } else {
+                            const baselinePeriod =
+                              (model as any)?.baseline?.performance?.train?.period ||
+                              (model as any)?.developmentStats?.reported?.train?.period ||
+                              (model as any)?.modelCard?.developmentPeriod;
+                            if (baselinePeriod && String(baselinePeriod).trim()) {
+                              periodDisplay = String(baselinePeriod).trim();
+                            }
+                          }
+                          return <p><span className="text-slate-500">ช่วง:</span> {periodDisplay}</p>;
+                        })()}
                         <p title={reference.sha256}><span className="text-slate-500">sha256:</span> {reference.sha256.slice(0, 12)}…</p>
                       </div>
                     ) : (
@@ -1821,13 +1840,53 @@ export default function Dashboard() {
                 <div className={`border rounded-2xl p-4 ${validation.ok ? 'border-slate-800 bg-slate-900/60' : 'border-fuchsia-500/40 bg-fuchsia-500/5'}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                     <p className="text-[10px] font-bold text-fuchsia-300 uppercase tracking-wider">🧾 ขั้นที่ 1 — ตรวจสอบความถูกต้องของข้อมูล (Data Validation)</p>
-                    <Badge status={validation.ok ? 'PASS' : 'FAIL'} />
+                    {(() => {
+                      if (!validation.ok) {
+                        return <Badge status="FAIL" />;
+                      }
+
+                      // Read validation policy thresholds from active model config / version
+                      const valPolicy = (model as any)?.validationPolicy || (displayVer as any)?.validationPolicy || {};
+                      const warnRejPct = valPolicy.rejectedPctWarning ?? (model as any)?.triggerConfig?.validationWarningPct ?? 1.0;
+                      const critRejPct = valPolicy.rejectedPctCritical ?? (model as any)?.triggerConfig?.validationCriticalPct ?? 5.0;
+
+                      const hasRejected = validation.rejectedRows > 0;
+                      const hasWarnings = (validation.warningRows ?? 0) > 0 || validation.warnings.length > 0;
+
+                      if (!hasRejected && !hasWarnings) {
+                        return (
+                          <span className="text-[10px] px-2.5 py-0.5 rounded border font-bold bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+                            ✅ PASS
+                          </span>
+                        );
+                      }
+
+                      // Text: "PASS (มีการตัดแถว N แถว, %)"
+                      const label = hasRejected
+                        ? `PASS (มีการตัดแถว ${validation.rejectedRows.toLocaleString()} แถว, ${validation.rejectedPct}%)`
+                        : `PASS (พบคำเตือน ${(validation.warningRows ?? validation.warnings.length).toLocaleString()} แถว)`;
+
+                      // Color level tied to model policy:
+                      // - Orange (Critical/High): rejectedPct >= critRejPct
+                      // - Yellow/Amber (Warning): rejectedPct >= warnRejPct or warnings exist
+                      const isOrange = validation.rejectedPct >= critRejPct;
+                      const badgeStyle = isOrange
+                        ? 'bg-orange-500/15 text-orange-400 border-orange-500/30'
+                        : 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+
+                      return (
+                        <span className={`text-[10px] px-2.5 py-0.5 rounded border font-bold ${badgeStyle}`}>
+                          ⚠️ {label}
+                        </span>
+                      );
+                    })()}
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 mb-3">
                     <MetricCard small label="แถวทั้งหมด" value={validation.totalRows.toLocaleString()} />
                     <MetricCard small label="ผ่าน (ใช้คำนวณ)" value={validation.validRows.toLocaleString()} color="text-emerald-400" />
                     <MetricCard small label="ตัดออก" value={validation.rejectedRows.toLocaleString()} color={validation.rejectedRows ? 'text-rose-400' : 'text-slate-400'} />
-                    <MetricCard small label="% ตัดออก" value={`${validation.rejectedPct}%`} color={validation.rejectedPct > 5 ? 'text-rose-400' : 'text-slate-400'} />
+                    <MetricCard small label="% ตัดออก" value={`${validation.rejectedPct}%`} color={validation.rejectedPct >= 5 ? 'text-rose-400' : validation.rejectedPct > 0 ? 'text-amber-400' : 'text-slate-400'} />
+                    <MetricCard small label="แถวติดคำเตือน (ไม่ซ้ำ)" value={validation.warningRows !== undefined ? `${validation.warningRows.toLocaleString()} (${validation.warningRowPct ?? 0}%)` : '—'} color={validation.warningRows ? 'text-amber-400' : 'text-slate-400'} />
                   </div>
                   {validation.blockingErrors.length > 0 && (
                     <div className="mb-3 space-y-1">
@@ -1845,14 +1904,14 @@ export default function Dashboard() {
                     </div>
                   )}
                   {validation.groups.length > 0 ? (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto space-y-2">
                       <table className="w-full text-[10px]">
                         <thead>
                           <tr className="border-b border-slate-800 text-slate-500">
                             <th className="text-left py-1.5 px-2 font-medium">ประเภท</th>
                             <th className="text-left py-1.5 px-2 font-medium">คอลัมน์</th>
-                            <th className="text-right py-1.5 px-2 font-medium">จำนวน</th>
-                            <th className="text-left py-1.5 px-2 font-medium">ผล</th>
+                            <th className="text-right py-1.5 px-2 font-medium">จำนวนครั้งที่พบ</th>
+                            <th className="text-left py-1.5 px-2 font-medium">ผลต่อแถว</th>
                             <th className="text-left py-1.5 px-2 font-medium">ตัวอย่างแถว</th>
                             <th className="text-left py-1.5 px-2 font-medium">รายละเอียด (ตัวอย่าง)</th>
                           </tr>
@@ -1862,7 +1921,7 @@ export default function Dashboard() {
                             <tr key={i} className="border-b border-slate-800/40">
                               <td className={`py-1.5 px-2 font-semibold ${g.severity === 'error' ? 'text-rose-400' : 'text-amber-300'}`}>{ISSUE_LABEL[g.type] ?? g.type}</td>
                               <td className="py-1.5 px-2 font-mono text-slate-300">{g.column ?? '—'}</td>
-                              <td className="py-1.5 px-2 text-right font-mono text-slate-300">{g.count.toLocaleString()}</td>
+                              <td className="py-1.5 px-2 text-right font-mono text-slate-300">{g.count.toLocaleString()} ครั้ง</td>
                               <td className="py-1.5 px-2 text-slate-400">{g.severity === 'error' ? 'ตัดแถวออก' : 'ใช้ได้ (แจ้งเตือน)'}</td>
                               <td className="py-1.5 px-2 font-mono text-slate-500">{g.sampleRows.join(', ')}{g.count > g.sampleRows.length ? ', …' : ''}</td>
                               <td className="py-1.5 px-2 text-slate-400">{g.message}</td>
@@ -1870,7 +1929,32 @@ export default function Dashboard() {
                           ))}
                         </tbody>
                       </table>
-                      <p className="text-[9px] text-slate-600 mt-2">เลขแถวนับจากแถวข้อมูลแรก = 1 (ไม่นับ header) — แถวที่ถูกตัดออกจะไม่ถูกนำไปคำนวณ PSI/CSI จึงไม่ปะปนกับการเปลี่ยนแปลงของการกระจายตัว</p>
+
+                      {/* สรุปแถวไม่ซ้ำ เทียบกับ จำนวนครั้งที่พบ */}
+                      {(() => {
+                        const warnGroups = validation.groups.filter(g => g.severity === 'warning');
+                        const totalWarnHits = warnGroups.reduce((acc, g) => acc + g.count, 0);
+                        const uniqueWarnRows = validation.warningRows ?? 0;
+                        const overlapCount = totalWarnHits - uniqueWarnRows;
+
+                        return (
+                          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 text-[10px] space-y-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-slate-300">
+                              <span>
+                                📊 <strong>สรุปรายการคำเตือน:</strong> พบทั้งหมด <span className="font-mono font-bold text-amber-400">{totalWarnHits.toLocaleString()}</span> ครั้ง จากข้อมูล <span className="font-mono font-bold text-cyan-400">{uniqueWarnRows.toLocaleString()}</span> แถวไม่ซ้ำ ({validation.warningRowPct ?? 0}% ของแถวทั้งหมด)
+                              </span>
+                              {overlapCount > 0 && (
+                                <span className="text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                                  💡 มี {overlapCount} แถวที่พบคำเตือนมากกว่า 1 ประเภทในแถวเดียวกัน
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[9px] text-slate-500">
+                              เลขแถวนับจากแถวข้อมูลแรก = 1 (ไม่นับ header) — แถวที่ติดเฉพาะคำเตือน (Warning) จะไม่ถูกตัดออกและยังคงนำไปคำนวณ PSI/CSI ตามปกติ
+                            </p>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : validation.ok && (
                     <p className="text-[11px] text-emerald-400">✅ ข้อมูลทุกแถวผ่านการตรวจสอบ</p>

@@ -39,5 +39,10 @@ export function toLegacyLog(run: MonitoringRun) {
     triggerAction: run.trigger?.action ?? null,
     triggerSeverity: run.trigger?.severity ?? null,
     hasDetail: Boolean(run.detail || run.detailBlobUrl),
+    triggered: run.drift?.triggered ?? [],
+    psiStatus: run.drift?.psi?.status ?? null,
+    verdictReason: run.driftReport?.summary?.reason ?? null,
+    triggerReasons: run.trigger?.reasons ?? [],
+    thresholdMode: (run.detail?.thresholdMode ?? (run.model as any)?.thresholdMode ?? (run.thresholdsSnapshot as any)?.mode ?? 'fixed'),
   };
 }

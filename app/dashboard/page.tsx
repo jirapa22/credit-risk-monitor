@@ -68,6 +68,11 @@ interface MonitorLog {
   triggerAction?: string | null;
   flaggedRows?: number | null;
   hasDetail?: boolean;
+  triggered?: string[];
+  psiStatus?: string | null;
+  verdictReason?: string | null;
+  triggerReasons?: string[];
+  thresholdMode?: 'fixed' | 'calibrated';
 }
 
 interface ValidationIssueGroup { type: string; severity: 'error' | 'warning'; column?: string; count: number; sampleRows: number[]; message: string }
@@ -119,10 +124,210 @@ function MetricCard({ label, value, suffix = '', color = 'text-slate-200', small
   );
 }
 
+// ─── Trend Chart Helpers ───────────────────────────────────────────────────
+function getLogPeriodInfo(l: MonitorLog): {
+  periodLabel: string;
+  isFallback: boolean;
+  sortKey: string;
+  isOot: boolean;
+} {
+  const fileName = l.fileName || '';
+  const isOot =
+    /(?:^|[_ -])(oot|test|dev|val|eval|special|sandbox)(?:$|[_ -])/i.test(fileName) ||
+    /oot/i.test(fileName);
+
+  // 1. Check uploadSummary.periods
+  const rawPeriods = l.uploadSummary?.periods || [];
+  const validPeriods = rawPeriods
+    .map(p => p.period)
+    .filter(p => p && p !== 'ไม่ระบุวันที่' && p !== 'UNKNOWN' && p !== 'UNKNOWN_PERIOD');
+
+  if (validPeriods.length === 1) {
+    return {
+      periodLabel: validPeriods[0],
+      isFallback: false,
+      sortKey: validPeriods[0],
+      isOot,
+    };
+  }
+
+  if (validPeriods.length > 1) {
+    const sorted = [...validPeriods].sort();
+    return {
+      periodLabel: `${sorted[0]} – ${sorted[sorted.length - 1]}`,
+      isFallback: false,
+      sortKey: sorted[0],
+      isOot,
+    };
+  }
+
+  // 2. Check filename for YYYY-MM
+  const match = fileName.match(/(20\d{2}[-_]\d{2})/);
+  if (match) {
+    const p = match[1].replace('_', '-');
+    return {
+      periodLabel: p,
+      isFallback: false,
+      sortKey: p,
+      isOot,
+    };
+  }
+
+  // 3. Fallback to upload time with clear label
+  const uploadDate = new Date(l.uploadedAt);
+  const dateStr = !isNaN(uploadDate.getTime())
+    ? uploadDate.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })
+    : 'ไม่ระบุ';
+  return {
+    periodLabel: `${dateStr} (อัปโหลด)`,
+    isFallback: true,
+    sortKey: l.uploadedAt || '9999',
+    isOot,
+  };
+}
+
+function deriveVerdictReason(
+  l: MonitorLog,
+  warnPsi: number,
+  critPsi: number,
+  csiFeatures: CsiFeatureItem[],
+  thresholdMode: string
+): string {
+  if (!l.results) {
+    return l.validationOk === false
+      ? `ข้อมูลไม่ผ่านการตรวจสอบ (ตัดแถวออก ${(l.skippedRows ?? 0).toLocaleString()} แถว)`
+      : 'ไม่มีผลการคำนวณ Drift';
+  }
+
+  const psiVal = l.results.psi;
+  const modeTag = thresholdMode === 'calibrated' ? ' [เกณฑ์ Calibrated]' : '';
+
+  // Check CSI features for warnings/criticals
+  const csiCriticals: string[] = [];
+  const csiWarnings: string[] = [];
+  const csiStatus = (l.results as any)?.csiStatus as Record<string, string> | undefined;
+
+  for (const f of csiFeatures) {
+    const val = l.results.csi?.[f.key];
+    const st = csiStatus?.[f.key];
+    const thr = parseFloat(f.threshold) || 0.10;
+    const isCrit = st === 'CRITICAL' || (val !== undefined && val >= Math.max(critPsi, thr));
+    const isWarn = st === 'WARNING' || (val !== undefined && val >= thr && !isCrit);
+
+    if (isCrit && val !== undefined) {
+      csiCriticals.push(`${f.label || f.key} (CSI: ${val.toFixed(4)})`);
+    } else if (isWarn && val !== undefined) {
+      csiWarnings.push(`${f.label || f.key} (CSI: ${val.toFixed(4)})`);
+    }
+  }
+
+  // If already has trigger reasons from MLOps decision engine
+  if (l.triggerReasons && l.triggerReasons.length > 0) {
+    return `${l.triggerReasons[0]}${modeTag}`;
+  }
+  if (l.verdictReason) {
+    return `${l.verdictReason}${modeTag}`;
+  }
+
+  // Dynamically compute explanation from actual metric values
+  if (l.verdict === 'CRITICAL') {
+    if (psiVal >= critPsi) {
+      return `PSI (${psiVal.toFixed(4)}) สูงเกินเกณฑ์วิกฤต (≥ ${critPsi.toFixed(2)})${modeTag}`;
+    }
+    if (csiCriticals.length > 0) {
+      return `PSI (${psiVal.toFixed(4)}) ต่ำกว่า ${critPsi.toFixed(2)} แต่ CRITICAL เพราะ CSI ของ ${csiCriticals.join(', ')} สูงเกินเกณฑ์วิกฤต${modeTag}`;
+    }
+    return `สถานะ CRITICAL จากผลลัพธ์ของโมเดล${modeTag} (PSI: ${psiVal.toFixed(4)})`;
+  }
+
+  if (l.verdict === 'WARNING') {
+    if (psiVal >= warnPsi) {
+      return `PSI (${psiVal.toFixed(4)}) อยู่ในเกณฑ์เฝ้าระวัง (≥ ${warnPsi.toFixed(2)})${modeTag}`;
+    }
+    if (csiWarnings.length > 0) {
+      return `PSI (${psiVal.toFixed(4)}) ต่ำกว่า ${warnPsi.toFixed(2)} แต่ CSI ของ ${csiWarnings.join(', ')} อยู่ในเกณฑ์เฝ้าระวัง${modeTag}`;
+    }
+    return `สถานะ WARNING จากผลลัพธ์ของโมเดล${modeTag} (PSI: ${psiVal.toFixed(4)})`;
+  }
+
+  if (l.verdict === 'STABLE') {
+    return `PSI (${psiVal.toFixed(4)}) และ CSI ทุกตัวแปรอยู่ในเกณฑ์ปกติ (ต่ำกว่า ${warnPsi.toFixed(2)})${modeTag}`;
+  }
+
+  return `สถานะ ${l.verdict}${modeTag}`;
+}
+
+const TrendTooltip = ({ active, payload }: any) => {
+  if (!active || !payload || !payload.length) return null;
+  const data = payload[0]?.payload;
+  if (!data) return null;
+
+  return (
+    <div className="bg-slate-900 border border-slate-700/80 rounded-xl p-3 shadow-2xl max-w-sm text-xs space-y-2 pointer-events-none">
+      <div className="border-b border-slate-800 pb-1.5 flex items-center justify-between gap-2">
+        <span className="font-semibold text-slate-200 truncate max-w-[180px]" title={data.fileName}>
+          📁 {data.fileName}
+        </span>
+        <span className="font-mono text-[10px] text-cyan-400 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/40">
+          {data.period}
+        </span>
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex justify-between items-center text-[11px]">
+          <span className="text-slate-400">ประเภทข้อมูล:</span>
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${data.isOot ? 'bg-purple-950/60 text-purple-300 border border-purple-800/40' : 'bg-slate-800 text-slate-300'}`}>
+            {data.isOot ? 'OOT / อื่นๆ' : 'รายเดือน (Monthly)'}
+          </span>
+        </div>
+        <div className="flex justify-between items-center text-[11px]">
+          <span className="text-slate-400">ค่า PSI:</span>
+          <span className="font-mono font-bold text-slate-100">{data.psi !== null ? Number(data.psi).toFixed(4) : '—'}</span>
+        </div>
+        <div className="flex justify-between items-center text-[11px]">
+          <span className="text-slate-400">สถานะ (Verdict):</span>
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+            data.verdict === 'CRITICAL' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+            data.verdict === 'WARNING' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+            data.verdict === 'STABLE' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+            'bg-slate-800 text-slate-400'
+          }`}>
+            {data.verdict}
+          </span>
+        </div>
+      </div>
+
+      <div className="pt-2 border-t border-slate-800">
+        <p className="text-[10px] font-bold text-slate-400 mb-1">เหตุผลการตัดสิน (Verdict Reason):</p>
+        <p className="text-[11px] text-slate-300 leading-relaxed bg-slate-950/70 p-2 rounded-lg border border-slate-800/80">
+          {data.verdictReason}
+        </p>
+      </div>
+
+      {data.csiItems && data.csiItems.length > 0 && (
+        <div className="pt-1.5 border-t border-slate-800 space-y-0.5 text-[10px]">
+          <p className="font-semibold text-slate-400 mb-1">CSI รายตัวแปร:</p>
+          <div className="grid grid-cols-1 gap-1 max-h-28 overflow-y-auto pr-1">
+            {data.csiItems.map((c: any) => (
+              <div key={c.key} className="flex justify-between text-slate-400 font-mono">
+                <span className="truncate max-w-[150px]">{c.label}:</span>
+                <span className={c.value !== null && c.value >= 0.25 ? 'text-rose-400 font-bold' : c.value !== null && c.value >= 0.10 ? 'text-amber-400 font-bold' : 'text-slate-300'}>
+                  {c.value !== null ? c.value.toFixed(4) : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('sandbox');
   const [sandboxSubTab, setSandboxSubTab] = useState<'reference' | 'experiment'>('reference');
+  const [showOot, setShowOot] = useState(true);
   const [config, setConfig] = useState<ModelConfig | null>(null);
   const [monitorLogs, setMonitorLogs] = useState<MonitorLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -2035,6 +2240,51 @@ export default function Dashboard() {
                           )}
                         </div>
 
+                        {/* ── การทดสอบสมมติฐานทางสถิติ (Statistical Hypothesis Tests) ── */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                          {/* Test 1: เทียบ Reference Baseline (ตัวที่ Trigger ใช้ตัดสิน) */}
+                          <div className="bg-slate-950/60 border border-indigo-500/30 rounded-xl p-3">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
+                                1. ทดสอบเทียบ Reference Baseline
+                              </span>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                                🎯 ใช้ตัดสิน Trigger (R5/R8)
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between mb-1.5">
+                              <span className="text-[11px] text-slate-400 font-medium">p-value (Unadjusted):</span>
+                              <span className={`font-mono font-bold text-sm ${lm.pValue !== null && lm.pValue < 0.05 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                {lm.pValue !== null && lm.pValue !== undefined ? lm.pValue.toFixed(4) : '—'}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 leading-snug">
+                              ทดสอบว่า Actual Bad Rate ({(lm.actualBadRate * 100).toFixed(2)}%) ต่างจาก Reference Baseline ({(lm.referenceBadRate * 100).toFixed(2)}%) อย่างมีนัยสำคัญหรือไม่ โดยระบบ Trigger (กฎ R5/R8) ใช้ผลทดสอบนี้ในการตัดสินสถานะ Label Drift และการแจ้งเตือน
+                            </p>
+                          </div>
+
+                          {/* Test 2: เทียบค่าคาดตามช่วงคะแนน Score-Adjusted (ตัวช่วยวิเคราะห์สาเหตุ) */}
+                          <div className="bg-slate-950/60 border border-cyan-500/30 rounded-xl p-3">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <span className="text-[10px] font-bold text-cyan-300 uppercase tracking-wider">
+                                2. ทดสอบเทียบค่าคาดตามช่วงคะแนน
+                              </span>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                                🔍 วิเคราะห์สาเหตุ (Explainability)
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between mb-1.5">
+                              <span className="text-[11px] text-slate-400 font-medium">p-value (Score-Adjusted):</span>
+                              <span className={`font-mono font-bold text-sm ${adj?.pValue !== null && adj?.pValue !== undefined ? (adj.pValue < 0.05 ? 'text-amber-400' : 'text-emerald-400') : 'text-slate-400'}`}>
+                                {adj?.pValue !== null && adj?.pValue !== undefined ? adj.pValue.toFixed(4) : '—'}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 leading-snug">
+                              ทดสอบเทียบ Actual Bad Rate กับ Expected ({adj ? (adj.expectedBadRate * 100).toFixed(2) : '—'}%) ที่ปรับตามการกระจายคะแนน เพื่อดูว่าความต่างเกิดจากการเปลี่ยนของคุณภาพลูกค้า (Score Shift, p ≥ 0.05) หรือโมเดลเสื่อมจริง
+                            </p>
+                          </div>
+                        </div>
+
                         {adj && (
                           <div className={`text-[11px] rounded-xl px-3 py-2 border ${adj.explainableByScoreShift ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
                             {adj.explainableByScoreShift ? '💡 ' : '⚠️ '}{adj.reason}
@@ -2226,36 +2476,177 @@ export default function Dashboard() {
               </div>
 
               {/* PSI Trend from log (drift runs of the selected config version only) */}
-              {driftLogs.length > 1 && (
-                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
-                  <h3 className="text-sm font-bold text-slate-200 mb-4">📈 PSI / CSI Trend (from Upload History)</h3>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <LineChart data={[...driftLogs].reverse().map(l => ({
-                      date: new Date(l.uploadedAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' }),
-                      PSI: parseFloat(l.results!.psi.toFixed(4)),
-                      ...Object.fromEntries(csiFeatures.map(f => [
-                        `CSI — ${f.label || f.key}`,
-                        l.results!.csi?.[f.key] !== undefined ? parseFloat(l.results!.csi[f.key].toFixed(4)) : null,
-                      ])),
-                    }))}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />
-                      <YAxis domain={[0, 0.5]} tick={{ fontSize: 10, fill: '#64748b' }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11 }} />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <ReferenceLine y={psiWarningNum} stroke="#f59e0b" strokeDasharray="4 4" />
-                      <ReferenceLine y={psiCriticalNum} stroke="#ef4444" strokeDasharray="4 4" />
-                      {/* Trend lines — dynamic from csiFeatures */}
-                      <Line type="monotone" dataKey="PSI" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
-                      {csiFeatures.map((f, i) => {
-                        const colors = ['#facc15', '#22d3ee', '#f472b6', '#34d399', '#fb923c', '#a78bfa'];
-                        const key = `CSI — ${f.label || f.key}`;
-                        return <Line key={key} type="monotone" dataKey={key} stroke={colors[i % colors.length]} strokeWidth={1.5} dot={{ r: 2 }} />;
-                      })}
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
+              {driftLogs.length > 0 && (() => {
+                const activeThresholdMode: 'fixed' | 'calibrated' =
+                  (displayVer?.driftConfig?.thresholdMode as 'fixed' | 'calibrated') ||
+                  ((model as any)?.driftConfig?.thresholdMode as 'fixed' | 'calibrated') ||
+                  ((model as any)?.thresholdMode as 'fixed' | 'calibrated') ||
+                  'fixed';
+
+                let effectivePsiWarning = psiWarningNum;
+                let effectivePsiCritical = psiCriticalNum;
+
+                if (activeThresholdMode === 'calibrated') {
+                  const calBySizes = displayVer?.calibratedThresholds?.bySize || (model as any)?.calibratedThresholds?.bySize;
+                  if (calBySizes) {
+                    const sizes = Object.keys(calBySizes).map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+                    if (sizes.length > 0) {
+                      const midSize = sizes[Math.floor(sizes.length / 2)];
+                      const calPsi = calBySizes[midSize]?.psi;
+                      if (calPsi?.warning) effectivePsiWarning = calPsi.warning;
+                      if (calPsi?.critical) effectivePsiCritical = calPsi.critical;
+                    }
+                  }
+                }
+
+                // Sort logs chronologically by detected period or upload timestamp
+                const sortedLogs = [...driftLogs].sort((a, b) => {
+                  const pA = getLogPeriodInfo(a);
+                  const pB = getLogPeriodInfo(b);
+                  if (pA.sortKey && pB.sortKey && pA.sortKey !== pB.sortKey) {
+                    return pA.sortKey.localeCompare(pB.sortKey);
+                  }
+                  return new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime();
+                });
+
+                const displayLogs = showOot ? sortedLogs : sortedLogs.filter(l => !getLogPeriodInfo(l).isOot);
+
+                const chartData = displayLogs.map(l => {
+                  const pInfo = getLogPeriodInfo(l);
+                  const psiVal = l.results ? parseFloat(l.results.psi.toFixed(4)) : null;
+                  const verdictReason = deriveVerdictReason(
+                    l,
+                    effectivePsiWarning,
+                    effectivePsiCritical,
+                    csiFeatures,
+                    activeThresholdMode
+                  );
+                  const csiItems = csiFeatures.map(f => {
+                    const val = l.results?.csi?.[f.key];
+                    const thr = parseFloat(f.threshold) || 0.10;
+                    return {
+                      key: f.key,
+                      label: f.label || f.key,
+                      value: val !== undefined ? parseFloat(val.toFixed(4)) : null,
+                      isWarning: val !== undefined && val >= thr && val < Math.max(effectivePsiCritical, thr),
+                      isCritical: val !== undefined && val >= Math.max(effectivePsiCritical, thr),
+                    };
+                  });
+
+                  return {
+                    date: pInfo.periodLabel,
+                    fileName: l.fileName,
+                    period: pInfo.periodLabel,
+                    isOot: pInfo.isOot,
+                    psi: psiVal,
+                    verdict: l.verdict,
+                    verdictReason,
+                    csiItems,
+                    'PSI (รายเดือน)': !pInfo.isOot ? psiVal : null,
+                    'PSI (OOT / อื่นๆ)': pInfo.isOot ? psiVal : null,
+                    ...Object.fromEntries(csiFeatures.map(f => [
+                      `CSI — ${f.label || f.key}`,
+                      l.results?.csi?.[f.key] !== undefined ? parseFloat(l.results.csi[f.key].toFixed(4)) : null,
+                    ])),
+                  };
+                });
+
+                return (
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-200">📈 PSI / CSI Trend (จากประวัติการอัปโหลด)</h3>
+                        <p className="text-[11px] text-slate-400">
+                          แกน X แสดงช่วงเวลาของข้อมูล (Period) เชื่อมโยงด้วยเส้นตรง (Linear) ไม่ extrapolate ค่ากลาง
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Threshold mode badge */}
+                        <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-medium border ${
+                          activeThresholdMode === 'calibrated'
+                            ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                            : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                        }`}>
+                          {activeThresholdMode === 'calibrated' ? '⚖️ โหมดเกณฑ์: Calibrated (ปรับตามขนาดข้อมูล)' : '🎯 โหมดเกณฑ์: Fixed (มาตรฐาน)'}
+                        </span>
+
+                        {/* OOT toggle checkbox */}
+                        <label className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer select-none bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60 hover:bg-slate-800">
+                          <input
+                            type="checkbox"
+                            checked={showOot}
+                            onChange={e => setShowOot(e.target.checked)}
+                            className="accent-indigo-500 rounded"
+                          />
+                          <span>แสดงชุดข้อมูล OOT / อื่นๆ</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <ResponsiveContainer width="100%" height={230}>
+                      <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />
+                        <YAxis domain={[0, 0.5]} tick={{ fontSize: 10, fill: '#64748b' }} />
+                        <Tooltip content={<TrendTooltip />} />
+                        <Legend wrapperStyle={{ fontSize: 11, paddingTop: '8px' }} />
+                        <ReferenceLine
+                          y={effectivePsiWarning}
+                          stroke="#f59e0b"
+                          strokeDasharray="4 4"
+                          label={{ value: `เตือน: ${effectivePsiWarning.toFixed(2)}`, fill: '#f59e0b', fontSize: 10, position: 'insideTopLeft' }}
+                        />
+                        <ReferenceLine
+                          y={effectivePsiCritical}
+                          stroke="#ef4444"
+                          strokeDasharray="4 4"
+                          label={{ value: `วิกฤต: ${effectivePsiCritical.toFixed(2)}`, fill: '#ef4444', fontSize: 10, position: 'insideTopLeft' }}
+                        />
+
+                        {/* Line 1: PSI Monthly (Solid Indigo) */}
+                        <Line
+                          type="linear"
+                          dataKey="PSI (รายเดือน)"
+                          stroke="#6366f1"
+                          strokeWidth={2}
+                          dot={{ r: 4, fill: '#6366f1' }}
+                          connectNulls
+                        />
+
+                        {/* Line 2: PSI OOT / Other (Dashed Purple) */}
+                        {showOot && (
+                          <Line
+                            type="linear"
+                            dataKey="PSI (OOT / อื่นๆ)"
+                            stroke="#c084fc"
+                            strokeWidth={2}
+                            strokeDasharray="5 5"
+                            dot={{ r: 5, fill: '#a855f7', stroke: '#e9d5ff', strokeWidth: 1.5 }}
+                            connectNulls
+                          />
+                        )}
+
+                        {/* Dynamic CSI lines */}
+                        {csiFeatures.map((f, i) => {
+                          const colors = ['#facc15', '#22d3ee', '#f472b6', '#34d399', '#fb923c', '#a78bfa'];
+                          const key = `CSI — ${f.label || f.key}`;
+                          return (
+                            <Line
+                              key={key}
+                              type="linear"
+                              dataKey={key}
+                              stroke={colors[i % colors.length]}
+                              strokeWidth={1.5}
+                              dot={{ r: 2 }}
+                              connectNulls
+                            />
+                          );
+                        })}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              })()}
             </div>
           )
         )}

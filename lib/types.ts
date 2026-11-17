@@ -1004,7 +1004,7 @@ export interface DetectedColumnSchema {
 
 export interface DeletionAuditEntry {
   id: string;
-  action: 'delete_version' | 'archive_version' | 'delete_model' | 'RUN_DELETED';
+  action: 'delete_version' | 'archive_version' | 'delete_model' | 'RUN_DELETED' | 'reactivate_failed' | string;
   actor: string;
   timestamp: string;
   modelId: string;
@@ -1022,5 +1022,7 @@ export interface DeletionAuditEntry {
   note?: string;
   runId?: string;
   fileName?: string;
+  reason?: string;
+  errorCount?: number;
 }
 

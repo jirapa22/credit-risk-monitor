@@ -527,6 +527,8 @@ export async function recordDeletionAudit(
     note: entry.note,
     runId: entry.runId,
     fileName: entry.fileName,
+    reason: entry.reason,
+    errorCount: entry.errorCount,
   };
   const nextList = [fullEntry, ...existing].slice(0, MAX_AUDIT_LOGS);
   await store.set(REGISTRY_DELETION_AUDIT_KEY, nextList);
@@ -1133,7 +1135,7 @@ export async function validateBaselineVersion(
 export async function activateBaselineVersion(
   modelId: string,
   version: string,
-  opts: { by?: string; note?: string } = {},
+  opts: { by?: string; note?: string; rollbackStatusOnFailure?: BaselineStatus } = {},
 ): Promise<BaselineVersion> {
   if (isBuiltInBaselineVersion(modelId, version)) {
     throw new BuiltInProtectedError(
@@ -1157,6 +1159,10 @@ export async function activateBaselineVersion(
 
   const now = new Date().toISOString();
   const by = opts.by || 'user';
+
+  // Determine if activation failure should rollback to ARCHIVED
+  const lastHistory = target.statusHistory?.[target.statusHistory.length - 1];
+  const rollbackStatus = opts.rollbackStatusOnFailure || (lastHistory?.from === 'ARCHIVED' ? 'ARCHIVED' : undefined);
 
   // Archive any currently ACTIVE stored version of the same model automatically
   const autoArchivedVersions: BaselineVersion[] = [];
@@ -1197,7 +1203,52 @@ export async function activateBaselineVersion(
     return v;
   });
 
-  await saveStoredVersions(modelId, nextList);
+  const activated = nextList[idx];
+
+  try {
+    await loadReferenceProfile(activated.referenceDatasetId, activated);
+    await saveStoredVersions(modelId, nextList);
+  } catch (err: any) {
+    if (rollbackStatus === 'ARCHIVED') {
+      const rollbackVersion: BaselineVersion = {
+        ...target,
+        status: 'ARCHIVED',
+        statusHistory: [
+          ...target.statusHistory,
+          {
+            from: target.status,
+            to: 'ARCHIVED',
+            at: new Date().toISOString(),
+            by,
+            note: `Rollback to ARCHIVED after activation failure: ${err?.message || 'unknown error'}`,
+          },
+        ],
+      };
+      const rbList = stored.map((v, i) => (i === idx ? rollbackVersion : v));
+      await saveStoredVersions(modelId, rbList);
+
+      await recordDeletionAudit({
+        action: 'reactivate_failed',
+        actor: by,
+        modelId,
+        version,
+        previousStatus: target.status,
+        clearedCounts: {
+          monitoringRuns: 0,
+          sandboxRuns: 0,
+          events: 0,
+          reviews: 0,
+          total: 0,
+        },
+        referenceDatasetId: target.referenceDatasetId,
+        blobDeleted: false,
+        reason: 'ACTIVATION_FAILED',
+        errorCount: 1,
+        note: `ACTIVATION_FAILED: ${err?.message || 'unknown error'} (rolled back to ARCHIVED)`,
+      });
+    }
+    throw err;
+  }
 
   for (const prev of autoArchivedVersions) {
     await recordDeletionAudit({
@@ -1219,8 +1270,6 @@ export async function activateBaselineVersion(
     });
   }
 
-  const activated = nextList[idx];
-  await loadReferenceProfile(activated.referenceDatasetId, activated);
   return activated;
 }
 
@@ -1242,7 +1291,9 @@ export async function reactivateBaselineVersion(
     // while keeping status as ARCHIVED
     const stored = await getStoredVersions(modelId);
     const idx = stored.findIndex(v => v.version === version);
+    let targetRefId: string | undefined;
     if (idx !== -1 && stored[idx].status === 'ARCHIVED') {
+      targetRefId = stored[idx].referenceDatasetId;
       const updatedArchived: BaselineVersion = {
         ...stored[idx],
         status: 'ARCHIVED',
@@ -1253,8 +1304,29 @@ export async function reactivateBaselineVersion(
       await saveStoredVersions(modelId, nextList);
     }
 
+    const errorCount = dryRunResult.report.errors.length;
+    await recordDeletionAudit({
+      action: 'reactivate_failed',
+      actor,
+      modelId,
+      version,
+      previousStatus: 'ARCHIVED',
+      clearedCounts: {
+        monitoringRuns: 0,
+        sandboxRuns: 0,
+        events: 0,
+        reviews: 0,
+        total: 0,
+      },
+      referenceDatasetId: targetRefId,
+      blobDeleted: false,
+      reason: 'REVALIDATION_FAILED',
+      errorCount,
+      note: `REVALIDATION_FAILED: ${errorCount} errors`,
+    });
+
     throw new RegistryError(
-      `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ (${dryRunResult.report.errors.length} ข้อผิดพลาด) จึงไม่สามารถเรียกกลับมาใช้งานได้ (สถานะยังคงเป็น ARCHIVED)`,
+      `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ (${errorCount} ข้อผิดพลาด) จึงไม่สามารถเรียกกลับมาใช้งานได้ (สถานะยังคงเป็น ARCHIVED)`,
       400,
       'REVALIDATION_FAILED',
     );
@@ -1268,6 +1340,50 @@ export async function reactivateBaselineVersion(
   });
 
   if (!ok) {
+    const errorCount = report.errors.length;
+    const stored = await getStoredVersions(modelId);
+    const idx = stored.findIndex(v => v.version === version);
+    if (idx !== -1) {
+      const prevStatus = stored[idx].status;
+      const rollbackArchived: BaselineVersion = {
+        ...stored[idx],
+        status: 'ARCHIVED',
+        validationReport: report,
+        statusHistory: [
+          ...stored[idx].statusHistory,
+          {
+            from: prevStatus,
+            to: 'ARCHIVED',
+            at: new Date().toISOString(),
+            by: actor,
+            note: `Re-validation failed (${errorCount} errors), status reverted to ARCHIVED`,
+          },
+        ],
+      };
+      const nextList = [...stored];
+      nextList[idx] = rollbackArchived;
+      await saveStoredVersions(modelId, nextList);
+    }
+
+    await recordDeletionAudit({
+      action: 'reactivate_failed',
+      actor,
+      modelId,
+      version,
+      previousStatus: 'ARCHIVED',
+      clearedCounts: {
+        monitoringRuns: 0,
+        sandboxRuns: 0,
+        events: 0,
+        reviews: 0,
+        total: 0,
+      },
+      blobDeleted: false,
+      reason: 'REVALIDATION_FAILED',
+      errorCount,
+      note: `REVALIDATION_FAILED: ${errorCount} errors`,
+    });
+
     throw new RegistryError(
       `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ จึงไม่สามารถเรียกกลับมาใช้งานได้ (สถานะยังคงเป็น ARCHIVED)`,
       400,
@@ -1277,10 +1393,61 @@ export async function reactivateBaselineVersion(
 
   // 3. Activate
   const actNote = opts.note || `Re-activated via ${actor}`;
-  const activated = await activateBaselineVersion(modelId, version, {
-    by: actor,
-    note: actNote,
-  });
+  let activated: BaselineVersion;
+  try {
+    activated = await activateBaselineVersion(modelId, version, {
+      by: actor,
+      note: actNote,
+      rollbackStatusOnFailure: 'ARCHIVED',
+    });
+  } catch (err: any) {
+    // Defensively ensure rollback if activateBaselineVersion did not already rollback
+    const stored = await getStoredVersions(modelId);
+    const idx = stored.findIndex(v => v.version === version);
+    if (idx !== -1 && stored[idx].status !== 'ARCHIVED') {
+      const prevStatus = stored[idx].status;
+      const now = new Date().toISOString();
+      const rollbackVersion: BaselineVersion = {
+        ...stored[idx],
+        status: 'ARCHIVED',
+        statusHistory: [
+          ...stored[idx].statusHistory,
+          {
+            from: prevStatus,
+            to: 'ARCHIVED',
+            at: now,
+            by: actor,
+            note: `Rollback to ARCHIVED after activation failure: ${err?.message || 'unknown error'}`,
+          },
+        ],
+      };
+      const nextList = [...stored];
+      nextList[idx] = rollbackVersion;
+      await saveStoredVersions(modelId, nextList);
+
+      await recordDeletionAudit({
+        action: 'reactivate_failed',
+        actor,
+        modelId,
+        version,
+        previousStatus: prevStatus,
+        clearedCounts: {
+          monitoringRuns: 0,
+          sandboxRuns: 0,
+          events: 0,
+          reviews: 0,
+          total: 0,
+        },
+        referenceDatasetId: stored[idx].referenceDatasetId,
+        blobDeleted: false,
+        reason: 'ACTIVATION_FAILED',
+        errorCount: 1,
+        note: `ACTIVATION_FAILED: ${err?.message || 'unknown error'} (rolled back to ARCHIVED)`,
+      });
+    }
+
+    throw err;
+  }
 
   return { ok: true, baseline: activated, report };
 }

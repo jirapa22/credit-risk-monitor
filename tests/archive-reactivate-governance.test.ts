@@ -189,6 +189,16 @@ describe('Archive, Re-activate Governance and Monitoring Integration Tests', () 
     expect(v100.status).not.toBe('VALIDATED');
     expect(v100.validationReport?.ok).toBe(false);
     expect(v100.validationReport?.errors[0].code).toBe('REFERENCE_NOT_FOUND');
+
+    // Verify reactivate_failed audit log entry
+    const auditLogs = await listDeletionAuditLogs();
+    const failEntry = auditLogs.find(a => a.modelId === modelId && a.version === '1.0.0' && a.action === 'reactivate_failed');
+    expect(failEntry).toBeDefined();
+    expect(failEntry?.actor).toBe('registry-panel');
+    expect(failEntry?.reason).toBe('REVALIDATION_FAILED');
+    expect(failEntry?.errorCount).toBeGreaterThan(0);
+    expect(failEntry?.previousStatus).toBe('ARCHIVED');
+    expect(failEntry?.timestamp).toBeDefined();
   });
 
   it('re-activate auto-archives any other currently ACTIVE version and records statusHistory and audit', async () => {
@@ -260,5 +270,66 @@ describe('Archive, Re-activate Governance and Monitoring Integration Tests', () 
     const data = await uploadRes.json();
     expect(data.code).toBe('NO_ACTIVE_VERSION');
     expect(data.error).toContain('ยังไม่มีเวอร์ชันที่เปิดใช้งาน (ACTIVE)');
+  });
+
+  it('if activate fails after validation succeeds during re-activation, rolls back to ARCHIVED and records statusHistory + audit', async () => {
+    const modelId = 'test_activate_failure_rollback';
+    await createAndActivateModel(modelId, '1.0.0');
+
+    // Archive 1.0.0
+    await archiveVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web-user' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    // Verify it is ARCHIVED
+    const versionsBefore = await listBaselineVersions(modelId);
+    expect(versionsBefore.find(v => v.version === '1.0.0')?.status).toBe('ARCHIVED');
+
+    // Hook getBlobStore().get to succeed for validation calls (calls 1-3)
+    // but fail on activateBaselineVersion (call 4)
+    const blobStore = getBlobStore();
+    const originalGet = blobStore.get.bind(blobStore);
+    let blobGetCalls = 0;
+    blobStore.get = async (key: string) => {
+      blobGetCalls++;
+      if (blobGetCalls >= 4) {
+        throw new Error('Simulated storage failure during activateBaselineVersion');
+      }
+      return originalGet(key);
+    };
+
+    // Attempt to re-activate
+    const reactRes = await reactivateVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/reactivate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'admin-user', note: 'Reactivation test' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    expect(reactRes.status).toBe(500);
+
+    // Verify status was rolled back to ARCHIVED and is NOT left as VALIDATED or ACTIVE
+    const versionsAfter = await listBaselineVersions(modelId);
+    const v100 = versionsAfter.find(v => v.version === '1.0.0')!;
+    expect(v100.status).toBe('ARCHIVED');
+    expect(v100.status).not.toBe('VALIDATED');
+    expect(v100.status).not.toBe('ACTIVE');
+
+    // Verify statusHistory records the rollback from VALIDATED to ARCHIVED
+    const lastHistory = v100.statusHistory[v100.statusHistory.length - 1];
+    expect(lastHistory.from).toBe('VALIDATED');
+    expect(lastHistory.to).toBe('ARCHIVED');
+    expect(lastHistory.by).toBe('admin-user');
+    expect(lastHistory.note).toContain('Rollback to ARCHIVED after activation failure');
+    expect(lastHistory.note).toContain('Simulated storage failure');
+
+    // Verify audit log has reactivate_failed with previousStatus VALIDATED
+    const auditLogs = await listDeletionAuditLogs();
+    const auditEntry = auditLogs.find(a => a.modelId === modelId && a.version === '1.0.0' && a.action === 'reactivate_failed' && a.previousStatus === 'VALIDATED');
+    expect(auditEntry).toBeDefined();
+    expect(auditEntry?.actor).toBe('admin-user');
+    expect(auditEntry?.reason).toBe('ACTIVATION_FAILED');
+    expect(auditEntry?.note).toContain('ACTIVATION_FAILED');
   });
 });

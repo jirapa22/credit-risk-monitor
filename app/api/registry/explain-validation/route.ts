@@ -17,6 +17,7 @@ import {
 import type { BaselineValidationReport } from '../../../../lib/types';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 function generateDeterministicExplanation(report: BaselineValidationReport): string {
   const c = report.computed;

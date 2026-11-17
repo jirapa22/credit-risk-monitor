@@ -138,11 +138,39 @@ export default function BaselineOnboardingWizard({
 
   // Step 5: Validation state
   const [isValidating, setIsValidating] = useState<boolean>(false);
+  const [validationElapsed, setValidationElapsed] = useState<number>(0);
   const [validationReport, setValidationReport] = useState<BaselineValidationReport | null>(null);
   const [validationError, setValidationError] = useState<string>('');
   const [isActivating, setIsActivating] = useState<boolean>(false);
+  const [activationElapsed, setActivationElapsed] = useState<number>(0);
   const [openMonitoringImmediately, setOpenMonitoringImmediately] = useState<boolean>(true);
   const [upstreamChangeWarning, setUpstreamChangeWarning] = useState<string>('');
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (isValidating) {
+      setValidationElapsed(0);
+      interval = setInterval(() => {
+        setValidationElapsed(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isValidating]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (isActivating) {
+      setActivationElapsed(0);
+      interval = setInterval(() => {
+        setActivationElapsed(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isActivating]);
 
   // ── Step 1: File selection and initial parsing ──
   const handleFileChange = async (selected: File) => {
@@ -1601,9 +1629,10 @@ export default function BaselineOnboardingWizard({
                     setStep(5);
                     handleValidate();
                   }}
-                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition"
+                  disabled={isValidating}
+                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition"
                 >
-                  ถัดไป (ตรวจสอบ & เปิดใช้งาน) →
+                  {isValidating ? `กำลังตรวจสอบ... (${validationElapsed}s)` : 'ถัดไป (ตรวจสอบ & เปิดใช้งาน) →'}
                 </button>
               </div>
             </div>
@@ -1623,12 +1652,26 @@ export default function BaselineOnboardingWizard({
                 </div>
                 <button
                   onClick={handleValidate}
-                  disabled={isValidating}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition"
+                  disabled={isValidating || isActivating}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition"
                 >
-                  {isValidating ? 'กำลังตรวจ...' : '🔍 ตรวจสอบซ้ำ (Re-validate)'}
+                  {isValidating ? `⏳ กำลังตรวจสอบ... (${validationElapsed}s)` : '🔍 ตรวจสอบซ้ำ (Re-validate)'}
                 </button>
               </div>
+
+              {isValidating && (
+                <div className="p-3.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 text-xs flex items-center justify-between animate-pulse">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">⏳</span>
+                    <span className="font-semibold">
+                      กำลังตรวจสอบความถูกต้องของ Baseline (Validation)...
+                    </span>
+                  </div>
+                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-indigo-950/60 border border-indigo-800/60">
+                    {Math.floor(validationElapsed / 60)}:{String(validationElapsed % 60).padStart(2, '0')} นาที
+                  </span>
+                </div>
+              )}
 
               {validationError && (
                 <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
@@ -1645,16 +1688,11 @@ export default function BaselineOnboardingWizard({
                   <button
                     type="button"
                     onClick={handleValidate}
-                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition shadow-lg inline-flex items-center gap-2"
+                    disabled={isValidating || isActivating}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg inline-flex items-center gap-2"
                   >
                     🔍 เริ่มการตรวจสอบ Baseline
                   </button>
-                </div>
-              )}
-
-              {isValidating && !validationReport && (
-                <div className="py-12 text-center text-slate-400 text-xs animate-pulse">
-                  กำลังคำนวณสถิติและทดสอบ Baseline กับ Reference...
                 </div>
               )}
 
@@ -1819,7 +1857,8 @@ export default function BaselineOnboardingWizard({
               <div className="flex justify-between pt-2">
                 <button
                   onClick={() => setStep(4)}
-                  className="px-4 py-2 border border-slate-700 hover:bg-slate-800 text-slate-300 font-semibold rounded-xl text-xs transition"
+                  disabled={isValidating || isActivating}
+                  className="px-4 py-2 border border-slate-700 hover:bg-slate-800 disabled:opacity-50 text-slate-300 font-semibold rounded-xl text-xs transition"
                 >
                   ← ย้อนกลับ
                 </button>
@@ -1830,16 +1869,17 @@ export default function BaselineOnboardingWizard({
                       const cleanVersion = version.trim() || '1.0.0';
                       onSuccess(cleanModelId, cleanVersion, false);
                     }}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold rounded-xl text-xs transition"
+                    disabled={isValidating || isActivating}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 text-slate-300 font-bold rounded-xl text-xs transition"
                   >
                     💾 บันทึกเป็น DRAFT
                   </button>
                   <button
                     onClick={handleActivate}
-                    disabled={!validationReport?.ok || isActivating}
+                    disabled={!validationReport?.ok || isActivating || isValidating}
                     className="px-6 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-500/20 transition disabled:opacity-40"
                   >
-                    {isActivating ? 'กำลังเปิดใช้งาน...' : '🚀 บันทึกและเปิดใช้งาน (Activate)'}
+                    {isActivating ? `กำลังเปิดใช้งาน... (${activationElapsed}s)` : '🚀 บันทึกและเปิดใช้งาน (Activate)'}
                   </button>
                 </div>
               </div>

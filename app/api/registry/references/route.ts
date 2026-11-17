@@ -18,6 +18,7 @@ import {
 import type { ReferenceDatasetMeta } from '../../../../lib/types';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const MAX_CSV_BYTES = 4 * 1024 * 1024; // 4 MB
 const isBlank = (v: unknown) => v === null || v === undefined || String(v).trim() === '';

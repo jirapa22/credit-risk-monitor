@@ -83,6 +83,20 @@ export default function BaselineRegistryPanel({
   });
 
   const [isReactivating, setIsReactivating] = useState<string | null>(null);
+  const [reactivateElapsed, setReactivateElapsed] = useState<number>(0);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (isReactivating !== null) {
+      setReactivateElapsed(0);
+      interval = setInterval(() => {
+        setReactivateElapsed(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isReactivating]);
 
   // Delete version modal state
   const [deleteModelIfEmpty, setDeleteModelIfEmpty] = useState<boolean>(true);
@@ -825,11 +839,13 @@ export default function BaselineRegistryPanel({
                                   {v.status === 'ARCHIVED' && (
                                     <button
                                       onClick={() => handleReactivate(v)}
-                                      disabled={isReactivating === v.version}
+                                      disabled={isReactivating !== null}
                                       title="ตรวจสอบและเรียกกลับมาเปิดใช้งาน (ACTIVE)"
-                                      className="px-2 py-0.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 rounded text-[10px] font-semibold transition flex items-center gap-1"
+                                      className="px-2 py-0.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 rounded text-[10px] font-semibold transition flex items-center gap-1 disabled:opacity-50"
                                     >
-                                      {isReactivating === v.version ? 'กำลังเปิดใช้งาน...' : '⚡ เรียกกลับมาใช้งาน (Re-activate)'}
+                                      {isReactivating === v.version
+                                        ? `⏳ กำลังตรวจสอบและเปิดใช้งาน... (${reactivateElapsed}s)`
+                                        : '⚡ เรียกกลับมาใช้งาน (Re-activate)'}
                                     </button>
                                   )}
                                   <button

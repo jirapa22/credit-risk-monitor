@@ -287,14 +287,14 @@ describe('Archive, Re-activate Governance and Monitoring Integration Tests', () 
     const versionsBefore = await listBaselineVersions(modelId);
     expect(versionsBefore.find(v => v.version === '1.0.0')?.status).toBe('ARCHIVED');
 
-    // Hook getBlobStore().get to succeed for validation calls (calls 1-3)
-    // but fail on activateBaselineVersion (call 4)
+    // Hook getBlobStore().get to succeed for checking reference blob existence (call 1)
+    // but fail on activateBaselineVersion (call 2)
     const blobStore = getBlobStore();
     const originalGet = blobStore.get.bind(blobStore);
     let blobGetCalls = 0;
     blobStore.get = async (key: string) => {
       blobGetCalls++;
-      if (blobGetCalls >= 4) {
+      if (blobGetCalls >= 2) {
         throw new Error('Simulated storage failure during activateBaselineVersion');
       }
       return originalGet(key);

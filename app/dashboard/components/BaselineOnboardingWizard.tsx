@@ -1841,6 +1841,41 @@ export default function BaselineOnboardingWizard({
                     </div>
                   )}
 
+                  {/* Performance Timings (collapsible) */}
+                  {validationReport.timings && (
+                    <details className="group rounded-xl bg-slate-950/40 border border-slate-800 text-xs p-3">
+                      <summary className="font-bold text-slate-300 cursor-pointer flex items-center justify-between text-[11px] select-none">
+                        <span className="flex items-center gap-1.5">
+                          ⏱️ สถิติเวลาประมวลผล (Performance Timings)
+                          <span className="font-mono text-[10px] text-slate-400 font-normal">
+                            (รวม {validationReport.timings.totalMs} ms)
+                          </span>
+                        </span>
+                        <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+                      </summary>
+                      <div className="mt-2.5 pt-2 border-t border-slate-800/60 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                        <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block font-sans">อ่าน Blob</span>
+                          <span className="text-slate-200">{validationReport.timings.blobReadMs} ms</span>
+                          <span className="text-[9px] text-slate-500 block font-sans">({validationReport.timings.blobReadCount} ครั้ง)</span>
+                        </div>
+                        <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block font-sans">ตรวจ Baseline</span>
+                          <span className="text-slate-200">{validationReport.timings.validateMs} ms</span>
+                        </div>
+                        <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block font-sans">Calibrate เกณฑ์</span>
+                          <span className="text-slate-200">{validationReport.timings.calibrateMs} ms</span>
+                        </div>
+                        <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block font-sans">บันทึก Store</span>
+                          <span className="text-slate-200">{validationReport.timings.storeWriteMs} ms</span>
+                          <span className="text-[9px] text-slate-500 block font-sans">(อ่าน {validationReport.timings.storeReadCount} ครั้ง)</span>
+                        </div>
+                      </div>
+                    </details>
+                  )}
+
                   {/* Option to monitor immediately */}
                   <label className="flex items-center gap-2 text-xs text-slate-300 pt-2 cursor-pointer">
                     <input

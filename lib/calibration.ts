@@ -46,10 +46,21 @@ function calculatePercentilePair(
   values: number[],
   warnQuantile = 0.95,
   critQuantile = 0.99,
+  metricName = 'metric',
+  fallbackCollector?: string[],
 ): CalibratedThresholdPair {
   const sorted = [...values].filter(v => Number.isFinite(v)).sort((a, b) => a - b);
   if (sorted.length === 0) {
-    return { warning: 0.10, critical: 0.25 };
+    const reason = `ไม่มีข้อมูลจากการสุ่มตัวอย่างสำหรับ ${metricName} (empty bootstrap distribution)`;
+    if (fallbackCollector && !fallbackCollector.some(msg => msg.includes(metricName))) {
+      fallbackCollector.push(`ใช้เกณฑ์ fixed แทน calibrated เพราะ ${reason}`);
+    }
+    return {
+      warning: 0.10,
+      critical: 0.25,
+      fallbackReason: reason,
+      fallbackToFixed: true,
+    };
   }
   const w = linearQuantile(sorted, warnQuantile);
   const c = linearQuantile(sorted, critQuantile);
@@ -73,6 +84,7 @@ export function calibrateThresholds(
   const sizes = options?.sizes ?? DEFAULT_CALIBRATION_SIZES;
   const resamples = options?.resamples ?? DEFAULT_CALIBRATION_RESAMPLES;
   const baseSeed = options?.seed ?? DEFAULT_CALIBRATION_SEED;
+  const fallbackWarnings: string[] = [];
 
   const N = reference.meta.rowCount;
   if (!N || N <= 0) {
@@ -360,38 +372,38 @@ export function calibrateThresholds(
     };
 
     if (hasScore && psiList.length > 0) {
-      metricThresholds.psi = calculatePercentilePair(psiList, familyWarnQuantile, familyCritQuantile);
-      metricThresholdsUnadjusted.psi = calculatePercentilePair(psiList, 0.95, 0.99);
+      metricThresholds.psi = calculatePercentilePair(psiList, familyWarnQuantile, familyCritQuantile, 'psi', fallbackWarnings);
+      metricThresholdsUnadjusted.psi = calculatePercentilePair(psiList, 0.95, 0.99, 'psi', fallbackWarnings);
     }
 
     for (const [key, vals] of Object.entries(csiLists)) {
       if (vals.length > 0) {
-        metricThresholds.csi[key] = calculatePercentilePair(vals, familyWarnQuantile, familyCritQuantile);
-        metricThresholdsUnadjusted.csi[key] = calculatePercentilePair(vals, 0.95, 0.99);
+        metricThresholds.csi[key] = calculatePercentilePair(vals, familyWarnQuantile, familyCritQuantile, `csi.${key}`, fallbackWarnings);
+        metricThresholdsUnadjusted.csi[key] = calculatePercentilePair(vals, 0.95, 0.99, `csi.${key}`, fallbackWarnings);
       }
     }
     for (const [key, vals] of Object.entries(ksLists)) {
       if (vals.length > 0) {
-        metricThresholds.ks[key] = calculatePercentilePair(vals, familyWarnQuantile, familyCritQuantile);
-        metricThresholdsUnadjusted.ks[key] = calculatePercentilePair(vals, 0.95, 0.99);
+        metricThresholds.ks[key] = calculatePercentilePair(vals, familyWarnQuantile, familyCritQuantile, `ks.${key}`, fallbackWarnings);
+        metricThresholdsUnadjusted.ks[key] = calculatePercentilePair(vals, 0.95, 0.99, `ks.${key}`, fallbackWarnings);
       }
     }
     for (const [key, vals] of Object.entries(wassLists)) {
       if (vals.length > 0) {
-        metricThresholds.wasserstein[key] = calculatePercentilePair(vals, familyWarnQuantile, familyCritQuantile);
-        metricThresholdsUnadjusted.wasserstein[key] = calculatePercentilePair(vals, 0.95, 0.99);
+        metricThresholds.wasserstein[key] = calculatePercentilePair(vals, familyWarnQuantile, familyCritQuantile, `wasserstein.${key}`, fallbackWarnings);
+        metricThresholdsUnadjusted.wasserstein[key] = calculatePercentilePair(vals, 0.95, 0.99, `wasserstein.${key}`, fallbackWarnings);
       }
     }
     for (const [key, vals] of Object.entries(jsLists)) {
       if (vals.length > 0) {
-        metricThresholds.js[key] = calculatePercentilePair(vals, familyWarnQuantile, familyCritQuantile);
-        metricThresholdsUnadjusted.js[key] = calculatePercentilePair(vals, 0.95, 0.99);
+        metricThresholds.js[key] = calculatePercentilePair(vals, familyWarnQuantile, familyCritQuantile, `js.${key}`, fallbackWarnings);
+        metricThresholdsUnadjusted.js[key] = calculatePercentilePair(vals, 0.95, 0.99, `js.${key}`, fallbackWarnings);
       }
     }
 
     if (hasLabels) {
       if (badRateRelChangeList.length > 0) {
-        const pair = calculatePercentilePair(badRateRelChangeList, labelWarnQuantile, labelCritQuantile);
+        const pair = calculatePercentilePair(badRateRelChangeList, labelWarnQuantile, labelCritQuantile, 'label.badRateRelChange', fallbackWarnings);
         metricThresholds.label = { badRateRelChange: pair };
         metricThresholdsUnadjusted.label = { badRateRelChange: pair };
       }
@@ -401,14 +413,14 @@ export function calibrateThresholds(
       const nullP99Gini = sortedGini.length > 0 ? linearQuantile(sortedGini, 0.99) : 0.25;
 
       metricThresholds.concept = {
-        giniDrop: calculatePercentilePair(giniDropList, conceptWarnQuantile, conceptCritQuantile),
-        worstBinRatio: calculatePercentilePair(worstBinRatioList, conceptWarnQuantile, conceptCritQuantile),
+        giniDrop: calculatePercentilePair(giniDropList, conceptWarnQuantile, conceptCritQuantile, 'concept.giniDrop', fallbackWarnings),
+        worstBinRatio: calculatePercentilePair(worstBinRatioList, conceptWarnQuantile, conceptCritQuantile, 'concept.worstBinRatio', fallbackWarnings),
         nullP95GiniDrop: Number(nullP95Gini.toFixed(4)),
         nullP99GiniDrop: Number(nullP99Gini.toFixed(4)),
       };
       metricThresholdsUnadjusted.concept = {
-        giniDrop: calculatePercentilePair(giniDropList, 0.95, 0.99),
-        worstBinRatio: calculatePercentilePair(worstBinRatioList, 0.95, 0.99),
+        giniDrop: calculatePercentilePair(giniDropList, 0.95, 0.99, 'concept.giniDrop', fallbackWarnings),
+        worstBinRatio: calculatePercentilePair(worstBinRatioList, 0.95, 0.99, 'concept.worstBinRatio', fallbackWarnings),
         nullP95GiniDrop: Number(nullP95Gini.toFixed(4)),
         nullP99GiniDrop: Number(nullP99Gini.toFixed(4)),
       };
@@ -426,6 +438,7 @@ export function calibrateThresholds(
     k,
     bySize,
     bySizeUnadjusted,
+    fallbackWarnings: fallbackWarnings.length > 0 ? fallbackWarnings : undefined,
   };
 }
 

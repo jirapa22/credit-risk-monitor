@@ -14,6 +14,7 @@ import type {
   BaselineStatus,
   BaselineValidationReport,
   BaselineVersion,
+  CalibratedThresholds,
   DeletionAuditEntry,
   DevelopmentStats,
   ExperimentRun,
@@ -28,6 +29,7 @@ import type {
   TriggerEvent,
   TriggerEventStatus,
   TriggerReviewDecision,
+  ValidationTimings,
 } from '../types';
 import { getStore } from './store';
 import {
@@ -49,7 +51,7 @@ import {
   type ReferenceProfile,
 } from '../reference';
 import { DEFAULT_DATE_COLUMN, DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from '../defaults';
-import { validateBaseline } from '../baselineValidation';
+import { validateBaseline, computeBaselineConfigHash } from '../baselineValidation';
 import { calibrateThresholds, DEFAULT_CALIBRATION_RESAMPLES, type CalibrateOptions } from '../calibration';
 import { computeDistributionStats } from '../driftReport';
 import { calculateAUC, calculateGini, calculateKS, type DataPoint } from '../stats';
@@ -993,6 +995,20 @@ export async function createDraftBaselineVersion(
   return draft;
 }
 
+export async function computeCalibratedThresholdsForVersion(
+  target: BaselineVersion,
+  opts?: { calibrationResamples?: number; calibrationOptions?: CalibrateOptions },
+): Promise<CalibratedThresholds | undefined> {
+  try {
+    const profile = await loadReferenceProfile(target.referenceDatasetId, target);
+    const resamples = opts?.calibrationResamples ?? (process.env.VITEST ? 200 : DEFAULT_CALIBRATION_RESAMPLES);
+    const calOpts: CalibrateOptions = opts?.calibrationOptions ?? { resamples };
+    return calibrateThresholds(profile, target, calOpts);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function validateBaselineVersion(
   modelId: string,
   version: string,
@@ -1004,6 +1020,14 @@ export async function validateBaselineVersion(
     calibrationOptions?: CalibrateOptions;
   } = {},
 ): Promise<{ ok: boolean; version: BaselineVersion; report: BaselineValidationReport }> {
+  const t0 = performance.now();
+  let storeReadCount = 1;
+  let blobReadCount = 0;
+  let blobReadMs = 0;
+  let validateMs = 0;
+  let calibrateMs = 0;
+  let storeWriteMs = 0;
+
   if (isBuiltInBaselineVersion(modelId, version) && !opts.dryRun) {
     throw new BuiltInProtectedError(
       `เวอร์ชัน Built-in "${modelId}@${version}" ถูกล็อกไว้แล้ว ไม่สามารถเปลี่ยนสถานะได้`,
@@ -1016,13 +1040,26 @@ export async function validateBaselineVersion(
     throw new RegistryError(`ไม่พบเวอร์ชัน "${version}" ของโมเดล "${modelId}"`, 404);
   }
 
+  const tBlobStart = performance.now();
   const refBlob = await loadReferenceDatasetBlob(target.referenceDatasetId);
+  blobReadCount++;
+  blobReadMs = Math.round(performance.now() - tBlobStart);
+
   if (!refBlob) {
     const missingRefReport: BaselineValidationReport = {
       ok: false,
       validatedAt: new Date().toISOString(),
       referenceId: target.referenceDatasetId,
       sha256: '',
+      timings: {
+        blobReadMs,
+        validateMs: 0,
+        calibrateMs: 0,
+        storeWriteMs: 0,
+        storeReadCount,
+        blobReadCount,
+        totalMs: Math.round(performance.now() - t0),
+      },
       errors: [
         {
           code: 'REFERENCE_NOT_FOUND',
@@ -1068,11 +1105,24 @@ export async function validateBaselineVersion(
     }
   }
 
+  const tValStart = performance.now();
   const report = validateBaseline(target, refBlob);
+  validateMs = Math.round(performance.now() - tValStart);
+
   if (opts.dryRun) {
+    report.timings = {
+      blobReadMs,
+      validateMs,
+      calibrateMs: 0,
+      storeWriteMs: 0,
+      storeReadCount,
+      blobReadCount,
+      totalMs: Math.round(performance.now() - t0),
+    };
     return { ok: report.ok, version: { ...target, validationReport: report }, report };
   }
 
+  storeReadCount++;
   const stored = await getStoredVersions(modelId);
   const idx = stored.findIndex(v => v.version === version);
   if (idx === -1) {
@@ -1092,14 +1142,13 @@ export async function validateBaselineVersion(
 
   let calibratedThresholds = current.calibratedThresholds;
   if (report.ok) {
-    try {
-      const profile = await loadReferenceProfile(target.referenceDatasetId, target);
-      const resamples = opts.calibrationResamples ?? (process.env.VITEST ? 200 : DEFAULT_CALIBRATION_RESAMPLES);
-      const calOpts: CalibrateOptions = opts.calibrationOptions ?? { resamples };
-      calibratedThresholds = calibrateThresholds(profile, target, calOpts);
-    } catch {
-      // non-blocking
+    const tCalStart = performance.now();
+    blobReadCount++;
+    const calibrated = await computeCalibratedThresholdsForVersion(target, opts);
+    if (calibrated) {
+      calibratedThresholds = calibrated;
     }
+    calibrateMs = Math.round(performance.now() - tCalStart);
   }
 
   const updated: BaselineVersion = {
@@ -1128,7 +1177,21 @@ export async function validateBaselineVersion(
 
   const nextList = [...stored];
   nextList[idx] = updated;
+  const tWriteStart = performance.now();
   await saveStoredVersions(modelId, nextList);
+  storeWriteMs = Math.round(performance.now() - tWriteStart);
+
+  report.timings = {
+    blobReadMs,
+    validateMs,
+    calibrateMs,
+    storeWriteMs,
+    storeReadCount,
+    blobReadCount,
+    totalMs: Math.round(performance.now() - t0),
+  };
+  updated.validationReport = report;
+
   return { ok: report.ok, version: updated, report };
 }
 
@@ -1278,6 +1341,14 @@ export async function reactivateBaselineVersion(
   version: string,
   opts: { by?: string; note?: string } = {},
 ): Promise<{ ok: boolean; baseline: BaselineVersion; report: BaselineValidationReport }> {
+  const t0 = performance.now();
+  let storeReadCount = 1;
+  let blobReadCount = 0;
+  let blobReadMs = 0;
+  let validateMs = 0;
+  let calibrateMs = 0;
+  let storeWriteMs = 0;
+
   const actor = opts.by || 'registry-panel';
 
   const stored = await getStoredVersions(modelId);
@@ -1287,7 +1358,25 @@ export async function reactivateBaselineVersion(
   }
 
   const target = stored[idx];
+
+  const isStuckFromArchived =
+    target.status === 'VALIDATED' &&
+    target.statusHistory?.some(h => h.from === 'ARCHIVED' && h.to === 'VALIDATED');
+
+  if (target.status !== 'ARCHIVED' && !isStuckFromArchived) {
+    if (target.status === 'ACTIVE') {
+      throw new RegistryError(`เวอร์ชัน "${version}" อยู่ในสถานะ ACTIVE อยู่แล้ว`, 400);
+    }
+    throw new RegistryError(
+      `สามารถเรียกกลับมาใช้งาน (Re-activate) ได้เฉพาะเวอร์ชันที่มีสถานะ ARCHIVED หรือค้างระหว่างเปิดใช้งานเท่านั้น`,
+      400,
+    );
+  }
+
+  const tBlobStart = performance.now();
   const refBlob = await loadReferenceDatasetBlob(target.referenceDatasetId);
+  blobReadCount++;
+  blobReadMs = Math.round(performance.now() - tBlobStart);
 
   // If reference blob not found, cannot re-activate
   if (!refBlob) {
@@ -1297,6 +1386,15 @@ export async function reactivateBaselineVersion(
       validatedAt: new Date().toISOString(),
       referenceId: target.referenceDatasetId,
       sha256: '',
+      timings: {
+        blobReadMs,
+        validateMs: 0,
+        calibrateMs: 0,
+        storeWriteMs: 0,
+        storeReadCount,
+        blobReadCount,
+        totalMs: Math.round(performance.now() - t0),
+      },
       errors: [
         {
           code: 'REFERENCE_NOT_FOUND',
@@ -1329,7 +1427,9 @@ export async function reactivateBaselineVersion(
       };
       const nextList = [...stored];
       nextList[idx] = updatedArchived;
+      const tWriteStart = performance.now();
       await saveStoredVersions(modelId, nextList);
+      storeWriteMs = Math.round(performance.now() - tWriteStart);
     }
 
     await recordDeletionAudit({
@@ -1337,7 +1437,7 @@ export async function reactivateBaselineVersion(
       actor,
       modelId,
       version,
-      previousStatus: 'ARCHIVED',
+      previousStatus: target.status,
       clearedCounts: {
         monitoringRuns: 0,
         sandboxRuns: 0,
@@ -1353,27 +1453,43 @@ export async function reactivateBaselineVersion(
     });
 
     throw new RegistryError(
-      `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ (${errorCount} ข้อผิดพลาด) จึงไม่สามารถเรียกกลับมาใช้งานได้ (สถานะยังคงเป็น ARCHIVED)`,
+      `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ (${errorCount} ข้อผิดพลาด) จึงไม่สามารถเรียกกลับมาใช้งานได้ (สถานะยังคงเป็น ${target.status})`,
       400,
       'REVALIDATION_FAILED',
     );
   }
 
-  // Fast path: Reuse latest validation report if sha256 of reference blob and config haven't changed!
+  // Fast path: Reuse latest validation report if sha256 of reference blob AND configHash haven't changed!
   let report: BaselineValidationReport;
+  let calibratedThresholds = target.calibratedThresholds;
+  const currentConfigHash = computeBaselineConfigHash(target);
   const canReuseReport =
     target.validationReport?.ok === true &&
     Boolean(target.validationReport.sha256) &&
-    refBlob.meta.sha256 === target.validationReport.sha256;
+    refBlob.meta.sha256 === target.validationReport.sha256 &&
+    Boolean(target.validationReport.configHash) &&
+    target.validationReport.configHash === currentConfigHash;
 
   if (canReuseReport) {
-    report = target.validationReport!;
+    report = { ...target.validationReport! };
   } else {
     // Single-pass validation (no redundant dry-run + full run)
+    const tValStart = performance.now();
     report = validateBaseline(target, refBlob);
+    validateMs = Math.round(performance.now() - tValStart);
 
     if (!report.ok) {
       const errorCount = report.errors.length;
+      report.timings = {
+        blobReadMs,
+        validateMs,
+        calibrateMs: 0,
+        storeWriteMs: 0,
+        storeReadCount,
+        blobReadCount,
+        totalMs: Math.round(performance.now() - t0),
+      };
+
       if (target.status === 'ARCHIVED') {
         const updatedArchived: BaselineVersion = {
           ...target,
@@ -1382,7 +1498,9 @@ export async function reactivateBaselineVersion(
         };
         const nextList = [...stored];
         nextList[idx] = updatedArchived;
+        const tWriteStart = performance.now();
         await saveStoredVersions(modelId, nextList);
+        storeWriteMs = Math.round(performance.now() - tWriteStart);
       }
 
       await recordDeletionAudit({
@@ -1390,7 +1508,7 @@ export async function reactivateBaselineVersion(
         actor,
         modelId,
         version,
-        previousStatus: 'ARCHIVED',
+        previousStatus: target.status,
         clearedCounts: {
           monitoringRuns: 0,
           sandboxRuns: 0,
@@ -1406,10 +1524,20 @@ export async function reactivateBaselineVersion(
       });
 
       throw new RegistryError(
-        `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ (${errorCount} ข้อผิดพลาด) จึงไม่สามารถเรียกกลับมาใช้งานได้ (สถานะยังคงเป็น ARCHIVED)`,
+        `ข้อมูล Baseline ไม่ผ่านการตรวจสอบ (${errorCount} ข้อผิดพลาด) จึงไม่สามารถเรียกกลับมาใช้งานได้ (สถานะยังคงเป็น ${target.status})`,
         400,
         'REVALIDATION_FAILED',
       );
+    }
+
+    if (target.driftConfig?.thresholdMode === 'calibrated') {
+      const tCalStart = performance.now();
+      blobReadCount++;
+      const calibrated = await computeCalibratedThresholdsForVersion(target);
+      if (calibrated) {
+        calibratedThresholds = calibrated;
+      }
+      calibrateMs = Math.round(performance.now() - tCalStart);
     }
   }
 
@@ -1420,6 +1548,7 @@ export async function reactivateBaselineVersion(
     ...target,
     status: 'VALIDATED',
     validationReport: report,
+    calibratedThresholds,
     statusHistory: [
       ...target.statusHistory,
       {
@@ -1433,12 +1562,16 @@ export async function reactivateBaselineVersion(
   };
   const listWithValidated = [...stored];
   listWithValidated[idx] = validatedVersion;
+  const tWriteStart = performance.now();
   await saveStoredVersions(modelId, listWithValidated);
+  storeWriteMs += Math.round(performance.now() - tWriteStart);
 
   // Activate with rollback protection
   const actNote = opts.note || `Re-activated via ${actor}`;
   let activated: BaselineVersion;
   try {
+    storeReadCount++;
+    blobReadCount++;
     activated = await activateBaselineVersion(modelId, version, {
       by: actor,
       note: actNote,
@@ -1446,6 +1579,7 @@ export async function reactivateBaselineVersion(
     });
   } catch (err: any) {
     const curStored = await getStoredVersions(modelId);
+    storeReadCount++;
     const curIdx = curStored.findIndex(v => v.version === version);
     if (curIdx !== -1 && curStored[curIdx].status !== 'ARCHIVED') {
       const prevStatus = curStored[curIdx].status;
@@ -1490,6 +1624,18 @@ export async function reactivateBaselineVersion(
 
     throw err;
   }
+
+  const totalMs = Math.round(performance.now() - t0);
+  report.timings = {
+    blobReadMs,
+    validateMs,
+    calibrateMs,
+    storeWriteMs,
+    storeReadCount,
+    blobReadCount,
+    totalMs,
+  };
+  activated.validationReport = report;
 
   return { ok: true, baseline: activated, report };
 }

@@ -287,17 +287,27 @@ describe('Archive, Re-activate Governance and Monitoring Integration Tests', () 
     const versionsBefore = await listBaselineVersions(modelId);
     expect(versionsBefore.find(v => v.version === '1.0.0')?.status).toBe('ARCHIVED');
 
-    // Hook getBlobStore().get to succeed for checking reference blob existence (call 1)
-    // but fail on activateBaselineVersion (call 2)
+    // Hook storage to intercept specifically during the 'activate' lifecycle phase
+    // (after validation passes and status transitions to VALIDATED)
+    let isActivatingPhase = false;
+    const originalSave = mockStore.set.bind(mockStore);
+    mockStore.set = async (key: string, value: any) => {
+      if (key.includes(`registry:model:${modelId}:versions`)) {
+        const versions = Array.isArray(value) ? value : [];
+        if (versions.some((v: any) => v.version === '1.0.0' && v.status === 'VALIDATED')) {
+          isActivatingPhase = true;
+        }
+      }
+      return originalSave(key, value);
+    };
+
     const blobStore = getBlobStore();
-    const originalGet = blobStore.get.bind(blobStore);
-    let blobGetCalls = 0;
+    const originalBlobGet = blobStore.get.bind(blobStore);
     blobStore.get = async (key: string) => {
-      blobGetCalls++;
-      if (blobGetCalls >= 2) {
+      if (isActivatingPhase) {
         throw new Error('Simulated storage failure during activateBaselineVersion');
       }
-      return originalGet(key);
+      return originalBlobGet(key);
     };
 
     // Attempt to re-activate
@@ -331,5 +341,104 @@ describe('Archive, Re-activate Governance and Monitoring Integration Tests', () 
     expect(auditEntry?.actor).toBe('admin-user');
     expect(auditEntry?.reason).toBe('ACTIVATION_FAILED');
     expect(auditEntry?.note).toContain('ACTIVATION_FAILED');
+  });
+
+  it('recovering stuck VALIDATED version with ARCHIVED history succeeds, while normal VALIDATED version is rejected', async () => {
+    const modelId = 'test_stuck_validated_recovery';
+    await createAndActivateModel(modelId, '1.0.0');
+
+    // Archive 1.0.0 first
+    await archiveVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web-user' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    // Manually simulate a crashed/stuck activation that left the version at VALIDATED with ARCHIVED in history
+    const versions = await mockStore.get<any[]>(`registry:model:${modelId}:versions`);
+    expect(versions).toBeDefined();
+    const targetIdx = versions!.findIndex((v: any) => v.version === '1.0.0');
+    expect(targetIdx).toBeGreaterThanOrEqual(0);
+
+    const stuckVersion = {
+      ...versions![targetIdx],
+      status: 'VALIDATED',
+      statusHistory: [
+        ...versions![targetIdx].statusHistory,
+        {
+          from: 'ARCHIVED',
+          to: 'VALIDATED',
+          at: new Date().toISOString(),
+          by: 'reactivator',
+          note: 'Interrupted re-activation',
+        },
+      ],
+    };
+    versions![targetIdx] = stuckVersion;
+    await mockStore.set(`registry:model:${modelId}:versions`, versions);
+
+    // Call re-activate on the stuck VALIDATED version -> should succeed!
+    const retryRes = await reactivateVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/reactivate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'admin-retry', note: 'Retry activation from stuck state' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    expect(retryRes.status).toBe(200);
+    const retryData = await retryRes.json();
+    expect(retryData.ok).toBe(true);
+    expect(retryData.baseline.status).toBe('ACTIVE');
+
+    // Now test a freshly created model in VALIDATED status (never ARCHIVED)
+    const freshModelId = 'test_fresh_validated';
+    const baseText = readFileSync(join(root, 'samples/cashloan_v2/baseline_cashloan_v2_2024.csv'), 'utf8');
+    const mtText = readFileSync(join(root, 'samples/cashloan_v2/model_table_cashloan.csv'), 'utf8');
+    const referenceId = `ref_${freshModelId}`;
+
+    await referencesHandler(new Request('http://localhost/api/registry/references', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ referenceId, csvText: baseText, modelId: freshModelId, version: '1.0.0', labelColumn: 'default_12m' }),
+    }));
+
+    const scRes = await scorecardImportHandler(new Request('http://localhost/api/registry/scorecard/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csvText: mtText, referenceId, scoreColumn: 'credit_score' }),
+    }));
+    const scData = await scRes.json();
+
+    await createVersionHandler(new Request(`http://localhost/api/registry/models/${freshModelId}/versions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        version: '1.0.0',
+        name: `Model ${freshModelId}`,
+        referenceId,
+        mode: 'scorecard',
+        scoreDirection: 'higher_better',
+        featureRegistry: {},
+        columns: { idColumn: 'app_id', dateColumn: 'app_date', labelColumn: 'default_12m', scoreColumn: 'credit_score' },
+        modelTable: scData.table,
+        scoring: scData.scoring,
+      }),
+    }), { params: Promise.resolve({ modelId: freshModelId }) });
+
+    await validateVersionHandler(new Request(`http://localhost/api/registry/models/${freshModelId}/versions/1.0.0/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'test-user' }),
+    }), { params: Promise.resolve({ modelId: freshModelId, version: '1.0.0' }) });
+
+    // Calling reactivate on this normal VALIDATED version must be rejected
+    const rejectRes = await reactivateVersionHandler(new Request(`http://localhost/api/registry/models/${freshModelId}/versions/1.0.0/reactivate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'user' }),
+    }), { params: Promise.resolve({ modelId: freshModelId, version: '1.0.0' }) });
+
+    expect(rejectRes.status).toBe(400);
+    const rejectData = await rejectRes.json();
+    expect(rejectData.error).toContain('สามารถเรียกกลับมาใช้งาน (Re-activate) ได้เฉพาะเวอร์ชันที่มีสถานะ ARCHIVED หรือค้างระหว่างเปิดใช้งานเท่านั้น');
   });
 });

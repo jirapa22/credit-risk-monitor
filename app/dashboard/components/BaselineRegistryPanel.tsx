@@ -810,6 +810,11 @@ export default function BaselineRegistryPanel({
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${STATUS_STYLE[v.status]}`}>
                                   {v.status}
                                 </span>
+                                {v.status === 'VALIDATED' && v.statusHistory?.some(h => h.from === 'ARCHIVED' && h.to === 'VALIDATED') && (
+                                  <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-amber-500/20 text-amber-300 border-amber-500/40">
+                                    ⚠️ ค้างระหว่างเปิดใช้งาน
+                                  </span>
+                                )}
                               </td>
                               <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
                                 {v.referenceDatasetId}
@@ -828,14 +833,25 @@ export default function BaselineRegistryPanel({
                                       Validate
                                     </button>
                                   )}
-                                  {v.status === 'VALIDATED' && (
+                                  {v.status === 'VALIDATED' && v.statusHistory?.some(h => h.from === 'ARCHIVED' && h.to === 'VALIDATED') ? (
+                                    <button
+                                      onClick={() => handleReactivate(v)}
+                                      disabled={isReactivating !== null}
+                                      title="ลองเปิดใช้งานใหม่อีกครั้ง"
+                                      className="px-2 py-0.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 rounded text-[10px] font-semibold transition flex items-center gap-1 disabled:opacity-50"
+                                    >
+                                      {isReactivating === v.version
+                                        ? `⏳ กำลังเปิดใช้งานใหม่... (${reactivateElapsed}s)`
+                                        : '🔄 ลองเปิดใช้งานใหม่ (Retry Activate)'}
+                                    </button>
+                                  ) : v.status === 'VALIDATED' ? (
                                     <button
                                       onClick={() => handleTransition('activate', v)}
                                       className="px-2 py-0.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 rounded text-[10px] font-semibold transition"
                                     >
                                       Activate
                                     </button>
-                                  )}
+                                  ) : null}
                                   {v.status === 'ARCHIVED' && (
                                     <button
                                       onClick={() => handleReactivate(v)}
@@ -1140,6 +1156,41 @@ export default function BaselineRegistryPanel({
                         ))}
                       </div>
                     </div>
+
+                    {/* Performance Timings (collapsible) */}
+                    {selectedVersion.validationReport?.timings && (
+                      <details className="group rounded-xl bg-slate-950/40 border border-slate-800 text-xs p-3">
+                        <summary className="font-bold text-slate-300 cursor-pointer flex items-center justify-between text-[11px] select-none">
+                          <span className="flex items-center gap-1.5">
+                            ⏱️ สถิติเวลาประมวลผล (Performance Timings)
+                            <span className="font-mono text-[10px] text-slate-400 font-normal">
+                              (รวม {selectedVersion.validationReport.timings.totalMs} ms)
+                            </span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+                        </summary>
+                        <div className="mt-2.5 pt-2 border-t border-slate-800/60 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                          <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                            <span className="text-[10px] text-slate-500 block font-sans">อ่าน Blob</span>
+                            <span className="text-slate-200">{selectedVersion.validationReport.timings.blobReadMs} ms</span>
+                            <span className="text-[9px] text-slate-500 block font-sans">({selectedVersion.validationReport.timings.blobReadCount} ครั้ง)</span>
+                          </div>
+                          <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                            <span className="text-[10px] text-slate-500 block font-sans">ตรวจ Baseline</span>
+                            <span className="text-slate-200">{selectedVersion.validationReport.timings.validateMs} ms</span>
+                          </div>
+                          <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                            <span className="text-[10px] text-slate-500 block font-sans">Calibrate เกณฑ์</span>
+                            <span className="text-slate-200">{selectedVersion.validationReport.timings.calibrateMs} ms</span>
+                          </div>
+                          <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                            <span className="text-[10px] text-slate-500 block font-sans">บันทึก Store</span>
+                            <span className="text-slate-200">{selectedVersion.validationReport.timings.storeWriteMs} ms</span>
+                            <span className="text-[9px] text-slate-500 block font-sans">(อ่าน {selectedVersion.validationReport.timings.storeReadCount} ครั้ง)</span>
+                          </div>
+                        </div>
+                      </details>
+                    )}
                   </div>
                 )}
               </>

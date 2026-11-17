@@ -865,11 +865,23 @@ export interface BaselineValidationIssue {
   message: string;
 }
 
+export interface ValidationTimings {
+  blobReadMs: number;
+  validateMs: number;
+  calibrateMs: number;
+  storeWriteMs: number;
+  storeReadCount: number;
+  blobReadCount: number;
+  totalMs: number;
+}
+
 export interface BaselineValidationReport {
   ok: boolean;
   validatedAt: string;
   referenceId: string;
   sha256: string;
+  configHash?: string;
+  timings?: ValidationTimings;
   errors: BaselineValidationIssue[];
   warnings: BaselineValidationIssue[];
   computed: {
@@ -913,6 +925,8 @@ export interface OnboardingLogEntry {
 export interface CalibratedThresholdPair {
   warning: number;
   critical: number;
+  fallbackReason?: string;
+  fallbackToFixed?: boolean;
 }
 
 export interface CalibratedMetricThresholds {
@@ -943,6 +957,7 @@ export interface CalibratedThresholds {
   bySize: Record<number | string, CalibratedMetricThresholds>;
   /** Unadjusted individual calibrated thresholds (p95, p99). */
   bySizeUnadjusted?: Record<number | string, CalibratedMetricThresholds>;
+  fallbackWarnings?: string[];
 }
 
 export interface BaselineVersion {

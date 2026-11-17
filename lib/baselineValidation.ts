@@ -4,6 +4,7 @@
  * Validates a `BaselineVersion` (or model config) against its Reference dataset
  * before allowing transition from `DRAFT` → `VALIDATED`.
  */
+import crypto from 'crypto';
 import type {
   AnomalyTransform,
   BaselineMode,
@@ -63,6 +64,20 @@ function createRng(seed: number) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+export function computeBaselineConfigHash(baseline: Partial<BaselineVersion> | any): string {
+  const canonical = {
+    mode: baseline?.mode,
+    scoreDirection: baseline?.scoreDirection,
+    columns: baseline?.columns,
+    driftConfig: baseline?.driftConfig,
+    thresholds: baseline?.thresholds,
+    featureRegistry: baseline?.featureRegistry,
+    scoring: baseline?.scoring,
+    modelTable: baseline?.modelTable,
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 16);
 }
 
 export function inferColumnsFromRows(
@@ -621,11 +636,12 @@ export function validateBaseline(
         reliable: rel.reliable,
         warnings: rel.warnings,
       };
-      if (auc < 0.55) {
+      if (auc < (spec.thresholds?.auc_min ?? 0.55)) {
+        const aucMin = spec.thresholds?.auc_min ?? 0.55;
         warnings.push({
           code: 'LOW_REFERENCE_AUC',
           field: 'scoreDirection',
-          message: `AUC บน Reference = ${auc.toFixed(4)} (< 0.55) — กรุณาตรวจสอบการตั้งค่า scoreDirection (${spec.scoreDirection})`,
+          message: `AUC บน Reference = ${auc.toFixed(4)} (< ${aucMin}) — กรุณาตรวจสอบการตั้งค่า scoreDirection (${spec.scoreDirection})`,
         });
       }
     }
@@ -697,6 +713,7 @@ export function validateBaseline(
     validatedAt: new Date().toISOString(),
     referenceId,
     sha256,
+    configHash: computeBaselineConfigHash(baseline),
     errors,
     warnings,
     computed: {

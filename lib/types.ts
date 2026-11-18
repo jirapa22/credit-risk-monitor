@@ -873,6 +873,7 @@ export interface ValidationTimings {
   storeReadCount: number;
   blobReadCount: number;
   totalMs: number;
+  reusedValidationReport?: boolean;
 }
 
 export interface BaselineValidationReport {

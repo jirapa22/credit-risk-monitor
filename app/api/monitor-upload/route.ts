@@ -49,8 +49,11 @@ export async function POST(request: Request) {
     const duplicateRun = fileSha256
       ? history.find((h: any) => h.sha256 === fileSha256 || h.detail?.sha256 === fileSha256)
       : undefined;
+    const duplicateInfo = duplicateRun
+      ? { fileName: duplicateRun.fileName, uploadedAt: duplicateRun.createdAt }
+      : null;
     const duplicateWarning = duplicateRun
-      ? `ไฟล์นี้เคยอัปโหลดแล้ว (${duplicateRun.fileName} เมื่อ ${new Date(duplicateRun.createdAt).toLocaleString('th-TH')})`
+      ? `ไฟล์นี้เคยอัปโหลดแล้ว (${duplicateRun.fileName})`
       : null;
 
     const d = run.drift;
@@ -136,6 +139,7 @@ export async function POST(request: Request) {
       trigger: run.trigger ?? null,
       excludedRows: run.excludedRows ?? [],
       duplicateWarning,
+      duplicateInfo,
     };
 
     if (!run.drift) {
@@ -162,6 +166,7 @@ export async function POST(request: Request) {
       riskGradeDist,
       riskGradeStatus,
       duplicateWarning,
+      duplicateInfo,
     });
   } catch (error) {
     if (error instanceof RegistryError) {

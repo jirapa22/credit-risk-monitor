@@ -11,6 +11,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { BaselineMode, BaselineStatus, BaselineVersion, DeletionAuditEntry, ScoreDirection } from '@/lib/types';
+import { formatAppDateTime } from '@/lib/time';
 import BaselineOnboardingWizard from './BaselineOnboardingWizard';
 
 function isBuiltInModel(id: string): boolean {
@@ -81,6 +82,8 @@ export default function BaselineRegistryPanel({
     isProcessing: false,
     errorMessage: '',
   });
+
+  const [actionClientElapsedMs, setActionClientElapsedMs] = useState<number | null>(null);
 
   const [isReactivating, setIsReactivating] = useState<string | null>(null);
   const [reactivateElapsed, setReactivateElapsed] = useState<number>(0);
@@ -310,6 +313,7 @@ export default function BaselineRegistryPanel({
       return;
     }
     setIsReactivating(v.version);
+    const tStart = performance.now();
     try {
       const res = await fetch(`/api/registry/models/${v.modelId}/versions/${v.version}/reactivate`, {
         method: 'POST',
@@ -319,6 +323,8 @@ export default function BaselineRegistryPanel({
           note: 'Re-activated via registry-panel (เรียกกลับมาใช้งาน)',
         }),
       });
+      const elapsed = Math.round(performance.now() - tStart);
+      setActionClientElapsedMs(elapsed);
       const data = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error(data.error || 'เรียกกลับมาใช้งานไม่สำเร็จ');
@@ -557,12 +563,15 @@ export default function BaselineRegistryPanel({
     }
     if (!confirm(`ยืนยันการเปลี่ยนสถานะ (${action.toUpperCase()}) สำหรับเวอร์ชัน ${ver.version}?`)) return;
 
+    const tStart = performance.now();
     try {
       const res = await fetch(`/api/registry/models/${ver.modelId}/versions/${ver.version}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actor: 'web-user' }),
       });
+      const elapsed = Math.round(performance.now() - tStart);
+      setActionClientElapsedMs(elapsed);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `ดำเนินการ ${action} ไม่สำเร็จ`);
 
@@ -820,7 +829,7 @@ export default function BaselineRegistryPanel({
                                 {v.referenceDatasetId}
                               </td>
                               <td className="py-2.5 px-3 text-[11px] text-slate-500">
-                                {new Date(v.createdAt).toLocaleDateString('th-TH')}
+                                {formatAppDateTime(v.createdAt, { dateOnly: true })}
                               </td>
                               <td className="py-2.5 px-3 text-right">
                                 <div className="flex items-center justify-end gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
@@ -933,7 +942,7 @@ export default function BaselineRegistryPanel({
                           รายละเอียดเวอร์ชัน v{selectedVersion.version} · {selectedVersion.name}
                         </h4>
                         <p className="text-[11px] text-slate-500 mt-0.5">
-                          สร้างโดย: {selectedVersion.createdBy} ({new Date(selectedVersion.createdAt).toLocaleString('th-TH')})
+                          สร้างโดย: {selectedVersion.createdBy} ({formatAppDateTime(selectedVersion.createdAt)})
                         </p>
                       </div>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${STATUS_STYLE[selectedVersion.status]}`}>
@@ -1145,7 +1154,7 @@ export default function BaselineRegistryPanel({
                                 {sh.from ? `${sh.from} → ${sh.to}` : sh.to}
                               </span>
                               <span className="text-slate-500 font-mono text-[10px]">
-                                {new Date(sh.at).toLocaleString('th-TH')}
+                                {formatAppDateTime(sh.at)}
                               </span>
                               <span className="text-slate-400 text-[10px] px-1.5 py-0.2 rounded bg-slate-800">
                                 by {sh.by}
@@ -1158,39 +1167,51 @@ export default function BaselineRegistryPanel({
                     </div>
 
                     {/* Performance Timings (collapsible) */}
-                    {selectedVersion.validationReport?.timings && (
-                      <details className="group rounded-xl bg-slate-950/40 border border-slate-800 text-xs p-3">
-                        <summary className="font-bold text-slate-300 cursor-pointer flex items-center justify-between text-[11px] select-none">
-                          <span className="flex items-center gap-1.5">
-                            ⏱️ สถิติเวลาประมวลผล (Performance Timings)
-                            <span className="font-mono text-[10px] text-slate-400 font-normal">
-                              (รวม {selectedVersion.validationReport.timings.totalMs} ms)
+                    {selectedVersion.validationReport?.timings && (() => {
+                      const timings = selectedVersion.validationReport.timings;
+                      const clientMs = actionClientElapsedMs;
+                      const overheadMs = clientMs !== null ? Math.max(0, clientMs - timings.totalMs) : null;
+
+                      return (
+                        <details className="group rounded-xl bg-slate-950/40 border border-slate-800 text-xs p-3">
+                          <summary className="font-bold text-slate-300 cursor-pointer flex items-center justify-between text-[11px] select-none">
+                            <span className="flex items-center gap-1.5 flex-wrap">
+                              ⏱️ สถิติเวลาประมวลผล (Performance Timings)
+                              <span className="font-mono text-[10px] text-cyan-400 font-normal">
+                                (เซิร์ฟเวอร์: {timings.totalMs} ms{clientMs !== null ? ` · เบราว์เซอร์: ${clientMs} ms · นอกฟังก์ชัน: ${overheadMs} ms` : ''})
+                              </span>
                             </span>
-                          </span>
-                          <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform">▼</span>
-                        </summary>
-                        <div className="mt-2.5 pt-2 border-t border-slate-800/60 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
-                          <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
-                            <span className="text-[10px] text-slate-500 block font-sans">อ่าน Blob</span>
-                            <span className="text-slate-200">{selectedVersion.validationReport.timings.blobReadMs} ms</span>
-                            <span className="text-[9px] text-slate-500 block font-sans">({selectedVersion.validationReport.timings.blobReadCount} ครั้ง)</span>
+                            <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+                          </summary>
+                          <div className="mt-2.5 pt-2 border-t border-slate-800/60 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                            <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                              <span className="text-[10px] text-slate-500 block font-sans">อ่าน Blob</span>
+                              <span className="text-slate-200">{timings.blobReadMs} ms</span>
+                              <span className="text-[9px] text-slate-500 block font-sans">({timings.blobReadCount} ครั้ง)</span>
+                            </div>
+                            <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                              <span className="text-[10px] text-slate-500 block font-sans">ตรวจ Baseline</span>
+                              <span className="text-slate-200">{timings.validateMs} ms</span>
+                            </div>
+                            <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                              <span className="text-[10px] text-slate-500 block font-sans">Calibrate เกณฑ์</span>
+                              <span className="text-slate-200">{timings.calibrateMs} ms</span>
+                            </div>
+                            <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                              <span className="text-[10px] text-slate-500 block font-sans">บันทึก Store</span>
+                              <span className="text-slate-200">{timings.storeWriteMs} ms</span>
+                              <span className="text-[9px] text-slate-500 block font-sans">(อ่าน {timings.storeReadCount} ครั้ง)</span>
+                            </div>
                           </div>
-                          <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
-                            <span className="text-[10px] text-slate-500 block font-sans">ตรวจ Baseline</span>
-                            <span className="text-slate-200">{selectedVersion.validationReport.timings.validateMs} ms</span>
-                          </div>
-                          <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
-                            <span className="text-[10px] text-slate-500 block font-sans">Calibrate เกณฑ์</span>
-                            <span className="text-slate-200">{selectedVersion.validationReport.timings.calibrateMs} ms</span>
-                          </div>
-                          <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
-                            <span className="text-[10px] text-slate-500 block font-sans">บันทึก Store</span>
-                            <span className="text-slate-200">{selectedVersion.validationReport.timings.storeWriteMs} ms</span>
-                            <span className="text-[9px] text-slate-500 block font-sans">(อ่าน {selectedVersion.validationReport.timings.storeReadCount} ครั้ง)</span>
-                          </div>
-                        </div>
-                      </details>
-                    )}
+                          {clientMs !== null && (
+                            <div className="mt-2 pt-1.5 border-t border-slate-800/40 text-[10px] text-slate-400 flex items-center justify-between">
+                              <span>เวลาฝั่งเบราว์เซอร์ (Client Elapsed): <strong className="text-slate-200 font-mono">{clientMs} ms</strong></span>
+                              <span>เวลานอกเซิร์ฟเวอร์ (Network / Cold Start): <strong className="text-amber-400 font-mono">{overheadMs} ms</strong></span>
+                            </div>
+                          )}
+                        </details>
+                      );
+                    })()}
                   </div>
                 )}
               </>
@@ -1809,7 +1830,7 @@ export default function BaselineRegistryPanel({
                     {auditLogs.map(log => (
                       <tr key={log.id} className="border-b border-slate-800/40 hover:bg-slate-900/40">
                         <td className="py-2 px-3 font-mono text-[10px] text-slate-400 whitespace-nowrap">
-                          {new Date(log.timestamp).toLocaleString('th-TH')}
+                          {formatAppDateTime(log.timestamp)}
                         </td>
                         <td className="py-2 px-3">
                           <span

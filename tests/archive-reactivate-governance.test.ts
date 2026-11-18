@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { setStore, UpstashMockStore } from '../lib/storage/store';
 import { createMemoryBlobStore, getBlobStore, setBlobStore } from '../lib/storage/blob';
 import { listBaselineVersions, listDeletionAuditLogs } from '../lib/storage/repositories';
+import { computeBaselineConfigHash } from '../lib/baselineValidation';
 
 // Route handlers
 import { POST as referencesHandler } from '../app/api/registry/references/route';
@@ -440,5 +441,73 @@ describe('Archive, Re-activate Governance and Monitoring Integration Tests', () 
     expect(rejectRes.status).toBe(400);
     const rejectData = await rejectRes.json();
     expect(rejectData.error).toContain('สามารถเรียกกลับมาใช้งาน (Re-activate) ได้เฉพาะเวอร์ชันที่มีสถานะ ARCHIVED หรือค้างระหว่างเปิดใช้งานเท่านั้น');
+  });
+
+  it('computeBaselineConfigHash invalidates fast path when modelTable or scoring is altered', async () => {
+    const baselineA: any = {
+      mode: 'scorecard',
+      modelTable: [{ feature: 'f1', bin: '[0, 10)', points: 10 }],
+      scoring: { scorecard: { f1: { bins: [10], points: 10 } } },
+      columns: { idColumn: 'app_id' },
+    };
+    const hashA = computeBaselineConfigHash(baselineA);
+
+    // Altering modelTable must change hash
+    const baselineB = { ...baselineA, modelTable: [{ feature: 'f1', bin: '[0, 10)', points: 15 }] };
+    const hashB = computeBaselineConfigHash(baselineB);
+    expect(hashB).not.toBe(hashA);
+
+    // Altering scoring must change hash
+    const baselineC = { ...baselineA, scoring: { scorecard: { f1: { bins: [10], points: [15] } } } };
+    const hashC = computeBaselineConfigHash(baselineC);
+    expect(hashC).not.toBe(hashA);
+
+    // Altering validationPolicy must change hash
+    const baselineD = { ...baselineA, validationPolicy: { maxMissingRatio: 0.05 } };
+    expect(computeBaselineConfigHash(baselineD)).not.toBe(hashA);
+
+    // Now test end-to-end via re-activate
+    const modelId = 'test_hash_invalidation';
+    await createAndActivateModel(modelId, '1.0.0');
+
+    // Archive 1.0.0
+    await archiveVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web-user' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    // 1. First re-activate with untouched baseline -> must reuse validation report (fast path)
+    const reactivateRes1 = await reactivateVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/reactivate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'admin' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+    expect(reactivateRes1.status).toBe(200);
+    const data1 = await reactivateRes1.json();
+    expect(data1.report.timings.reusedValidationReport).toBe(true);
+
+    // Archive again
+    await archiveVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web-user' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+
+    // Mutate modelTable in store
+    const versions = await mockStore.get<any[]>(`registry:model:${modelId}:versions`);
+    expect(versions).toBeDefined();
+    versions![0].modelTable = [{ feature: 'mutated', points: 99 }];
+    await mockStore.set(`registry:model:${modelId}:versions`, versions);
+
+    // 2. Second re-activate after modelTable mutated -> fast path MUST be bypassed
+    const reactivateRes2 = await reactivateVersionHandler(new Request(`http://localhost/api/registry/models/${modelId}/versions/1.0.0/reactivate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'admin' }),
+    }), { params: Promise.resolve({ modelId, version: '1.0.0' }) });
+    expect(reactivateRes2.status).toBe(200);
+    const data2 = await reactivateRes2.json();
+    expect(data2.report.timings.reusedValidationReport).toBe(false);
   });
 });

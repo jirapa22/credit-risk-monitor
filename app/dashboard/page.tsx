@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import AnomalyExperimentPanel from './components/AnomalyExperimentPanel';
 import BaselineRegistryPanel from './components/BaselineRegistryPanel';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
+import { formatAppDateTime } from '../../lib/time';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface ModelConfig {
@@ -222,40 +223,88 @@ function deriveVerdictReason(
     }
   }
 
-  // If already has trigger reasons from MLOps decision engine
-  if (l.triggerReasons && l.triggerReasons.length > 0) {
-    return `${l.triggerReasons[0]}${modeTag}`;
+  // Check missing data signals if any
+  const missingParts: string[] = [];
+  if (l.uploadSummary?.missingData && l.uploadSummary.missingData.length > 0) {
+    for (const m of l.uploadSummary.missingData) {
+      if (m.missingCount > 0) {
+        missingParts.push(`${m.label || m.column} ว่าง ${m.missingPct}% (${m.missingCount.toLocaleString()} แถว)`);
+      }
+    }
   }
-  if (l.verdictReason) {
-    return `${l.verdictReason}${modeTag}`;
-  }
+  const missingNote = missingParts.length > 0 ? `พบค่าว่าง: ${missingParts.join(', ')}` : '';
+  const skippedNote = l.skippedRows && l.skippedRows > 0 ? `(ตัดแถวออก ${l.skippedRows.toLocaleString()} แถว)` : '';
 
-  // Dynamically compute explanation from actual metric values
   if (l.verdict === 'CRITICAL') {
+    const reasons: string[] = [];
     if (psiVal >= critPsi) {
-      return `PSI (${psiVal.toFixed(4)}) สูงเกินเกณฑ์วิกฤต (≥ ${critPsi.toFixed(2)})${modeTag}`;
+      reasons.push(`PSI (${psiVal.toFixed(4)}) เกินเกณฑ์วิกฤต (≥ ${critPsi.toFixed(2)})`);
     }
     if (csiCriticals.length > 0) {
-      return `PSI (${psiVal.toFixed(4)}) ต่ำกว่า ${critPsi.toFixed(2)} แต่ CRITICAL เพราะ CSI ของ ${csiCriticals.join(', ')} สูงเกินเกณฑ์วิกฤต${modeTag}`;
+      reasons.push(`CSI ของ ${csiCriticals.join(', ')} เกินเกณฑ์วิกฤต`);
     }
-    return `สถานะ CRITICAL จากผลลัพธ์ของโมเดล${modeTag} (PSI: ${psiVal.toFixed(4)})`;
+    if (reasons.length === 0 && l.verdictReason) {
+      reasons.push(l.verdictReason);
+    }
+    if (reasons.length === 0) {
+      reasons.push(`ผลลัพธ์ของโมเดลอยู่ในระดับวิกฤต (PSI: ${psiVal.toFixed(4)})`);
+    }
+    if (missingNote) reasons.push(missingNote);
+    if (skippedNote) reasons.push(skippedNote);
+    return `${reasons.join(' · ')}${modeTag}`;
   }
 
   if (l.verdict === 'WARNING') {
+    const reasons: string[] = [];
     if (psiVal >= warnPsi) {
-      return `PSI (${psiVal.toFixed(4)}) อยู่ในเกณฑ์เฝ้าระวัง (≥ ${warnPsi.toFixed(2)})${modeTag}`;
+      reasons.push(`PSI (${psiVal.toFixed(4)}) เกินเกณฑ์เฝ้าระวัง (≥ ${warnPsi.toFixed(2)})`);
     }
     if (csiWarnings.length > 0) {
-      return `PSI (${psiVal.toFixed(4)}) ต่ำกว่า ${warnPsi.toFixed(2)} แต่ CSI ของ ${csiWarnings.join(', ')} อยู่ในเกณฑ์เฝ้าระวัง${modeTag}`;
+      reasons.push(`CSI ของ ${csiWarnings.join(', ')} เกินเกณฑ์เฝ้าระวัง`);
     }
-    return `สถานะ WARNING จากผลลัพธ์ของโมเดล${modeTag} (PSI: ${psiVal.toFixed(4)})`;
+    if (reasons.length === 0 && l.verdictReason) {
+      reasons.push(l.verdictReason);
+    }
+    if (reasons.length === 0) {
+      reasons.push(`ผลลัพธ์ของโมเดลอยู่ในระดับเฝ้าระวัง (PSI: ${psiVal.toFixed(4)})`);
+    }
+    if (missingNote) reasons.push(missingNote);
+    if (skippedNote) reasons.push(skippedNote);
+    return `${reasons.join(' · ')}${modeTag}`;
   }
 
   if (l.verdict === 'STABLE') {
-    return `PSI (${psiVal.toFixed(4)}) และ CSI ทุกตัวแปรอยู่ในเกณฑ์ปกติ (ต่ำกว่า ${warnPsi.toFixed(2)})${modeTag}`;
+    const notes: string[] = [`PSI (${psiVal.toFixed(4)}) และ CSI ทุกตัวแปรอยู่ในเกณฑ์ปกติ (ต่ำกว่า ${warnPsi.toFixed(2)})`];
+    if (missingNote) notes.push(missingNote);
+    if (skippedNote) notes.push(skippedNote);
+    return `${notes.join(' · ')}${modeTag}`;
   }
 
   return `สถานะ ${l.verdict}${modeTag}`;
+}
+
+function deriveTriggerExplanation(l: MonitorLog): { action: string; ruleId?: string; details: string[] } {
+  const action = l.triggerAction || (l.verdict === 'INVALID_DATA' ? 'INVESTIGATE_DATA' : 'CONTINUE');
+  const details: string[] = [];
+
+  let ruleId: string | undefined = (l as any).triggerRule || undefined;
+  if (!ruleId && l.triggerReasons && l.triggerReasons.length > 0) {
+    const match = l.triggerReasons[0].match(/^\[([^\]]+)\]/);
+    if (match) ruleId = match[1];
+  }
+
+  if (l.triggerReasons && l.triggerReasons.length > 0) {
+    for (const r of l.triggerReasons) {
+      const clean = r.replace(/^\[[^\]]+\]\s*/, '');
+      details.push(clean);
+    }
+  } else if (l.verdict === 'INVALID_DATA') {
+    details.push('ข้อมูลไม่ผ่านเกณฑ์การตรวจสอบโครงสร้าง');
+  } else {
+    details.push('ไม่มีกฎ Trigger ใดถูกกระตุ้น — ดำเนินการตามปกติ');
+  }
+
+  return { action, ruleId, details };
 }
 
 const TrendTooltip = ({ active, payload }: any) => {
@@ -264,30 +313,39 @@ const TrendTooltip = ({ active, payload }: any) => {
   if (!data) return null;
 
   return (
-    <div className="bg-slate-900 border border-slate-700/80 rounded-xl p-3 shadow-2xl max-w-sm text-xs space-y-2 pointer-events-none">
+    <div className="bg-slate-900 border border-slate-700/80 rounded-xl p-3 shadow-2xl max-w-md text-xs space-y-2.5 pointer-events-none">
+      {/* Header */}
       <div className="border-b border-slate-800 pb-1.5 flex items-center justify-between gap-2">
-        <span className="font-semibold text-slate-200 truncate max-w-[180px]" title={data.fileName}>
+        <span className="font-semibold text-slate-200 truncate max-w-[200px]" title={data.fileName}>
           📁 {data.fileName}
         </span>
-        <span className="font-mono text-[10px] text-cyan-400 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/40">
-          {data.period}
-        </span>
+        <div className="flex items-center gap-1.5 font-mono text-[10px]">
+          <span className="text-cyan-400 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/40">
+            {data.period}
+          </span>
+          {data.totalRoundsInPeriod > 1 && (
+            <span className="text-indigo-300 bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-800/40 font-sans">
+              รอบที่ {data.uploadRound}/{data.totalRoundsInPeriod} {data.isLatestInPeriod ? '(ล่าสุด)' : ''}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="space-y-1">
-        <div className="flex justify-between items-center text-[11px]">
-          <span className="text-slate-400">ประเภทข้อมูล:</span>
-          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${data.isOot ? 'bg-purple-950/60 text-purple-300 border border-purple-800/40' : 'bg-slate-800 text-slate-300'}`}>
+      {/* Metrics Row */}
+      <div className="grid grid-cols-3 gap-2 bg-slate-950/40 p-2 rounded-lg border border-slate-800/60 text-[11px]">
+        <div>
+          <span className="text-slate-500 block text-[10px]">ประเภท</span>
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-block mt-0.5 ${data.isOot ? 'bg-purple-950/60 text-purple-300 border border-purple-800/40' : 'bg-slate-800 text-slate-300'}`}>
             {data.isOot ? 'OOT / อื่นๆ' : 'รายเดือน (Monthly)'}
           </span>
         </div>
-        <div className="flex justify-between items-center text-[11px]">
-          <span className="text-slate-400">ค่า PSI:</span>
-          <span className="font-mono font-bold text-slate-100">{data.psi !== null ? Number(data.psi).toFixed(4) : '—'}</span>
+        <div>
+          <span className="text-slate-500 block text-[10px]">ค่า PSI</span>
+          <span className="font-mono font-bold text-slate-100 block mt-0.5">{data.psi !== null ? Number(data.psi).toFixed(4) : '—'}</span>
         </div>
-        <div className="flex justify-between items-center text-[11px]">
-          <span className="text-slate-400">สถานะ (Verdict):</span>
-          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+        <div>
+          <span className="text-slate-500 block text-[10px]">สถานะ Drift</span>
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold inline-block mt-0.5 ${
             data.verdict === 'CRITICAL' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
             data.verdict === 'WARNING' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
             data.verdict === 'STABLE' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
@@ -298,20 +356,48 @@ const TrendTooltip = ({ active, payload }: any) => {
         </div>
       </div>
 
-      <div className="pt-2 border-t border-slate-800">
-        <p className="text-[10px] font-bold text-slate-400 mb-1">เหตุผลการตัดสิน (Verdict Reason):</p>
+      {/* Section 1: Verdict (จากการวัด drift) */}
+      <div className="pt-1.5 border-t border-slate-800 space-y-1">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            📊 Verdict (จากการวัด drift)
+          </span>
+          <span className="text-[10px] font-mono text-slate-500">{data.verdict}</span>
+        </div>
         <p className="text-[11px] text-slate-300 leading-relaxed bg-slate-950/70 p-2 rounded-lg border border-slate-800/80">
+          <strong className="text-amber-400 font-semibold">เพราะ: </strong>
           {data.verdictReason}
         </p>
       </div>
 
+      {/* Section 2: Trigger Decision */}
+      <div className="pt-1.5 border-t border-slate-800 space-y-1">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+            ⚡ Trigger Decision
+          </span>
+          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
+            {data.triggerDecision?.ruleId ? `${data.triggerDecision.ruleId} → ` : ''}{data.triggerDecision?.action || 'CONTINUE'}
+          </span>
+        </div>
+        <div className="text-[11px] text-slate-300 leading-relaxed bg-slate-950/70 p-2 rounded-lg border border-slate-800/80 space-y-1">
+          {data.triggerDecision?.details?.map((msg: string, i: number) => (
+            <p key={i} className="flex items-start gap-1">
+              <span className="text-indigo-400 select-none">•</span>
+              <span>{msg}</span>
+            </p>
+          ))}
+        </div>
+      </div>
+
+      {/* CSI items if any */}
       {data.csiItems && data.csiItems.length > 0 && (
-        <div className="pt-1.5 border-t border-slate-800 space-y-0.5 text-[10px]">
+        <div className="pt-1 border-t border-slate-800 space-y-0.5 text-[10px]">
           <p className="font-semibold text-slate-400 mb-1">CSI รายตัวแปร:</p>
-          <div className="grid grid-cols-1 gap-1 max-h-28 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 gap-1 max-h-24 overflow-y-auto pr-1">
             {data.csiItems.map((c: any) => (
               <div key={c.key} className="flex justify-between text-slate-400 font-mono">
-                <span className="truncate max-w-[150px]">{c.label}:</span>
+                <span className="truncate max-w-[170px]">{c.label}:</span>
                 <span className={c.value !== null && c.value >= 0.25 ? 'text-rose-400 font-bold' : c.value !== null && c.value >= 0.10 ? 'text-amber-400 font-bold' : 'text-slate-300'}>
                   {c.value !== null ? c.value.toFixed(4) : '—'}
                 </span>
@@ -324,11 +410,63 @@ const TrendTooltip = ({ active, payload }: any) => {
   );
 };
 
+function getModelExpectedColumns(
+  effectiveModel: any,
+  fallbackFeatures: CsiFeatureItem[] = []
+): { requiredCols: string[]; optionalCols: string[] } {
+  const reqSet = new Set<string>();
+  const optSet = new Set<string>();
+
+  // 1. Feature columns
+  if (effectiveModel?.scoring?.scorecard) {
+    for (const k of Object.keys(effectiveModel.scoring.scorecard)) {
+      if (k) reqSet.add(k);
+    }
+  }
+  if (effectiveModel?.featureRegistry) {
+    for (const k of Object.keys(effectiveModel.featureRegistry)) {
+      if (k) reqSet.add(k);
+    }
+  }
+  if (effectiveModel?.thresholds?.csi_features) {
+    for (const k of Object.keys(effectiveModel.thresholds.csi_features)) {
+      if (k) reqSet.add(k);
+    }
+  }
+  if (reqSet.size === 0 && fallbackFeatures.length > 0) {
+    for (const f of fallbackFeatures) {
+      if (f.key) reqSet.add(f.key);
+    }
+  }
+  if (reqSet.size === 0 && Array.isArray(effectiveModel?.features)) {
+    for (const f of effectiveModel.features) {
+      if (f) reqSet.add(f);
+    }
+  }
+
+  // 2. Score column (if model relies on precomputed score or requires it)
+  const scoreCol = effectiveModel?.columns?.scoreColumn;
+  if (scoreCol) {
+    if (reqSet.size === 0) reqSet.add(scoreCol);
+    else optSet.add(`${scoreCol} (คะแนนเดิม ถ้ามี)`);
+  }
+
+  // 3. Optional metadata columns
+  const cols = effectiveModel?.columns;
+  if (cols?.labelColumn) optSet.add(`${cols.labelColumn} (ผลจริง/Default Flag สำหรับวัด Performance)`);
+  if (cols?.dateColumn) optSet.add(`${cols.dateColumn} (วันที่/Period)`);
+  if (cols?.idColumn) optSet.add(`${cols.idColumn} (รหัสอ้างอิง)`);
+  if (cols?.segmentColumn) optSet.add(`${cols.segmentColumn} (กลุ่มลูกค้า)`);
+
+  return { requiredCols: Array.from(reqSet), optionalCols: Array.from(optSet) };
+}
+
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('sandbox');
   const [sandboxSubTab, setSandboxSubTab] = useState<'reference' | 'experiment'>('reference');
   const [showOot, setShowOot] = useState(true);
+  const [latestOnlyPerPeriod, setLatestOnlyPerPeriod] = useState(false);
   const [config, setConfig] = useState<ModelConfig | null>(null);
   const [monitorLogs, setMonitorLogs] = useState<MonitorLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -589,7 +727,10 @@ export default function Dashboard() {
           setUploadError(errText);
           throw new Error(errText);
         }
-        if (data.duplicateWarning) {
+        if (data.duplicateInfo) {
+          const formattedTime = formatAppDateTime(data.duplicateInfo.uploadedAt, { showSeconds: true });
+          setDuplicateUploadWarning(`ไฟล์นี้เคยอัปโหลดแล้ว (${data.duplicateInfo.fileName} เมื่อ ${formattedTime})`);
+        } else if (data.duplicateWarning) {
           setDuplicateUploadWarning(data.duplicateWarning);
         } else {
           setDuplicateUploadWarning(null);
@@ -1652,7 +1793,7 @@ export default function Dashboard() {
                 <div className="bg-indigo-950/60 border border-indigo-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-lg shadow-indigo-950/30">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-mono font-bold border border-indigo-500/30 flex items-center gap-1.5">
-                      <span>🕒</span> ดูย้อนหลัง · {viewingHistoricalRun.fileName} · {new Date(viewingHistoricalRun.uploadedAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
+                      <span>🕒</span> ดูย้อนหลัง · {viewingHistoricalRun.fileName} · {formatAppDateTime(viewingHistoricalRun.uploadedAt)}
                     </span>
                     {!viewingHistoricalRun.hasDetail && (
                       <span className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full font-medium">
@@ -1696,7 +1837,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="text-sm font-bold text-slate-200">สรุปข้อมูลการรัน (บันทึกก่อนอัปเดต)</h4>
-                      <p className="text-xs text-slate-400 mt-0.5">{selectedLog.fileName} · {new Date(selectedLog.uploadedAt).toLocaleString('th-TH')}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{selectedLog.fileName} · {formatAppDateTime(selectedLog.uploadedAt)}</p>
                     </div>
                     <Badge status={selectedLog.verdict} />
                   </div>
@@ -1809,9 +1950,27 @@ export default function Dashboard() {
                       <div>
                         <p className="text-3xl mb-2 group-hover:scale-110 transition-transform">📂</p>
                         <p className="text-sm text-slate-300 font-medium">คลิกเพื่อเลือก CSV</p>
-                        <p className="text-[10px] text-slate-500 mt-1">
-                          ต้องการคอลัมน์: {csiFeatures.map(f => f.key || '?').join(', ')}{model?.columns?.labelColumn ? ` (${model.columns.labelColumn} ถ้ามีสำหรับวัด Performance)` : ''}
-                        </p>
+                        {(() => {
+                          const expected = getModelExpectedColumns(activeVer || displayVer || model, csiFeatures);
+                          return (
+                            <div className="text-[11px] text-slate-400 mt-2 space-y-1 text-left max-w-lg mx-auto bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
+                              <p>
+                                <strong className="text-cyan-400 font-semibold">• คอลัมน์ที่จำเป็น (Required):</strong>{' '}
+                                <span className="font-mono text-slate-200">
+                                  {expected.requiredCols.length > 0 ? expected.requiredCols.join(', ') : 'คอลัมน์ตัวแปรโมเดล (ตาม Feature Registry)'}
+                                </span>
+                              </p>
+                              {expected.optionalCols.length > 0 && (
+                                <p>
+                                  <strong className="text-slate-400 font-semibold">• คอลัมน์ทางเลือก (Optional):</strong>{' '}
+                                  <span className="font-mono text-slate-300">
+                                    {expected.optionalCols.join(', ')}
+                                  </span>
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -2470,7 +2629,7 @@ export default function Dashboard() {
                                   }}
                                 />
                               </td>
-                              <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">{new Date(log.uploadedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                              <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">{formatAppDateTime(log.uploadedAt)}</td>
                               <td className="py-2.5 px-3 text-slate-300 max-w-32 truncate" title={log.fileName}>
                                 <div className="flex items-center gap-1.5">
                                   <span>{log.fileName}</span>
@@ -2502,7 +2661,7 @@ export default function Dashboard() {
                                     setConfirmDelete({
                                       type: 'single',
                                       ids: [log.logId],
-                                      displayInfo: `${log.fileName} (${new Date(log.uploadedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })})`,
+                                      displayInfo: `${log.fileName} (${formatAppDateTime(log.uploadedAt)})`,
                                     });
                                   }}
                                   title="ลบรายการนี้"
@@ -2593,10 +2752,35 @@ export default function Dashboard() {
                   return new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime();
                 });
 
-                const displayLogs = showOot ? sortedLogs : sortedLogs.filter(l => !getLogPeriodInfo(l).isOot);
+                // Group rounds per period for round numbering and latest-filtering
+                const periodGroups = new Map<string, MonitorLog[]>();
+                for (const l of sortedLogs) {
+                  const key = getLogPeriodInfo(l).periodLabel || 'UNKNOWN';
+                  const list = periodGroups.get(key) || [];
+                  list.push(l);
+                  periodGroups.set(key, list);
+                }
+
+                // If latestOnlyPerPeriod is checked, pick the last upload in each period
+                let candidateLogs = sortedLogs;
+                if (latestOnlyPerPeriod) {
+                  const latestMap = new Map<string, MonitorLog>();
+                  for (const l of sortedLogs) {
+                    const key = getLogPeriodInfo(l).periodLabel || 'UNKNOWN';
+                    latestMap.set(key, l);
+                  }
+                  candidateLogs = Array.from(latestMap.values());
+                }
+
+                const displayLogs = showOot ? candidateLogs : candidateLogs.filter(l => !getLogPeriodInfo(l).isOot);
 
                 const chartData = displayLogs.map(l => {
                   const pInfo = getLogPeriodInfo(l);
+                  const periodKey = pInfo.periodLabel || 'UNKNOWN';
+                  const fullGroup = periodGroups.get(periodKey) || [l];
+                  const uploadRound = fullGroup.findIndex(item => (item.logId ? item.logId === l.logId : item.uploadedAt === l.uploadedAt)) + 1;
+                  const totalRoundsInPeriod = fullGroup.length;
+                  const isLatestInPeriod = uploadRound === totalRoundsInPeriod;
                   const psiVal = l.results ? parseFloat(l.results.psi.toFixed(4)) : null;
                   const verdictReason = deriveVerdictReason(
                     l,
@@ -2605,6 +2789,7 @@ export default function Dashboard() {
                     csiFeatures,
                     activeThresholdMode
                   );
+                  const triggerDecision = deriveTriggerExplanation(l);
                   const csiItems = csiFeatures.map(f => {
                     const val = l.results?.csi?.[f.key];
                     const thr = parseFloat(f.threshold) || 0.10;
@@ -2625,6 +2810,10 @@ export default function Dashboard() {
                     psi: psiVal,
                     verdict: l.verdict,
                     verdictReason,
+                    triggerDecision,
+                    uploadRound,
+                    totalRoundsInPeriod,
+                    isLatestInPeriod,
                     csiItems,
                     'PSI (รายเดือน)': !pInfo.isOot ? psiVal : null,
                     'PSI (OOT / อื่นๆ)': pInfo.isOot ? psiVal : null,
@@ -2634,6 +2823,27 @@ export default function Dashboard() {
                     ])),
                   };
                 });
+
+                // Compute dynamic regular Y-axis ticks
+                const allMetricValues: number[] = [effectivePsiCritical, effectivePsiWarning];
+                for (const d of chartData) {
+                  if (d.psi !== null) allMetricValues.push(d.psi);
+                  for (const c of d.csiItems) {
+                    if (c.value !== null) allMetricValues.push(c.value);
+                  }
+                }
+                const maxMetricVal = Math.max(...allMetricValues, 0.25);
+                const targetYMax = Math.max(0.3, maxMetricVal * 1.15);
+                let yStep = 0.05;
+                if (targetYMax > 0.6) yStep = 0.1;
+                if (targetYMax > 1.2) yStep = 0.2;
+                if (targetYMax > 2.5) yStep = 0.5;
+                const yTickCount = Math.ceil(targetYMax / yStep);
+                const yMax = +(yTickCount * yStep).toFixed(2);
+                const yTicks: number[] = [];
+                for (let i = 0; i <= yTickCount; i++) {
+                  yTicks.push(+(i * yStep).toFixed(2));
+                }
 
                 return (
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
@@ -2654,6 +2864,17 @@ export default function Dashboard() {
                           {activeThresholdMode === 'calibrated' ? '⚖️ โหมดเกณฑ์: Calibrated (ปรับตามขนาดข้อมูล)' : '🎯 โหมดเกณฑ์: Fixed (มาตรฐาน)'}
                         </span>
 
+                        {/* Latest only per period toggle checkbox */}
+                        <label className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer select-none bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60 hover:bg-slate-800">
+                          <input
+                            type="checkbox"
+                            checked={latestOnlyPerPeriod}
+                            onChange={e => setLatestOnlyPerPeriod(e.target.checked)}
+                            className="accent-indigo-500 rounded"
+                          />
+                          <span>ใช้รอบล่าสุดต่อ period</span>
+                        </label>
+
                         {/* OOT toggle checkbox */}
                         <label className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer select-none bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60 hover:bg-slate-800">
                           <input
@@ -2670,8 +2891,15 @@ export default function Dashboard() {
                     <ResponsiveContainer width="100%" height={230}>
                       <LineChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />
-                        <YAxis domain={[0, 0.5]} tick={{ fontSize: 10, fill: '#64748b' }} />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fontSize: 10, fill: '#64748b' }}
+                          tickFormatter={(val, idx) => {
+                            if (idx > 0 && chartData[idx - 1]?.date === val) return '';
+                            return val;
+                          }}
+                        />
+                        <YAxis domain={[0, yMax]} ticks={yTicks} tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={v => v.toFixed(2)} />
                         <Tooltip content={<TrendTooltip />} />
                         <Legend wrapperStyle={{ fontSize: 11, paddingTop: '8px' }} />
                         <ReferenceLine

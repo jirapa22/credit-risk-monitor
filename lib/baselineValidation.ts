@@ -76,6 +76,10 @@ export function computeBaselineConfigHash(baseline: Partial<BaselineVersion> | a
     featureRegistry: baseline?.featureRegistry,
     scoring: baseline?.scoring,
     modelTable: baseline?.modelTable,
+    validationPolicy: baseline?.validationPolicy,
+    dataQualityPolicy: baseline?.dataQualityPolicy,
+    triggerConfig: baseline?.triggerConfig,
+    anomalyConfig: baseline?.anomalyConfig,
   };
   return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 16);
 }

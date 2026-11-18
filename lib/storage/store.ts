@@ -14,8 +14,38 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 export type StoreKind = 'upstash' | 'file' | 'memory';
+
+export interface StorageCallCounts {
+  storeReads: number;
+  storeWrites: number;
+  blobReads: number;
+  blobWrites: number;
+}
+
+export const storageCallTracker = new AsyncLocalStorage<StorageCallCounts>();
+
+export function recordStoreRead() {
+  const s = storageCallTracker.getStore();
+  if (s) s.storeReads++;
+}
+
+export function recordStoreWrite() {
+  const s = storageCallTracker.getStore();
+  if (s) s.storeWrites++;
+}
+
+export function recordBlobRead() {
+  const s = storageCallTracker.getStore();
+  if (s) s.blobReads++;
+}
+
+export function recordBlobWrite() {
+  const s = storageCallTracker.getStore();
+  if (s) s.blobWrites++;
+}
 
 export interface KeyValueStore {
   kind: StoreKind;
@@ -123,14 +153,38 @@ class FileStore extends MemoryStore {
 // ─── Factory ────────────────────────────────────────────────────────────────
 const g = globalThis as unknown as { __crmStore?: KeyValueStore };
 
+function wrapStoreWithTracker(baseStore: KeyValueStore): KeyValueStore {
+  return new Proxy(baseStore, {
+    get(target, prop) {
+      const orig = (target as any)[prop];
+      if (typeof orig === 'function') {
+        return function (this: any, ...args: any[]) {
+          if (prop === 'get' || prop === 'listRange' || prop === 'peek') {
+            recordStoreRead();
+          } else if (prop === 'set' || prop === 'del' || prop === 'listPush' || prop === 'listReplace' || prop === 'putSync') {
+            recordStoreWrite();
+          }
+          return orig.apply(target, args);
+        };
+      }
+      return orig;
+    },
+  });
+}
+
 export function getStore(): KeyValueStore {
-  if (g.__crmStore) return g.__crmStore;
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) g.__crmStore = new UpstashStore(url.replace(/\/$/, ''), token);
-  else if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') g.__crmStore = new FileStore(path.join(process.cwd(), '.data', 'store.json'));
-  else g.__crmStore = new MemoryStore();
-  return g.__crmStore;
+  let rawStore: KeyValueStore;
+  if (g.__crmStore) {
+    rawStore = g.__crmStore;
+  } else {
+    const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+    if (url && token) g.__crmStore = new UpstashStore(url.replace(/\/$/, ''), token);
+    else if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') g.__crmStore = new FileStore(path.join(process.cwd(), '.data', 'store.json'));
+    else g.__crmStore = new MemoryStore();
+    rawStore = g.__crmStore;
+  }
+  return wrapStoreWithTracker(rawStore);
 }
 
 /** For tests. */

@@ -13,6 +13,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { recordBlobRead, recordBlobWrite } from './store';
 import type { ReferenceDatasetMeta } from '../types';
 import ascoreV1Dev855 from '../../data/reference/ascore_v1_dev855.json';
 import { registerReferenceDataset } from '../reference';
@@ -457,17 +458,41 @@ class FileBlobStore extends MemoryBlobStore {
 // ─── Factory & High-level helpers ────────────────────────────────────────────
 const g = globalThis as unknown as { __crmBlobStore?: ReferenceBlobStore };
 
+function wrapBlobStoreWithTracker(baseStore: ReferenceBlobStore): ReferenceBlobStore {
+  return new Proxy(baseStore, {
+    get(target, prop) {
+      const orig = (target as any)[prop];
+      if (typeof orig === 'function') {
+        return function (this: any, ...args: any[]) {
+          if (prop === 'get' || prop === 'has' || prop === 'head') {
+            recordBlobRead();
+          } else if (prop === 'put' || prop === 'del' || prop === 'delete') {
+            recordBlobWrite();
+          }
+          return orig.apply(target, args);
+        };
+      }
+      return orig;
+    },
+  });
+}
+
 export function getBlobStore(): ReferenceBlobStore {
-  if (g.__crmBlobStore) return g.__crmBlobStore;
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (token) {
-    g.__crmBlobStore = new VercelBlobStore(token);
-  } else if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
-    g.__crmBlobStore = new FileBlobStore(path.join(process.cwd(), '.data', 'blobs'));
+  let rawStore: ReferenceBlobStore;
+  if (g.__crmBlobStore) {
+    rawStore = g.__crmBlobStore;
   } else {
-    g.__crmBlobStore = new MemoryBlobStore();
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (token) {
+      g.__crmBlobStore = new VercelBlobStore(token);
+    } else if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
+      g.__crmBlobStore = new FileBlobStore(path.join(process.cwd(), '.data', 'blobs'));
+    } else {
+      g.__crmBlobStore = new MemoryBlobStore();
+    }
+    rawStore = g.__crmBlobStore;
   }
-  return g.__crmBlobStore;
+  return wrapBlobStoreWithTracker(rawStore);
 }
 
 export function setBlobStore(store: ReferenceBlobStore | undefined): void {

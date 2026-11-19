@@ -3,15 +3,9 @@ import type {
   MonitoringRunDetail,
   BaselineVersion,
 } from '../types';
-import {
-  DEFAULT_PSI_WARNING,
-  DEFAULT_PSI_CRITICAL,
-  DEFAULT_AUC_MIN,
-  DEFAULT_GINI_MIN,
-  DEFAULT_KS_MIN,
-} from '../defaults';
 import { computeBaselineConfigHash } from '../baselineValidation';
 import { formatAppDateTime } from '../time';
+import { toLegacyLog } from '../legacy';
 
 export interface RunReportHeader {
   modelName: string;
@@ -214,8 +208,9 @@ export function buildRunReport(
   };
 
   // 2. Executive Summary
-  const isBlocked = !run.drift || (run.validation && !run.validation.ok);
-  const verdictStatus = isBlocked ? 'INVALID_DATA' : (run.drift?.overallStatus || 'STABLE');
+  const legacy = toLegacyLog(run);
+  const verdictStatus = legacy.verdict; // 'STABLE' | 'WARNING' | 'CRITICAL' | 'INVALID_DATA' (reads from exact same source as dashboard badge)
+  const isBlocked = verdictStatus === 'INVALID_DATA';
   let verdictLabel = 'ปกติ (Stable)';
   let verdictColor: 'emerald' | 'amber' | 'rose' | 'slate' = 'emerald';
   if (verdictStatus === 'INVALID_DATA') {
@@ -336,8 +331,14 @@ export function buildRunReport(
   };
 
   // 4. Overall Drift
-  const psiWarn = run.thresholdsSnapshot?.psi_warning ?? DEFAULT_PSI_WARNING;
-  const psiCrit = run.thresholdsSnapshot?.psi_critical ?? DEFAULT_PSI_CRITICAL;
+  const psiWarn: number | string =
+    typeof run.thresholdsSnapshot?.psi_warning === 'number'
+      ? run.thresholdsSnapshot.psi_warning
+      : 'ค่าเริ่มต้น (รอบนี้ไม่ได้บันทึกเกณฑ์)';
+  const psiCrit: number | string =
+    typeof run.thresholdsSnapshot?.psi_critical === 'number'
+      ? run.thresholdsSnapshot.psi_critical
+      : 'ค่าเริ่มต้น (รอบนี้ไม่ได้บันทึกเกณฑ์)';
   const psiVal = run.drift?.psi?.value !== undefined && run.drift?.psi?.value !== null ? +run.drift.psi.value.toFixed(4) : null;
   const psiStatus = run.drift?.psi?.status ?? (isBlocked ? 'ไม่ได้บันทึก' : 'NOT_AVAILABLE');
   const psiStatusLabel =
@@ -408,9 +409,20 @@ export function buildRunReport(
         status === 'CRITICAL' ? 'วิกฤต' :
         status === 'WARNING' ? 'เฝ้าระวัง' : 'ปกติ';
 
-      const warnThreshold = run.thresholdsSnapshot?.csi_features?.[key]?.threshold ?? psiWarn;
-      const critThreshold = Math.max(psiCrit, typeof warnThreshold === 'number' ? warnThreshold : psiCrit);
-      const exceeded = status === 'CRITICAL' || status === 'WARNING' || (csiValue !== null && csiValue >= warnThreshold);
+      const warnThreshold: number | string =
+        typeof run.thresholdsSnapshot?.csi_features?.[key]?.threshold === 'number'
+          ? run.thresholdsSnapshot.csi_features[key].threshold
+          : (typeof run.thresholdsSnapshot?.psi_warning === 'number'
+              ? run.thresholdsSnapshot.psi_warning
+              : 'ไม่ได้บันทึก');
+      const critThreshold: number | string =
+        typeof run.thresholdsSnapshot?.psi_critical === 'number'
+          ? run.thresholdsSnapshot.psi_critical
+          : 'ไม่ได้บันทึก';
+      const exceeded =
+        status === 'CRITICAL' ||
+        status === 'WARNING' ||
+        (typeof warnThreshold === 'number' && csiValue !== null && csiValue >= warnThreshold);
 
       // Check unseen categories
       const unseenIssues = (run.validation?.issues || []).filter(i => i.type === 'UNSEEN_CATEGORY' && i.column === key);
@@ -438,9 +450,12 @@ export function buildRunReport(
 
   // 6. Model Performance
   const perf = run.driftReport?.concept?.metrics?.performance ?? (run.driftReport?.concept as any)?.performance;
-  const aucMin = run.thresholdsSnapshot?.auc_min ?? DEFAULT_AUC_MIN;
-  const giniMin = run.thresholdsSnapshot?.gini_min ?? DEFAULT_GINI_MIN;
-  const ksMin = run.thresholdsSnapshot?.ks_min ?? DEFAULT_KS_MIN;
+  const aucMin: number | string =
+    typeof run.thresholdsSnapshot?.auc_min === 'number' ? run.thresholdsSnapshot.auc_min : 'ไม่ได้บันทึก';
+  const giniMin: number | string =
+    typeof run.thresholdsSnapshot?.gini_min === 'number' ? run.thresholdsSnapshot.gini_min : 'ไม่ได้บันทึก';
+  const ksMin: number | string =
+    typeof run.thresholdsSnapshot?.ks_min === 'number' ? run.thresholdsSnapshot.ks_min : 'ไม่ได้บันทึก';
 
   let performance: RunReportModelPerformance;
   if (perf && typeof perf.auc === 'number') {
@@ -448,13 +463,13 @@ export function buildRunReport(
       hasLabels: true,
       auc: +perf.auc.toFixed(4),
       aucThreshold: aucMin,
-      aucPass: perf.auc >= aucMin,
+      aucPass: typeof aucMin === 'number' ? perf.auc >= aucMin : null,
       gini: typeof perf.gini === 'number' ? +perf.gini.toFixed(4) : null,
       giniThreshold: giniMin,
-      giniPass: typeof perf.gini === 'number' ? perf.gini >= giniMin : null,
+      giniPass: typeof giniMin === 'number' && typeof perf.gini === 'number' ? perf.gini >= giniMin : null,
       ks: typeof perf.ks === 'number' ? +perf.ks.toFixed(4) : null,
       ksThreshold: ksMin,
-      ksPass: typeof perf.ks === 'number' ? perf.ks >= ksMin : null,
+      ksPass: typeof ksMin === 'number' && typeof perf.ks === 'number' ? perf.ks >= ksMin : null,
       reliable: perf.reliable,
     };
   } else {

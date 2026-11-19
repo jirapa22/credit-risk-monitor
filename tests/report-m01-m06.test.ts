@@ -185,8 +185,10 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.header.fileName).toBe('m01_v2_2025-07_ปกติ.csv');
     expect(report.header.dataPeriod).toBe('2025-07');
     expect(report.summary.verdictStatus).toBe('STABLE');
+    expect(report.summary.matchedRuleId).toBe('R9');
     expect(report.summary.triggerAction).toBe('CONTINUE');
     expect(report.overallDrift.scorePsi).toBeLessThan(0.10);
+    expect(report.overallDrift.scorePsi).toBeCloseTo(0.0139, 3);
     expect(report.footerNotes.disclaimer).not.toContain('Basel');
   });
 
@@ -206,11 +208,13 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
 
     const report = buildRunReport(detailRes.run!, detailRes.detail);
     expect(report.header.fileName).toBe('m03_v2_2025-09_ระบบต้นทางมีปัญหา.csv');
+    expect(report.summary.verdictStatus).toBe('CRITICAL');
     expect(report.summary.triggerAction).toBe('INVESTIGATE_DATA');
     expect(report.summary.matchedRuleId).toBe('R1b');
     expect(report.dataQuality.rejectedRows).toBe(79);
     expect(report.dataQuality.totalRows).toBe(1200);
     expect(report.dataQuality.validRows).toBe(1121);
+    expect(report.overallDrift.scorePsi).toBeCloseTo(0.0086, 3);
     expect(report.footerNotes.disclaimer).not.toContain('Basel');
   });
 
@@ -229,8 +233,11 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(detailRes.run).toBeDefined();
 
     const report = buildRunReport(detailRes.run!, detailRes.detail);
+    expect(report.header.fileName).toBe('m05_v2_2025-11_แคมเปญMobileApp.csv');
+    expect(report.summary.verdictStatus).toBe('CRITICAL');
     expect(report.summary.matchedRuleId).toBe('R5');
     expect(report.summary.triggerAction).toBe('RECALIBRATE');
+    expect(report.overallDrift.scorePsi).toBeCloseTo(0.2103, 3);
     expect(report.overallDrift.hasLabelDrift).toBe(true);
     expect(report.overallDrift.labelActBadRate).not.toBe('N/A');
     expect(report.footerNotes.disclaimer).not.toContain('Basel');
@@ -251,8 +258,11 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(detailRes.run).toBeDefined();
 
     const report = buildRunReport(detailRes.run!, detailRes.detail);
+    expect(report.header.fileName).toBe('m06_v2_2025-12_เศรษฐกิจชะลอตัว.csv');
+    expect(report.summary.verdictStatus).toBe('STABLE');
     expect(report.summary.matchedRuleId).toBe('R8');
     expect(report.summary.triggerAction).toBe('MONITOR_CLOSELY');
+    expect(report.overallDrift.scorePsi).toBeCloseTo(0.0077, 3);
     expect(report.overallDrift.hasLabelDrift).toBe(true);
     expect(report.overallDrift.labelPValue).not.toBe('N/A');
     expect(report.footerNotes.disclaimer).not.toContain('Basel');

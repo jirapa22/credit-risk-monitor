@@ -311,10 +311,13 @@ describe('buildRunReport pure view-model builder (Step 13)', () => {
 
     const vm = buildRunReport(oldRun);
 
-    // Falls back gracefully to defaults or 'ไม่ได้บันทึก'
+    // Falls back gracefully to 'ค่าเริ่มต้น (รอบนี้ไม่ได้บันทึกเกณฑ์)' or 'ไม่ได้บันทึก'
     expect(vm.header.configHash).toBe('ไม่ได้บันทึก');
-    expect(vm.overallDrift.scoreWarningThreshold).toBe(DEFAULT_PSI_WARNING);
-    expect(vm.overallDrift.scoreCriticalThreshold).toBe(DEFAULT_PSI_CRITICAL);
+    expect(vm.overallDrift.scoreWarningThreshold).toBe('ค่าเริ่มต้น (รอบนี้ไม่ได้บันทึกเกณฑ์)');
+    expect(vm.overallDrift.scoreCriticalThreshold).toBe('ค่าเริ่มต้น (รอบนี้ไม่ได้บันทึกเกณฑ์)');
+    expect(vm.performance.aucThreshold).toBe('ไม่ได้บันทึก');
+    expect(vm.performance.giniThreshold).toBe('ไม่ได้บันทึก');
+    expect(vm.performance.ksThreshold).toBe('ไม่ได้บันทึก');
     expect(vm.overallDrift.hasLabelDrift).toBe(false);
     expect(vm.performance.hasLabels).toBe(false);
     expect(vm.footerNotes.disclaimer).not.toContain('Basel');

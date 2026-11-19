@@ -177,7 +177,7 @@ export default async function ReportPage(props: ReportPageProps) {
               <div className="font-semibold text-slate-200 print-text-dark mt-0.5">
                 {header.dataPeriod}
                 {header.isPeriodFallback && (
-                  <span className="text-[10px] text-slate-500 ml-1">(ชื่อไฟล์)</span>
+                  <span className="text-[10px] text-slate-500 ml-1">(คาดจากชื่อไฟล์)</span>
                 )}
               </div>
             </div>
@@ -385,8 +385,8 @@ export default async function ReportPage(props: ReportPageProps) {
                 </span>
               </div>
               <div className="text-[11px] text-slate-400 print-text-muted space-y-0.5 border-t border-slate-800/60 pt-2 print:border-slate-200">
-                <div>เกณฑ์เฝ้าระวัง (Warn): ≥ {overallDrift.scoreWarningThreshold}</div>
-                <div>เกณฑ์วิกฤต (Critical): ≥ {overallDrift.scoreCriticalThreshold}</div>
+                <div>เกณฑ์เฝ้าระวัง (Warn): {typeof overallDrift.scoreWarningThreshold === 'number' ? `≥ ${overallDrift.scoreWarningThreshold}` : overallDrift.scoreWarningThreshold}</div>
+                <div>เกณฑ์วิกฤต (Critical): {typeof overallDrift.scoreCriticalThreshold === 'number' ? `≥ ${overallDrift.scoreCriticalThreshold}` : overallDrift.scoreCriticalThreshold}</div>
               </div>
             </div>
 
@@ -501,8 +501,11 @@ export default async function ReportPage(props: ReportPageProps) {
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-right text-slate-400 print-text-muted text-[11px]">
-                          {typeof feat.warnThreshold === 'number' ? feat.warnThreshold.toFixed(2) : feat.warnThreshold} /{' '}
-                          {typeof feat.critThreshold === 'number' ? feat.critThreshold.toFixed(2) : feat.critThreshold}
+                          {typeof feat.warnThreshold === 'number' && typeof feat.critThreshold === 'number'
+                            ? `${feat.warnThreshold.toFixed(2)} / ${feat.critThreshold.toFixed(2)}`
+                            : feat.warnThreshold === feat.critThreshold
+                            ? feat.warnThreshold
+                            : `${feat.warnThreshold} / ${feat.critThreshold}`}
                         </td>
                         <td className="py-2.5 px-3 font-sans text-xs text-slate-400 print-text-muted">
                           {feat.unseenInfo ? (
@@ -535,11 +538,11 @@ export default async function ReportPage(props: ReportPageProps) {
               <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5 print-card print:p-2.5">
                 <div className="text-[11px] text-slate-400 print-text-muted mb-1">AUC (ROC)</div>
                 <div className="flex items-baseline justify-between">
-                  <span className={`text-xl font-bold font-mono ${performance.aucPass ? 'text-emerald-400' : 'text-rose-400'} print-text-dark`}>
+                  <span className={`text-xl font-bold font-mono ${performance.aucPass === true ? 'text-emerald-400' : performance.aucPass === false ? 'text-rose-400' : 'text-slate-200'} print-text-dark`}>
                     {performance.auc?.toFixed(4)}
                   </span>
                   <span className="text-[10px] text-slate-500 print-text-muted">
-                    เกณฑ์ ≥ {performance.aucThreshold}
+                    {typeof performance.aucThreshold === 'number' ? `เกณฑ์ ≥ ${performance.aucThreshold}` : `เกณฑ์: ${performance.aucThreshold}`}
                   </span>
                 </div>
               </div>
@@ -548,11 +551,11 @@ export default async function ReportPage(props: ReportPageProps) {
               <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5 print-card print:p-2.5">
                 <div className="text-[11px] text-slate-400 print-text-muted mb-1">Gini Coefficient</div>
                 <div className="flex items-baseline justify-between">
-                  <span className={`text-xl font-bold font-mono ${performance.giniPass !== false ? 'text-emerald-400' : 'text-rose-400'} print-text-dark`}>
+                  <span className={`text-xl font-bold font-mono ${performance.giniPass === true ? 'text-emerald-400' : performance.giniPass === false ? 'text-rose-400' : 'text-slate-200'} print-text-dark`}>
                     {performance.gini !== null ? performance.gini.toFixed(4) : '—'}
                   </span>
                   <span className="text-[10px] text-slate-500 print-text-muted">
-                    เกณฑ์ ≥ {performance.giniThreshold}
+                    {typeof performance.giniThreshold === 'number' ? `เกณฑ์ ≥ ${performance.giniThreshold}` : `เกณฑ์: ${performance.giniThreshold}`}
                   </span>
                 </div>
               </div>
@@ -561,11 +564,11 @@ export default async function ReportPage(props: ReportPageProps) {
               <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5 print-card print:p-2.5">
                 <div className="text-[11px] text-slate-400 print-text-muted mb-1">KS Statistic</div>
                 <div className="flex items-baseline justify-between">
-                  <span className={`text-xl font-bold font-mono ${performance.ksPass !== false ? 'text-emerald-400' : 'text-rose-400'} print-text-dark`}>
+                  <span className={`text-xl font-bold font-mono ${performance.ksPass === true ? 'text-emerald-400' : performance.ksPass === false ? 'text-rose-400' : 'text-slate-200'} print-text-dark`}>
                     {performance.ks !== null ? performance.ks.toFixed(4) : '—'}
                   </span>
                   <span className="text-[10px] text-slate-500 print-text-muted">
-                    เกณฑ์ ≥ {performance.ksThreshold}
+                    {typeof performance.ksThreshold === 'number' ? `เกณฑ์ ≥ ${performance.ksThreshold}` : `เกณฑ์: ${performance.ksThreshold}`}
                   </span>
                 </div>
               </div>

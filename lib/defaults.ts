@@ -23,6 +23,12 @@ export const DEFAULT_AUC_MIN = 0.55;
 export const DEFAULT_GINI_MIN = 0.10;
 export const DEFAULT_KS_MIN = 0.10;
 
+/**
+ * เกณฑ์ส่วนต่างสัดส่วนกลุ่มความเสี่ยงสูง (Decile เสี่ยงสูงสุด) เทียบกับ Reference ที่ต้องเริ่มแจ้งเตือน (percentage points)
+ * ค่าเริ่มต้นเชิงปฏิบัติที่ผู้พัฒนาตั้งไว้ (ผู้ใช้ปรับได้ต่อโมเดล ไม่ได้ปรับจากข้อมูลทดลอง)
+ */
+export const RISK_DECILE_ALERT_THRESHOLD_PCT_POINTS = 5.0;
+
 export interface ModelColumnConfig {
   idColumn: string;
   dateColumn: string | null;

@@ -187,7 +187,7 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.summary.verdictStatus).toBe('STABLE');
     expect(report.summary.matchedRuleId).toBe('R9');
     expect(report.summary.triggerAction).toBe('CONTINUE');
-    expect(report.summary.verdictReasonLine).toBe('การกระจายตัวของคะแนนและตัวแปรทั้งหมดอยู่ในเกณฑ์ปกติ');
+    expect(report.summary.verdictReasonLine).toBe('การกระจายตัวของคะแนนและตัวแปรอยู่ในเกณฑ์ปกติ');
     expect(report.overallDrift.scorePsi).toBeLessThan(0.10);
     expect(report.overallDrift.scorePsi).toBeCloseTo(0.0139, 3);
     expect(report.performance.hasLabels).toBe(true);
@@ -214,8 +214,7 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.summary.verdictStatus).toBe('CRITICAL');
     expect(report.summary.triggerAction).toBe('INVESTIGATE_DATA');
     expect(report.summary.matchedRuleId).toBe('R1b');
-    expect(report.summary.verdictReasonLine).toContain('occupation');
-    expect(report.summary.verdictReasonLine).toContain('ปัญหาข้อมูล');
+    expect(report.summary.verdictReasonLine).toBe('เนื่องจาก CSI ของ occupation อยู่ระดับวิกฤต (occupation: หมวดใหม่ 52 แถว)');
     expect(report.dataQuality.rejectedRows).toBe(79);
     expect(report.dataQuality.totalRows).toBe(1200);
     expect(report.dataQuality.validRows).toBe(1121);
@@ -244,8 +243,7 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.summary.verdictStatus).toBe('CRITICAL');
     expect(report.summary.matchedRuleId).toBe('R5');
     expect(report.summary.triggerAction).toBe('RECALIBRATE');
-    expect(report.summary.verdictReasonLine).toContain('channel');
-    expect(report.summary.verdictReasonLine).toContain('ncb_inquiries_6m');
+    expect(report.summary.verdictReasonLine).toBe('เนื่องจาก CSI ของ channel, ncb_inquiries_6m อยู่ระดับวิกฤต');
     expect(report.overallDrift.scorePsi).toBeCloseTo(0.2103, 3);
     expect(report.overallDrift.hasLabelDrift).toBe(true);
     expect(report.overallDrift.labelActBadRate).not.toBe('N/A');
@@ -276,6 +274,7 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.summary.verdictStatus).toBe('STABLE');
     expect(report.summary.matchedRuleId).toBe('R8');
     expect(report.summary.triggerAction).toBe('MONITOR_CLOSELY');
+    expect(report.summary.verdictReasonLine).toBe('คะแนนและตัวแปรอยู่ในเกณฑ์ปกติ แต่พบการเปลี่ยนแปลงของ Bad Rate (ดูหัวข้อ Overall Drift)');
     expect(report.overallDrift.scorePsi).toBeCloseTo(0.0077, 3);
     expect(report.overallDrift.hasLabelDrift).toBe(true);
     expect(report.overallDrift.labelPValue).not.toBe('N/A');
@@ -285,6 +284,7 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
   });
 
   it('invariant: if evidence mentions AUC, report performance must have hasLabels=true and valid metrics', async () => {
+    let m05MatchedAucText = '';
     for (const fn of [
       'm01_v2_2025-07_ปกติ.csv',
       'm03_v2_2025-09_ระบบต้นทางมีปัญหา.csv',
@@ -306,7 +306,14 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
         detailRes.run?.driftReport?.concept?.reason || '',
       ].join(' ');
 
-      const mentionsAuc = /AUC\s*=\s*[\d.]+/i.test(allEvidenceText);
+      const aucMatch = allEvidenceText.match(/AUC\s*=\s*[\d.]+/i);
+      const mentionsAuc = Boolean(aucMatch);
+      if (fn.includes('m05')) {
+        expect(mentionsAuc).toBe(true);
+        expect(aucMatch?.[0]).toBe('AUC=0.737');
+        m05MatchedAucText = aucMatch?.[0] || '';
+      }
+
       if (mentionsAuc) {
         expect(report.performance.hasLabels).toBe(true);
         expect(report.performance.auc).not.toBeNull();
@@ -314,5 +321,6 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
         expect(report.performance.ks).not.toBeNull();
       }
     }
+    expect(m05MatchedAucText).toBe('AUC=0.737');
   });
 });

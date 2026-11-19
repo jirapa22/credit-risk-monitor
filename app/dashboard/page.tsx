@@ -10,6 +10,7 @@ import {
   DEFAULT_KS_MIN,
   DEFAULT_PSI_WARNING,
   DEFAULT_PSI_CRITICAL,
+  RISK_DECILE_ALERT_THRESHOLD_PCT_POINTS,
 } from '../../lib/defaults';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -135,9 +136,6 @@ function MetricCard({ label, value, suffix = '', color = 'text-slate-200', small
 }
 
 // ─── Trend Chart Helpers ───────────────────────────────────────────────────
-// เกณฑ์ส่วนต่างสัดส่วนกลุ่มเสี่ยงสูง (D8–D10) เทียบกับ Reference ที่ต้องเริ่มแจ้งเตือน (percentage points)
-// หากส่วนต่าง (Actual % - Reference %) เกินเกณฑ์นี้ จึงจะแสดงข้อความเตือนให้ติดตาม NPL Rate
-export const RISK_DECILE_ALERT_THRESHOLD_PCT_POINTS = 5.0;
 
 function getLogPeriodInfo(l: MonitorLog): {
   periodLabel: string;

@@ -191,8 +191,22 @@ function deriveVerdictReasonLine(
   verdictStatus: string,
 ): string | undefined {
   if (verdictStatus === 'STABLE') {
-    return 'การกระจายตัวของคะแนนและตัวแปรทั้งหมดอยู่ในเกณฑ์ปกติ';
+    const labelStatus =
+      run.driftReport?.label?.status ??
+      (run.trigger?.evidence as any)?.driftReport?.labelStatus ??
+      (run.trigger?.evidence as any)?.driftReport?.labelEvidence?.status;
+    const hasLabelIssue = labelStatus === 'WARNING' || labelStatus === 'CRITICAL';
+    const isContinue = run.trigger?.action === 'CONTINUE';
+
+    if (hasLabelIssue) {
+      return 'คะแนนและตัวแปรอยู่ในเกณฑ์ปกติ แต่พบการเปลี่ยนแปลงของ Bad Rate (ดูหัวข้อ Overall Drift)';
+    }
+    if (!isContinue) {
+      return 'คะแนนและตัวแปรอยู่ในเกณฑ์ปกติ';
+    }
+    return 'การกระจายตัวของคะแนนและตัวแปรอยู่ในเกณฑ์ปกติ';
   }
+
   if (verdictStatus === 'INVALID_DATA') {
     return 'ข้อมูลไม่ผ่านเกณฑ์การตรวจสอบขั้นต้น ระบบจึงระงับการประมวลผล';
   }
@@ -210,7 +224,28 @@ function deriveVerdictReasonLine(
   const psiStatus = run.drift?.psi?.status;
   const isPsiCrit = psiStatus === 'CRITICAL';
   const isPsiWarn = psiStatus === 'WARNING';
-  const rejectedRows = run.validation?.rejectedRows ?? 0;
+
+  // Helper to collect actual validation issues for given features
+  const getFeatureIssueDetails = (features: string[]): string[] => {
+    const details: string[] = [];
+    const groups = run.validation?.groups || [];
+    for (const f of features) {
+      const issues = groups
+        .filter(g => g.column === f)
+        .map(g => {
+          let typeLabel = g.type as string;
+          if (g.type === 'UNSEEN_CATEGORY') typeLabel = 'หมวดใหม่';
+          else if (g.type === 'MISSING_VALUE') typeLabel = 'ค่าสูญหาย';
+          else if (g.type === 'OUT_OF_RANGE') typeLabel = 'ค่านอกช่วง';
+          else if (g.type === 'INVALID_TYPE') typeLabel = 'ชนิดข้อมูลไม่ถูกต้อง';
+          return `${typeLabel} ${g.count.toLocaleString()} แถว`;
+        });
+      if (issues.length > 0) {
+        details.push(`${f}: ${issues.join(', ')}`);
+      }
+    }
+    return details;
+  };
 
   if (verdictStatus === 'CRITICAL') {
     if (isPsiCrit) {
@@ -218,8 +253,9 @@ function deriveVerdictReasonLine(
     }
     // PSI is not critical (e.g. m05 where PSI is warning, or m03 where PSI is stable)
     if (critFeatures.length > 0) {
-      if (rejectedRows > 0) {
-        return `เนื่องจาก CSI ของ ${critFeatures.join(', ')} อยู่ระดับวิกฤต (ตัวแปรที่ได้รับผลกระทบจากปัญหาข้อมูลที่ถูกตัดออก ${rejectedRows.toLocaleString()} แถว)`;
+      const issueDetails = getFeatureIssueDetails(critFeatures);
+      if (issueDetails.length > 0) {
+        return `เนื่องจาก CSI ของ ${critFeatures.join(', ')} อยู่ระดับวิกฤต (${issueDetails.join(', ')})`;
       }
       return `เนื่องจาก CSI ของ ${critFeatures.join(', ')} อยู่ระดับวิกฤต`;
     }
@@ -231,6 +267,10 @@ function deriveVerdictReasonLine(
       return `เนื่องจาก PSI รวม (${run.drift?.psi?.value?.toFixed(4)}) อยู่ระดับเฝ้าระวัง`;
     }
     if (warnFeatures.length > 0) {
+      const issueDetails = getFeatureIssueDetails(warnFeatures);
+      if (issueDetails.length > 0) {
+        return `เนื่องจาก CSI ของ ${warnFeatures.join(', ')} อยู่ระดับเฝ้าระวัง (${issueDetails.join(', ')})`;
+      }
       return `เนื่องจาก CSI ของ ${warnFeatures.join(', ')} อยู่ระดับเฝ้าระวัง`;
     }
     if (run.driftReport?.label?.status === 'WARNING' || run.driftReport?.label?.status === 'CRITICAL') {

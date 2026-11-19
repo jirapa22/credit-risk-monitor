@@ -2814,19 +2814,31 @@ export default function Dashboard() {
                           })}
                               <td className="py-2.5 px-3"><Badge status={log.verdict} /></td>
                               <td className="py-2.5 px-3 text-right" onClick={e => e.stopPropagation()}>
-                                <button
-                                  onClick={() => {
-                                    setConfirmDelete({
-                                      type: 'single',
-                                      ids: [log.logId],
-                                      displayInfo: `${log.fileName} (${formatAppDateTime(log.uploadedAt)})`,
-                                    });
-                                  }}
-                                  title="ลบรายการนี้"
-                                  className="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition-colors"
-                                >
-                                  🗑️
-                                </button>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <a
+                                    href={`/dashboard/report/${encodeURIComponent(log.logId)}?modelId=${encodeURIComponent(selectedModelId || currentModelId)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[11px] px-2 py-1 rounded bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 flex items-center gap-1 transition-colors font-medium whitespace-nowrap"
+                                    title="เปิดรายงานฉบับเต็มของรอบนี้"
+                                  >
+                                    <span>📄</span>
+                                    <span>รายงาน</span>
+                                  </a>
+                                  <button
+                                    onClick={() => {
+                                      setConfirmDelete({
+                                        type: 'single',
+                                        ids: [log.logId],
+                                        displayInfo: `${log.fileName} (${formatAppDateTime(log.uploadedAt)})`,
+                                      });
+                                    }}
+                                    title="ลบรายการนี้"
+                                    className="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition-colors"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                             {isSelected && !viewingHistoricalRun?.hasDetail && (

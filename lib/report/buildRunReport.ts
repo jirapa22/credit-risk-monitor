@@ -26,6 +26,7 @@ export interface RunReportExecutiveSummary {
   verdictStatus: string; // 'STABLE' | 'WARNING' | 'CRITICAL' | 'INVALID_DATA'
   verdictLabel: string;
   verdictColor: 'emerald' | 'amber' | 'rose' | 'slate';
+  verdictReasonLine?: string; // Short evidence-based reason under verdict
   triggerAction: string;
   triggerActionLabel: string;
   matchedRuleId: string | null;
@@ -64,6 +65,9 @@ export interface RunReportOverallDrift {
   labelPThreshold: string;
   labelStatus: string;
   labelReason?: string;
+  expectedBadRate?: string;
+  labelPValueAdjusted?: string;
+  scoreAdjustedNote?: string;
 }
 
 export interface RunReportFeatureCsiItem {
@@ -172,6 +176,72 @@ function resolveConfigHash(run: MonitoringRun, baseline?: BaselineVersion | null
   return 'ไม่ได้บันทึก';
 }
 
+function formatPValue(p: number | string | null | undefined): string {
+  if (p === null || p === undefined || p === 'N/A' || p === '—') return 'N/A';
+  const num = typeof p === 'number' ? p : parseFloat(String(p));
+  if (isNaN(num)) return String(p);
+  if (num < 0.0001 || +num.toFixed(4) === 0) {
+    return '< 0.0001';
+  }
+  return num.toFixed(4);
+}
+
+function deriveVerdictReasonLine(
+  run: MonitoringRun,
+  verdictStatus: string,
+): string | undefined {
+  if (verdictStatus === 'STABLE') {
+    return 'การกระจายตัวของคะแนนและตัวแปรทั้งหมดอยู่ในเกณฑ์ปกติ';
+  }
+  if (verdictStatus === 'INVALID_DATA') {
+    return 'ข้อมูลไม่ผ่านเกณฑ์การตรวจสอบขั้นต้น ระบบจึงระงับการประมวลผล';
+  }
+
+  // Find critical / warning CSIs from run.drift.csi
+  const critFeatures: string[] = [];
+  const warnFeatures: string[] = [];
+  if (run.drift?.csi) {
+    for (const [key, csi] of Object.entries(run.drift.csi)) {
+      if (csi.status === 'CRITICAL') critFeatures.push(key);
+      else if (csi.status === 'WARNING') warnFeatures.push(key);
+    }
+  }
+
+  const psiStatus = run.drift?.psi?.status;
+  const isPsiCrit = psiStatus === 'CRITICAL';
+  const isPsiWarn = psiStatus === 'WARNING';
+  const rejectedRows = run.validation?.rejectedRows ?? 0;
+
+  if (verdictStatus === 'CRITICAL') {
+    if (isPsiCrit) {
+      return `เนื่องจาก PSI รวม (${run.drift?.psi?.value?.toFixed(4)}) อยู่ระดับวิกฤต`;
+    }
+    // PSI is not critical (e.g. m05 where PSI is warning, or m03 where PSI is stable)
+    if (critFeatures.length > 0) {
+      if (rejectedRows > 0) {
+        return `เนื่องจาก CSI ของ ${critFeatures.join(', ')} อยู่ระดับวิกฤต (ตัวแปรที่ได้รับผลกระทบจากปัญหาข้อมูลที่ถูกตัดออก ${rejectedRows.toLocaleString()} แถว)`;
+      }
+      return `เนื่องจาก CSI ของ ${critFeatures.join(', ')} อยู่ระดับวิกฤต`;
+    }
+    return 'เนื่องจากพบความเปลี่ยนแปลงของตัวแปรเกินเกณฑ์วิกฤต';
+  }
+
+  if (verdictStatus === 'WARNING') {
+    if (isPsiWarn) {
+      return `เนื่องจาก PSI รวม (${run.drift?.psi?.value?.toFixed(4)}) อยู่ระดับเฝ้าระวัง`;
+    }
+    if (warnFeatures.length > 0) {
+      return `เนื่องจาก CSI ของ ${warnFeatures.join(', ')} อยู่ระดับเฝ้าระวัง`;
+    }
+    if (run.driftReport?.label?.status === 'WARNING' || run.driftReport?.label?.status === 'CRITICAL') {
+      return 'เนื่องจากอัตราหนี้เสีย (Bad Rate) เปลี่ยนแปลงอย่างมีนัยสำคัญ';
+    }
+    return 'เนื่องจากพบสัญญาณเฝ้าระวังจากการกระจายตัวของข้อมูล';
+  }
+
+  return undefined;
+}
+
 /**
  * Pure function to build the comprehensive view-model for a per-run drift report.
  */
@@ -242,10 +312,13 @@ export function buildRunReport(
     reasons = ['การกระจายตัวของคะแนนและตัวแปรหลักยังคงสอดคล้องกับ Reference ข้อมูลอยู่ในเกณฑ์ปกติ'];
   }
 
+  const verdictReasonLine = deriveVerdictReasonLine(run, verdictStatus);
+
   const summary: RunReportExecutiveSummary = {
     verdictStatus,
     verdictLabel,
     verdictColor,
+    verdictReasonLine,
     triggerAction,
     triggerActionLabel,
     matchedRuleId,
@@ -370,7 +443,7 @@ export function buildRunReport(
 
   const pValRaw = labelEv?.pValue ?? labelMetrics?.pValue;
   const pVal = pValRaw !== undefined && pValRaw !== null
-    ? Number(pValRaw).toFixed(4)
+    ? formatPValue(pValRaw)
     : 'N/A';
 
   const pThrRaw = labelEv?.pThreshold ?? labelMetrics?.threshold?.pValueThreshold;
@@ -380,6 +453,17 @@ export function buildRunReport(
 
   const labelStatus = labelEv?.status ?? run.driftReport?.label?.status ?? (hasLabelData ? 'STABLE' : 'N/A');
   const labelReason = labelEv?.reason ?? run.driftReport?.label?.reason ?? undefined;
+
+  // Score-adjusted expected bad rate & p-value (Item 5)
+  const adj = (run.driftReport?.label?.metrics as any)?.scoreAdjusted;
+  const expBadRate =
+    adj && typeof adj.expectedBadRate === 'number'
+      ? `${(adj.expectedBadRate * 100).toFixed(2)}%`
+      : 'N/A';
+  const adjPVal =
+    adj && typeof adj.pValue === 'number'
+      ? formatPValue(adj.pValue)
+      : 'N/A';
 
   const overallDrift: RunReportOverallDrift = {
     scorePsi: psiVal,
@@ -395,6 +479,9 @@ export function buildRunReport(
     labelPThreshold: pThr,
     labelStatus,
     labelReason,
+    expectedBadRate: expBadRate,
+    labelPValueAdjusted: adjPVal,
+    scoreAdjustedNote: 'ใช้อธิบายเหตุผล ไม่ใช่ตัวตัดสิน Trigger',
   };
 
   // 5. Features CSI
@@ -450,6 +537,11 @@ export function buildRunReport(
 
   // 6. Model Performance
   const perf = run.driftReport?.concept?.metrics?.performance ?? (run.driftReport?.concept as any)?.performance;
+  const actualPerf = (perf as any)?.actual ?? perf;
+  const aucVal = typeof actualPerf?.auc === 'number' ? actualPerf.auc : null;
+  const giniVal = typeof actualPerf?.gini === 'number' ? actualPerf.gini : null;
+  const ksVal = typeof actualPerf?.ks === 'number' ? actualPerf.ks : null;
+
   const aucMin: number | string =
     typeof run.thresholdsSnapshot?.auc_min === 'number' ? run.thresholdsSnapshot.auc_min : 'ไม่ได้บันทึก';
   const giniMin: number | string =
@@ -458,19 +550,19 @@ export function buildRunReport(
     typeof run.thresholdsSnapshot?.ks_min === 'number' ? run.thresholdsSnapshot.ks_min : 'ไม่ได้บันทึก';
 
   let performance: RunReportModelPerformance;
-  if (perf && typeof perf.auc === 'number') {
+  if (aucVal !== null) {
     performance = {
       hasLabels: true,
-      auc: +perf.auc.toFixed(4),
+      auc: +aucVal.toFixed(4),
       aucThreshold: aucMin,
-      aucPass: typeof aucMin === 'number' ? perf.auc >= aucMin : null,
-      gini: typeof perf.gini === 'number' ? +perf.gini.toFixed(4) : null,
+      aucPass: typeof aucMin === 'number' ? aucVal >= aucMin : null,
+      gini: giniVal !== null ? +giniVal.toFixed(4) : null,
       giniThreshold: giniMin,
-      giniPass: typeof giniMin === 'number' && typeof perf.gini === 'number' ? perf.gini >= giniMin : null,
-      ks: typeof perf.ks === 'number' ? +perf.ks.toFixed(4) : null,
+      giniPass: typeof giniMin === 'number' && giniVal !== null ? giniVal >= giniMin : null,
+      ks: ksVal !== null ? +ksVal.toFixed(4) : null,
       ksThreshold: ksMin,
-      ksPass: typeof ksMin === 'number' && typeof perf.ks === 'number' ? perf.ks >= ksMin : null,
-      reliable: perf.reliable,
+      ksPass: typeof ksMin === 'number' && ksVal !== null ? ksVal >= ksMin : null,
+      reliable: perf?.reliable ?? (actualPerf as any)?.reliable,
     };
   } else {
     performance = {

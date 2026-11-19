@@ -187,8 +187,11 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.summary.verdictStatus).toBe('STABLE');
     expect(report.summary.matchedRuleId).toBe('R9');
     expect(report.summary.triggerAction).toBe('CONTINUE');
+    expect(report.summary.verdictReasonLine).toBe('การกระจายตัวของคะแนนและตัวแปรทั้งหมดอยู่ในเกณฑ์ปกติ');
     expect(report.overallDrift.scorePsi).toBeLessThan(0.10);
     expect(report.overallDrift.scorePsi).toBeCloseTo(0.0139, 3);
+    expect(report.performance.hasLabels).toBe(true);
+    expect(report.performance.auc).toBeCloseTo(0.7459, 3);
     expect(report.footerNotes.disclaimer).not.toContain('Basel');
   });
 
@@ -211,10 +214,14 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.summary.verdictStatus).toBe('CRITICAL');
     expect(report.summary.triggerAction).toBe('INVESTIGATE_DATA');
     expect(report.summary.matchedRuleId).toBe('R1b');
+    expect(report.summary.verdictReasonLine).toContain('occupation');
+    expect(report.summary.verdictReasonLine).toContain('ปัญหาข้อมูล');
     expect(report.dataQuality.rejectedRows).toBe(79);
     expect(report.dataQuality.totalRows).toBe(1200);
     expect(report.dataQuality.validRows).toBe(1121);
     expect(report.overallDrift.scorePsi).toBeCloseTo(0.0086, 3);
+    expect(report.performance.hasLabels).toBe(true);
+    expect(report.performance.auc).toBeCloseTo(0.7820, 3);
     expect(report.footerNotes.disclaimer).not.toContain('Basel');
   });
 
@@ -237,9 +244,16 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.summary.verdictStatus).toBe('CRITICAL');
     expect(report.summary.matchedRuleId).toBe('R5');
     expect(report.summary.triggerAction).toBe('RECALIBRATE');
+    expect(report.summary.verdictReasonLine).toContain('channel');
+    expect(report.summary.verdictReasonLine).toContain('ncb_inquiries_6m');
     expect(report.overallDrift.scorePsi).toBeCloseTo(0.2103, 3);
     expect(report.overallDrift.hasLabelDrift).toBe(true);
     expect(report.overallDrift.labelActBadRate).not.toBe('N/A');
+    expect(report.overallDrift.labelPValue).toBe('< 0.0001');
+    expect(report.performance.hasLabels).toBe(true);
+    expect(report.performance.auc).toBeCloseTo(0.737, 3);
+    expect(report.performance.gini).toBeCloseTo(0.474, 3);
+    expect(report.performance.ks).toBeCloseTo(0.351, 3);
     expect(report.footerNotes.disclaimer).not.toContain('Basel');
   });
 
@@ -265,6 +279,40 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.overallDrift.scorePsi).toBeCloseTo(0.0077, 3);
     expect(report.overallDrift.hasLabelDrift).toBe(true);
     expect(report.overallDrift.labelPValue).not.toBe('N/A');
+    expect(report.performance.hasLabels).toBe(true);
+    expect(report.performance.auc).toBeCloseTo(0.7602, 3);
     expect(report.footerNotes.disclaimer).not.toContain('Basel');
+  });
+
+  it('invariant: if evidence mentions AUC, report performance must have hasLabels=true and valid metrics', async () => {
+    for (const fn of [
+      'm01_v2_2025-07_ปกติ.csv',
+      'm03_v2_2025-09_ระบบต้นทางมีปัญหา.csv',
+      'm05_v2_2025-11_แคมเปญMobileApp.csv',
+      'm06_v2_2025-12_เศรษฐกิจชะลอตัว.csv',
+    ]) {
+      const csv = readFileSync(join(root, 'samples/cashloan_v2', fn), 'utf8');
+      const uploadRes = await monitorUploadHandler(new Request('http://localhost:3000/api/monitor-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelId, csvText: csv, fileName: fn }),
+      }));
+      const data = await uploadRes.json();
+      const detailRes = await getMonitoringRunDetail(modelId, data.run.runId);
+      const report = buildRunReport(detailRes.run!, detailRes.detail);
+
+      const allEvidenceText = [
+        ...(report.summary.reasons || []),
+        detailRes.run?.driftReport?.concept?.reason || '',
+      ].join(' ');
+
+      const mentionsAuc = /AUC\s*=\s*[\d.]+/i.test(allEvidenceText);
+      if (mentionsAuc) {
+        expect(report.performance.hasLabels).toBe(true);
+        expect(report.performance.auc).not.toBeNull();
+        expect(report.performance.gini).not.toBeNull();
+        expect(report.performance.ks).not.toBeNull();
+      }
+    }
   });
 });

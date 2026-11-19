@@ -11,15 +11,13 @@ import {
 
 describe('buildRunReport pure view-model builder (Step 13)', () => {
   it('1. builds accurate report for a normal run (clean drift, PSI, CSI, labels, trigger)', () => {
-    const normalRun: any = {
+    const normalRun: MonitoringRun = {
       runId: 'run_normal_001',
       kind: 'monitoring',
       createdAt: '2025-07-15T10:30:00.000Z',
       model: {
         modelId: 'test_model',
         configVersion: '1.0.0',
-        version: '1.0.0',
-        scoreDirection: 'higher_is_safer',
       },
       modelName: 'Personal Loan Model v1',
       referenceId: 'ref_dev_01',
@@ -31,8 +29,8 @@ describe('buildRunReport pure view-model builder (Step 13)', () => {
         gini_min: 0.20,
         ks_min: 0.15,
         csi_features: {
-          feature_x: { threshold: 0.12 },
-          feature_y: { threshold: 0.10 },
+          feature_x: { threshold: 0.12, bins: [] },
+          feature_y: { threshold: 0.10, bins: [] },
         },
       },
       validation: {
@@ -47,19 +45,20 @@ describe('buildRunReport pure view-model builder (Step 13)', () => {
         ],
         blockingErrors: [],
         warnings: [],
+        groups: [],
       },
       drift: {
         referenceId: 'ref_dev_01',
         psi: { value: 0.0452, status: 'STABLE', threshold: { warning: 0.10, critical: 0.25 }, bins: [] },
         csi: {
-          feature_x: { value: 0.0321, status: 'STABLE', threshold: { warning: 0.12, critical: 0.25 }, bins: [] },
-          feature_y: { value: 0.0894, status: 'STABLE', threshold: { warning: 0.10, critical: 0.25 }, bins: [] },
+          feature_x: { value: 0.0321, status: 'STABLE', threshold: { warning: 0.12, critical: 0.25 }, bins: [], displayName: 'Feature X' },
+          feature_y: { value: 0.0894, status: 'STABLE', threshold: { warning: 0.10, critical: 0.25 }, bins: [], displayName: 'Feature Y' },
         },
         overallStatus: 'STABLE',
         triggered: [],
       },
       driftReport: {
-        model: { modelId: 'test_model', configVersion: '1.0.0', version: '1.0.0' },
+        model: { modelId: 'test_model', configVersion: '1.0.0' },
         referenceId: 'ref_dev_01',
         covariate: {
           status: 'STABLE',
@@ -90,23 +89,49 @@ describe('buildRunReport pure view-model builder (Step 13)', () => {
           metrics: {
             features: {},
             performance: {
-              auc: 0.7241,
-              gini: 0.4482,
-              ks: 0.3512,
+              status: 'STABLE',
+              reason: 'ประสิทธิภาพโมเดลคงที่ (AUC=0.724, Gini=0.448, KS=0.351)',
               reliable: true,
-              warnings: [],
-            },
+              reliabilityWarnings: [],
+              actual: {
+                n: 980,
+                bads: 92,
+                auc: 0.7241,
+                gini: 0.4482,
+                ks: 0.3512,
+              },
+              reference: {
+                n: 1000,
+                bads: 93,
+                auc: 0.7300,
+                gini: 0.4600,
+                ks: 0.3600,
+              },
+            } as any,
             minBadsPerBin: 5,
           },
         },
-        summary: { status: 'STABLE', reason: 'Stable', overallStatus: 'STABLE' },
+        summary: {
+          status: 'STABLE',
+          reason: 'Stable',
+          overallStatus: 'STABLE',
+          driftTypesDetected: [],
+          notAvailable: [],
+          metrics: {
+            overallStatus: 'STABLE',
+            driftTypesDetected: [],
+            notAvailable: [],
+          },
+        },
       },
       trigger: {
         action: 'CONTINUE',
         severity: 'info',
-        matchedRuleId: null,
+        matchedRuleId: 'R0',
         reasons: ['การกระจายตัวของคะแนนและตัวแปรหลักยังคงสอดคล้องกับ Reference'],
-        evidence: null,
+        evidence: {},
+        recommendedSteps: [],
+        requiresHumanReview: false,
       },
       uploadSummary: {
         periods: [{ period: '2025-07', count: 1000, pct: 100 }],
@@ -163,18 +188,21 @@ describe('buildRunReport pure view-model builder (Step 13)', () => {
   });
 
   it('2. builds accurate report for a blocked run (invalid data / validation error)', () => {
-    const blockedRun: any = {
+    const blockedRun: MonitoringRun = {
       runId: 'run_blocked_002',
       kind: 'monitoring',
       createdAt: '2025-08-10T08:00:00.000Z',
-      model: { modelId: 'test_model', version: '1.0.0', configVersion: '1.0.0' },
+      model: { modelId: 'test_model', configVersion: '1.0.0' },
       modelName: 'Personal Loan Model v1',
       referenceId: 'ref_dev_01',
       fileName: 'm03_bad_schema.csv',
       thresholdsSnapshot: {
         psi_warning: DEFAULT_PSI_WARNING,
         psi_critical: DEFAULT_PSI_CRITICAL,
-        csi_features: { feat_a: { threshold: 0.10 }, feat_b: { threshold: 0.10 } },
+        gini_min: DEFAULT_GINI_MIN,
+        auc_min: DEFAULT_AUC_MIN,
+        ks_min: DEFAULT_KS_MIN,
+        csi_features: { feat_a: { threshold: 0.10, bins: [] }, feat_b: { threshold: 0.10, bins: [] } },
       },
       validation: {
         ok: false,
@@ -182,10 +210,13 @@ describe('buildRunReport pure view-model builder (Step 13)', () => {
         validRows: 0,
         rejectedRows: 500,
         rejectedPct: 100,
+        warningRows: 0,
+        issues: [],
         blockingErrors: [
           { type: 'MISSING_COLUMN', severity: 'error', column: 'feat_a', message: 'Missing feat_a' },
         ],
         warnings: [],
+        groups: [],
       },
       drift: null, // blocked
       driftReport: null,
@@ -194,7 +225,9 @@ describe('buildRunReport pure view-model builder (Step 13)', () => {
         severity: 'critical',
         matchedRuleId: 'R1a',
         reasons: ['[R1a] ข้อมูลไม่ผ่านการตรวจสอบคอลัมน์จำเป็น: ไม่พบคอลัมน์ feat_a'],
-        evidence: null,
+        evidence: {},
+        recommendedSteps: [],
+        requiresHumanReview: true,
       },
     };
 
@@ -214,17 +247,20 @@ describe('buildRunReport pure view-model builder (Step 13)', () => {
   });
 
   it('3. builds report for a run without labels (unsupervised/production run)', () => {
-    const noLabelRun: any = {
+    const noLabelRun: MonitoringRun = {
       runId: 'run_unlabeled_003',
       kind: 'monitoring',
       createdAt: '2025-09-01T12:00:00.000Z',
-      model: { modelId: 'test_model', version: '1.0.0', configVersion: '1.0.0' },
+      model: { modelId: 'test_model', configVersion: '1.0.0' },
       modelName: 'Test Model',
       referenceId: 'ref_01',
       fileName: 'prod_batch_2025-09.csv',
       thresholdsSnapshot: {
         psi_warning: 0.10,
         psi_critical: 0.25,
+        gini_min: 0.10,
+        auc_min: 0.55,
+        ks_min: 0.10,
         csi_features: {},
       },
       validation: {
@@ -233,20 +269,23 @@ describe('buildRunReport pure view-model builder (Step 13)', () => {
         validRows: 2000,
         rejectedRows: 0,
         rejectedPct: 0,
+        warningRows: 0,
+        issues: [],
         blockingErrors: [],
         warnings: [],
+        groups: [],
       },
       drift: {
         referenceId: 'ref_01',
         psi: { value: 0.1250, status: 'WARNING', threshold: { warning: 0.10, critical: 0.25 }, bins: [] },
         csi: {
-          feature_num: { value: 0.1420, status: 'WARNING', threshold: { warning: 0.10, critical: 0.25 }, bins: [] },
+          feature_num: { value: 0.1420, status: 'WARNING', threshold: { warning: 0.10, critical: 0.25 }, bins: [], displayName: 'Feature Num' },
         },
         overallStatus: 'WARNING',
         triggered: ['psi'],
       },
       driftReport: {
-        model: { modelId: 'test_model', configVersion: '1.0.0', version: '1.0.0' },
+        model: { modelId: 'test_model', configVersion: '1.0.0' },
         referenceId: 'ref_01',
         covariate: {
           status: 'WARNING',
@@ -261,14 +300,27 @@ describe('buildRunReport pure view-model builder (Step 13)', () => {
         missing: { status: 'STABLE', reason: 'none', metrics: { features: {}, threshold: { warningDelta: 0.02, criticalDelta: 0.05 } } },
         label: { status: 'NOT_AVAILABLE', reason: 'No labels', metrics: null },
         concept: null as any,
-        summary: { status: 'WARNING', reason: 'Moderate drift', overallStatus: 'WARNING' },
+        summary: {
+          status: 'WARNING',
+          reason: 'Moderate drift',
+          overallStatus: 'WARNING',
+          driftTypesDetected: ['covariate'],
+          notAvailable: [],
+          metrics: {
+            overallStatus: 'WARNING',
+            driftTypesDetected: ['covariate'],
+            notAvailable: [],
+          },
+        },
       },
       trigger: {
         action: 'MONITOR_CLOSELY',
         severity: 'warning',
         matchedRuleId: 'R8',
         reasons: ['[R8] พบสัญญาณเตือนระดับเฝ้าระวัง'],
-        evidence: null,
+        evidence: {},
+        recommendedSteps: [],
+        requiresHumanReview: false,
       },
     };
 

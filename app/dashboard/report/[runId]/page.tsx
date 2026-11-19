@@ -168,7 +168,7 @@ export default async function ReportPage(props: ReportPageProps) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
             <div>
               <div className="text-slate-400 print-text-muted text-[11px]">ชื่อไฟล์ข้อมูล</div>
-              <div className="font-semibold text-slate-200 print-text-dark truncate mt-0.5" title={header.fileName}>
+              <div className="font-semibold text-slate-200 print-text-dark break-all whitespace-normal mt-0.5" title={header.fileName}>
                 {header.fileName}
               </div>
             </div>
@@ -242,6 +242,11 @@ export default async function ReportPage(props: ReportPageProps) {
               } print-text-dark`}>
                 {summary.verdictLabel}
               </div>
+              {summary.verdictReasonLine && (
+                <div className="text-xs text-slate-300 mt-1 font-medium print-text-dark">
+                  {summary.verdictReasonLine}
+                </div>
+              )}
             </div>
 
             {/* Trigger Box */}
@@ -410,15 +415,26 @@ export default async function ReportPage(props: ReportPageProps) {
                       ({overallDrift.labelRelativeChange})
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-400 print-text-muted space-y-0.5 border-t border-slate-800/60 pt-2 print:border-slate-200">
+                  <div className="text-[11px] text-slate-400 print-text-muted space-y-1 border-t border-slate-800/60 pt-2 print:border-slate-200">
                     <div>
-                      ค่า p-value: <span className="font-mono font-bold text-slate-300 print-text-dark">{overallDrift.labelPValue}</span>
+                      ค่า p-value (Unadjusted): <span className="font-mono font-bold text-slate-300 print-text-dark">{overallDrift.labelPValue}</span>
                       {overallDrift.labelPThreshold !== 'ไม่ได้บันทึก' && (
                         <span> (เกณฑ์นัยสำคัญ &lt; {overallDrift.labelPThreshold})</span>
                       )}
                     </div>
+                    {overallDrift.expectedBadRate && overallDrift.expectedBadRate !== 'N/A' && (
+                      <div className="bg-slate-900/80 rounded px-2.5 py-1.5 mt-1 border border-slate-800">
+                        <div className="flex items-center justify-between text-[11px] gap-2">
+                          <span>Expected Bad Rate (ช่วงคะแนน): <strong className="font-mono text-cyan-400">{overallDrift.expectedBadRate}</strong></span>
+                          <span>p-value (Adjusted): <strong className="font-mono text-slate-300">{overallDrift.labelPValueAdjusted}</strong></span>
+                        </div>
+                        <div className="text-[9px] text-slate-500 mt-0.5">
+                          * {overallDrift.scoreAdjustedNote}
+                        </div>
+                      </div>
+                    )}
                     {overallDrift.labelReason && (
-                      <div className="truncate" title={overallDrift.labelReason}>
+                      <div className="truncate text-[10px]" title={overallDrift.labelReason}>
                         สัญญาณ: {overallDrift.labelReason}
                       </div>
                     )}

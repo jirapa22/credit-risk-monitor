@@ -22,12 +22,20 @@ export function toLegacyLog(run: MonitoringRun) {
           psi: run.drift.psi.value,
           csi: Object.fromEntries(Object.entries(run.drift.csi).map(([k, v]) => [k, v.value])),
           csiStatus: Object.fromEntries(Object.entries(run.drift.csi).map(([k, v]) => [k, v.status])),
-          csiDetail: Object.fromEntries(Object.entries(run.drift.csi).map(([k, v]: [string, any]) => [k, {
-            value: v.value,
-            status: v.status,
-            pValue: (run.driftReport?.covariate?.metrics?.features as any)?.[k]?.pValue ?? (run.driftReport?.covariate?.metrics?.features as any)?.[k]?.psiOrCsi?.pValue ?? null,
-            unseenCount: (run.validation?.issues || []).filter(i => i.type === 'UNSEEN_CATEGORY' && i.column === k).length,
-          }])),
+          csiDetail: Object.fromEntries(Object.entries(run.drift.csi).map(([k, v]) => {
+            const covFeat = run.driftReport?.covariate?.metrics?.features?.[k];
+            const pValue = covFeat?.chiSquare?.pValue ?? covFeat?.ks?.pValue ?? null;
+            const unseenIssues = (run.validation?.issues || []).filter(i => i.type === 'UNSEEN_CATEGORY' && i.column === k);
+            const unseenRowCount = unseenIssues.length;
+            const unseenDistinctCategories = new Set(unseenIssues.map(i => String(i.value))).size;
+            return [k, {
+              value: v.value,
+              status: v.status,
+              pValue,
+              unseenRowCount,
+              unseenDistinctCategories,
+            }];
+          })),
           status: run.drift.overallStatus,
         }
       : null,
@@ -35,6 +43,7 @@ export function toLegacyLog(run: MonitoringRun) {
       status: run.driftReport.label.status,
       reason: run.driftReport.label.reason,
       pValue: run.driftReport.label.metrics?.pValue,
+      pThreshold: run.driftReport.label.metrics?.threshold?.pValueThreshold,
       refBadRate: run.driftReport.label.metrics?.referenceBadRate,
       actBadRate: run.driftReport.label.metrics?.actualBadRate,
     } : null,

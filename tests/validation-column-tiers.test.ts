@@ -119,7 +119,7 @@ describe('Validation 3-Tier Column Requirements Test (Item 3)', () => {
     setBlobStore(undefined);
   });
 
-  it('rejects file when a required scorecard feature is missing (HTTP 400 with MISSING_COLUMN error)', async () => {
+  it('rejects file when a required scorecard feature is missing (HTTP 422 with MISSING_COLUMN error)', async () => {
     // Missing feat_req_card
     const badCsv = [
       'app_ref_id,app_ref_date,feat_req_reg,feat_opt,bad_flag',
@@ -132,7 +132,7 @@ describe('Validation 3-Tier Column Requirements Test (Item 3)', () => {
       body: JSON.stringify({ csvText: badCsv, fileName: 'missing_req.csv', modelId }),
     }));
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     const data = await res.json();
     expect(data.validation.ok).toBe(false);
     expect(data.validation.blockingErrors.length).toBeGreaterThan(0);

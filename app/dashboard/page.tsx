@@ -228,7 +228,12 @@ function deriveVerdictReason(
 
     if (val !== undefined) {
       const pValStr = det?.pValue !== undefined && det?.pValue !== null ? `, p=${Number(det.pValue).toFixed(4)}` : '';
-      const unseenStr = det?.unseenCount && det.unseenCount > 0 ? `, พบหมวดหมู่ใหม่ที่ไม่เคยพบ ${det.unseenCount} รายการ` : '';
+      let unseenStr = '';
+      if (det?.unseenRowCount && det.unseenRowCount > 0) {
+        unseenStr = `, พบ ${det.unseenRowCount} แถว (${det.unseenDistinctCategories || 1} หมวดใหม่)`;
+      } else if (det?.unseenCount && det.unseenCount > 0) {
+        unseenStr = `, พบ ${det.unseenCount} แถว`;
+      }
       const text = `${f.label || f.key} (CSI: ${val.toFixed(4)}${pValStr}${unseenStr})`;
       if (isCrit) {
         csiCriticals.push(text);
@@ -267,7 +272,9 @@ function deriveVerdictReason(
   const labelDrift = (l as any)?.labelDrift;
   let labelDriftNote = '';
   if (labelDrift && labelDrift.status !== 'STABLE' && labelDrift.status !== 'NOT_AVAILABLE') {
-    const pStr = labelDrift.pValue !== undefined ? ` (p=${Number(labelDrift.pValue).toFixed(4)} เทียบเกณฑ์ p < 0.05)` : '';
+    const pThr = labelDrift.pThreshold;
+    const pThrStr = pThr !== undefined && pThr !== null ? ` เทียบเกณฑ์ p < ${pThr}` : '';
+    const pStr = labelDrift.pValue !== undefined && labelDrift.pValue !== null ? ` (p=${Number(labelDrift.pValue).toFixed(4)}${pThrStr})` : '';
     labelDriftNote = `สัญญาณ Label Drift: ${labelDrift.reason || 'อัตราหนี้เสียเปลี่ยนแปลงอย่างมีนัยสำคัญ'}${pStr}`;
   } else {
     const lReason = l.triggerReasons?.find(r => r.includes('Label Drift') || r.includes('Bad Rate') || r.includes('อัตราผิดนัดชำระหนี้'));
@@ -2482,13 +2489,23 @@ export default function Dashboard() {
                     const highestBucket = [...uploadedRiskGrades].sort((a, b) => b.count - a.count)[0];
                     const scoreDir = (activeVer?.scoreDirection || displayVer?.scoreDirection || (model as any)?.scoreDirection || 'higher_is_safer') as 'higher_is_safer' | 'higher_is_riskier';
 
-                    const d1 = uploadedRiskGrades.find(g => g.grade === 'D1')?.pct ?? 0;
-                    const d2 = uploadedRiskGrades.find(g => g.grade === 'D2')?.pct ?? 0;
-                    const safeDecilePct = +(d1 + d2).toFixed(1);
+                    const N = uploadedRiskGrades.length;
+                    const k1 = Math.max(1, Math.floor(N * 0.2));
+                    const k2 = Math.max(k1 + 1, Math.floor(N * 0.4));
+                    const k3 = Math.max(k2 + 1, Math.floor(N * 0.7));
 
-                    const lastTwo = uploadedRiskGrades.slice(-2);
-                    const riskDecilePct = +lastTwo.reduce((s, g) => s + g.pct, 0).toFixed(1);
-                    const riskDecileNames = lastTwo.map(g => g.grade).join('–');
+                    const tier1Items = uploadedRiskGrades.slice(0, k1);
+                    const tier2Items = uploadedRiskGrades.slice(k1, k2);
+                    const tier3Items = uploadedRiskGrades.slice(k2, k3);
+                    const tier4Items = uploadedRiskGrades.slice(k3);
+
+                    const tier1Names = tier1Items.map(g => g.grade).join('–');
+                    const tier2Names = tier2Items.map(g => g.grade).join('–');
+                    const tier3Names = tier3Items.map(g => g.grade).join('–');
+                    const tier4Names = tier4Items.map(g => g.grade).join('–');
+
+                    const safeDecilePct = +tier1Items.reduce((s, g) => s + g.pct, 0).toFixed(1);
+                    const riskDecilePct = +tier4Items.reduce((s, g) => s + g.pct, 0).toFixed(1);
 
                     const gradeColor = (g: string) => {
                       if (isLetterGrades) {
@@ -2497,11 +2514,11 @@ export default function Dashboard() {
                           : g.startsWith('BBB+') || g === 'BBB' ? '#f59e0b'
                           : '#f87171';
                       }
-                      const num = parseInt(g.replace(/\D/g, ''), 10);
-                      if (num <= 2) return '#22d3ee';
-                      if (num <= 4) return '#6366f1';
-                      if (num <= 7) return '#3b82f6';
-                      if (num <= 8) return '#f59e0b';
+                      const idx = uploadedRiskGrades.findIndex(item => item.grade === g);
+                      if (idx < k1) return '#22d3ee';
+                      if (idx < k2) return '#6366f1';
+                      if (idx < k3) return '#3b82f6';
+                      if (idx < N - 1) return '#f59e0b';
                       return '#f87171';
                     };
 
@@ -2536,19 +2553,19 @@ export default function Dashboard() {
                             </>
                           ) : (
                             <>
-                              <p>● การกระจายตัวตาม Decile: ลูกค้ากลุ่มความเสี่ยงต่ำสุด (D1–D2) รวม{' '}
+                              <p>● การกระจายตัวตามกลุ่มความเสี่ยง ({N} ระดับ): ลูกค้ากลุ่มความเสี่ยงต่ำสุด ({tier1Names}) รวม{' '}
                                 <span className="text-cyan-400 font-bold">{safeDecilePct}%</span>
                               </p>
                               <p>● กลุ่มที่มีลูกค้าหนาแน่นที่สุดคือระดับ{' '}
                                 <span className="text-indigo-400 font-bold">{highestBucket?.grade}</span>{' '}
                                 ({highestBucket?.count.toLocaleString()} ราย · {highestBucket?.pct}%)
                               </p>
-                              <p>● ลูกค้ากลุ่มความเสี่ยงสูงสุด ({riskDecileNames}) รวม{' '}
+                              <p>● ลูกค้ากลุ่มความเสี่ยงสูงสุด ({tier4Names}) รวม{' '}
                                 <span className="text-amber-400 font-bold">{riskDecilePct}%</span>{' '}
                                 — ระดับความเสี่ยงสูง ควรติดตาม NPL Rate และการผิดนัดชำระอย่างใกล้ชิด
                               </p>
                               <p className="text-[10px] text-slate-400">
-                                ● ทิศทางคะแนน: {scoreDir === 'higher_is_riskier' ? 'คะแนนยิ่งสูงยิ่งเสี่ยง (Higher is Riskier)' : 'คะแนนยิ่งสูงยิ่งปลอดภัย (Higher is Safer)'} — จัดกลุ่ม D1 (เสี่ยงต่ำสุด) ถึง D{uploadedRiskGrades.length} (เสี่ยงสูงสุด)
+                                ● ทิศทางคะแนน ({scoreDir}): {scoreDir === 'higher_is_riskier' ? 'คะแนนยิ่งสูงยิ่งเสี่ยง (Higher is Riskier)' : 'คะแนนยิ่งสูงยิ่งปลอดภัย (Higher is Safer)'} — ระบบจัดระดับให้ D1 คือกลุ่มเสี่ยงต่ำสุด ({scoreDir === 'higher_is_riskier' ? 'คะแนนต่ำ' : 'คะแนนสูง'}) เรียงไปถึง D{N} คือกลุ่มเสี่ยงสูงสุด ({scoreDir === 'higher_is_riskier' ? 'คะแนนสูง' : 'คะแนนต่ำ'})
                               </p>
                             </>
                           )}
@@ -2586,10 +2603,10 @@ export default function Dashboard() {
                             </>
                           ) : (
                             <>
-                              <span style={{ color: '#22d3ee' }}>■ D1–D2 : ความเสี่ยงต่ำสุด (Safest)</span>
-                              <span style={{ color: '#6366f1' }}>■ D3–D4 : ความเสี่ยงต่ำ</span>
-                              <span style={{ color: '#3b82f6' }}>■ D5–D7 : ความเสี่ยงปานกลาง</span>
-                              <span style={{ color: '#f87171' }}>■ D8–D{uploadedRiskGrades.length} : ความเสี่ยงสูงสุด (Highest risk)</span>
+                              <span style={{ color: '#22d3ee' }}>■ {tier1Names} : ความเสี่ยงต่ำสุด (Safest)</span>
+                              <span style={{ color: '#6366f1' }}>■ {tier2Names} : ความเสี่ยงต่ำ</span>
+                              <span style={{ color: '#3b82f6' }}>■ {tier3Names} : ความเสี่ยงปานกลาง</span>
+                              <span style={{ color: '#f87171' }}>■ {tier4Names} : ความเสี่ยงสูงสุด (Highest risk)</span>
                             </>
                           )}
                         </div>

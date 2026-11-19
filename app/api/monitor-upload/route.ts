@@ -143,10 +143,9 @@ export async function POST(request: Request) {
     };
 
     if (!run.drift) {
-      const hasMissingCol = run.validation?.blockingErrors?.some(e => e.type === 'MISSING_COLUMN');
       return NextResponse.json(
         { ...base, error: 'ข้อมูลไม่ผ่านการตรวจสอบ — ยังไม่ได้คำนวณ PSI/CSI', status: 'INVALID_DATA' },
-        { status: hasMissingCol ? 400 : 422 },
+        { status: 422 },
       );
     }
 

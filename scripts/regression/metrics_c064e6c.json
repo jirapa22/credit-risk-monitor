@@ -1,0 +1,1562 @@
+{
+  "ascore_v1/01_clean.csv": {
+    "modelId": "ascore_v1",
+    "file": "01_clean.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.007451,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.013128,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.007451,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.013128,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    }
+  },
+  "ascore_v1/02_data_error_5pct.csv": {
+    "modelId": "ascore_v1",
+    "file": "02_data_error_5pct.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.012365,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.030563,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "INVESTIGATE_DATA"
+    },
+    "calibrated": {
+      "scorePsi": 0.012365,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.030563,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "CRITICAL",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "INVESTIGATE_DATA"
+    }
+  },
+  "ascore_v1/03_data_error_20pct.csv": {
+    "modelId": "ascore_v1",
+    "file": "03_data_error_20pct.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.050269,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.166198,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "WARNING",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "WARNING",
+      "triggerAction": "INVESTIGATE_DATA"
+    },
+    "calibrated": {
+      "scorePsi": 0.050269,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.166198,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "CRITICAL",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "WARNING",
+      "triggerAction": "INVESTIGATE_DATA"
+    }
+  },
+  "ascore_v1/04_schema_break.csv": {
+    "modelId": "ascore_v1",
+    "file": "04_schema_break.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": null,
+      "scoreStatus": null,
+      "csiFeatures": {},
+      "csiStatus": {},
+      "overallStatus": "STABLE",
+      "triggerAction": "BLOCKED_INVALID_DATA"
+    },
+    "calibrated": {
+      "scorePsi": null,
+      "scoreStatus": null,
+      "csiFeatures": {},
+      "csiStatus": {},
+      "overallStatus": "STABLE",
+      "triggerAction": "BLOCKED_INVALID_DATA"
+    }
+  },
+  "ascore_v1/05_rejected_rows.csv": {
+    "modelId": "ascore_v1",
+    "file": "05_rejected_rows.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.01053,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.009278,
+        "loan_amount": 0.005498,
+        "dti_ratio": 0.002403
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "INVESTIGATE_DATA"
+    },
+    "calibrated": {
+      "scorePsi": 0.01053,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.009278,
+        "loan_amount": 0.005498,
+        "dti_ratio": 0.002403
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "INVESTIGATE_DATA"
+    }
+  },
+  "ascore_v1/06_mix_shift.csv": {
+    "modelId": "ascore_v1",
+    "file": "06_mix_shift.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.030459,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.139883,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "WARNING",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "WARNING",
+      "triggerAction": "MONITOR_CLOSELY"
+    },
+    "calibrated": {
+      "scorePsi": 0.030459,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.139883,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "CRITICAL",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "WARNING",
+      "triggerAction": "INVESTIGATE_DRIFT"
+    }
+  },
+  "ascore_v1/07_label_shift.csv": {
+    "modelId": "ascore_v1",
+    "file": "07_label_shift.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.007451,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.013128,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "RECALIBRATE"
+    },
+    "calibrated": {
+      "scorePsi": 0.007451,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.013128,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "MONITOR_CLOSELY"
+    }
+  },
+  "ascore_v1/08_concept_shift.csv": {
+    "modelId": "ascore_v1",
+    "file": "08_concept_shift.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.007451,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.013128,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONSIDER_RETRAIN"
+    },
+    "calibrated": {
+      "scorePsi": 0.007451,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.013128,
+        "loan_amount": 0.005008,
+        "dti_ratio": 0.000886
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONSIDER_RETRAIN"
+    }
+  },
+  "ascore_v1/09_multivariate.csv": {
+    "modelId": "ascore_v1",
+    "file": "09_multivariate.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.031133,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.013128,
+        "loan_amount": 0.038184,
+        "dti_ratio": 0.042004
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "INVESTIGATE_DATA"
+    },
+    "calibrated": {
+      "scorePsi": 0.031133,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.013128,
+        "loan_amount": 0.038184,
+        "dti_ratio": 0.042004
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "CRITICAL",
+        "dti_ratio": "CRITICAL"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "INVESTIGATE_DATA"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_01.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_01.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.005683,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.003959,
+        "loan_amount": 0.01421,
+        "dti_ratio": 0.004761
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.005683,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.003959,
+        "loan_amount": 0.01421,
+        "dti_ratio": 0.004761
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_02.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_02.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.020462,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.001935,
+        "loan_amount": 0.007637,
+        "dti_ratio": 0.000037
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.020462,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.001935,
+        "loan_amount": 0.007637,
+        "dti_ratio": 0.000037
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "MONITOR_CLOSELY"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_03.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_03.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.006709,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.010463,
+        "loan_amount": 0.001174,
+        "dti_ratio": 0.002677
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.006709,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.010463,
+        "loan_amount": 0.001174,
+        "dti_ratio": 0.002677
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_04.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_04.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.019026,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.025235,
+        "loan_amount": 0.009025,
+        "dti_ratio": 0.007524
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "MONITOR_CLOSELY"
+    },
+    "calibrated": {
+      "scorePsi": 0.019026,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.025235,
+        "loan_amount": 0.009025,
+        "dti_ratio": 0.007524
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_05.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_05.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.02222,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.015565,
+        "loan_amount": 0.00216,
+        "dti_ratio": 0.002102
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.02222,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.015565,
+        "loan_amount": 0.00216,
+        "dti_ratio": 0.002102
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_06.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_06.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.018088,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.003613,
+        "loan_amount": 0.004772,
+        "dti_ratio": 0.006889
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.018088,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.003613,
+        "loan_amount": 0.004772,
+        "dti_ratio": 0.006889
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_07.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_07.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.015173,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.014333,
+        "loan_amount": 0.013442,
+        "dti_ratio": 0.006413
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.015173,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.014333,
+        "loan_amount": 0.013442,
+        "dti_ratio": 0.006413
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_08.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_08.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.013449,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.011777,
+        "loan_amount": 0.010204,
+        "dti_ratio": 0.009332
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.013449,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.011777,
+        "loan_amount": 0.010204,
+        "dti_ratio": 0.009332
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_09.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_09.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.036945,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.047421,
+        "loan_amount": 0.006219,
+        "dti_ratio": 0.006296
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.036945,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.047421,
+        "loan_amount": 0.006219,
+        "dti_ratio": 0.006296
+      },
+      "csiStatus": {
+        "monthly_income": "CRITICAL",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "INVESTIGATE_DRIFT"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_10.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_10.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.012971,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.063964,
+        "loan_amount": 0.005124,
+        "dti_ratio": 0.00757
+      },
+      "csiStatus": {
+        "monthly_income": "STABLE",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.012971,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.063964,
+        "loan_amount": 0.005124,
+        "dti_ratio": 0.00757
+      },
+      "csiStatus": {
+        "monthly_income": "CRITICAL",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONSIDER_RETRAIN"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_11.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_11.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.05642,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.168357,
+        "loan_amount": 0.002763,
+        "dti_ratio": 0.001852
+      },
+      "csiStatus": {
+        "monthly_income": "WARNING",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "WARNING",
+      "triggerAction": "MONITOR_CLOSELY"
+    },
+    "calibrated": {
+      "scorePsi": 0.05642,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.168357,
+        "loan_amount": 0.002763,
+        "dti_ratio": 0.001852
+      },
+      "csiStatus": {
+        "monthly_income": "CRITICAL",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "WARNING",
+      "triggerAction": "CONSIDER_RETRAIN"
+    }
+  },
+  "ascore_v1/sequence_mix_shift/month_12.csv": {
+    "modelId": "ascore_v1",
+    "file": "sequence_mix_shift/month_12.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.043264,
+        "critical": 0.050625
+      },
+      "csi_features": {
+        "monthly_income": {
+          "warning": 0.030409,
+          "critical": 0.032324
+        },
+        "loan_amount": {
+          "warning": 0.026491,
+          "critical": 0.031481
+        },
+        "dti_ratio": {
+          "warning": 0.026123,
+          "critical": 0.028432
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.072613,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.155387,
+        "loan_amount": 0.011121,
+        "dti_ratio": 0.003227
+      },
+      "csiStatus": {
+        "monthly_income": "WARNING",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "WARNING",
+      "triggerAction": "MONITOR_CLOSELY"
+    },
+    "calibrated": {
+      "scorePsi": 0.072613,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "monthly_income": 0.155387,
+        "loan_amount": 0.011121,
+        "dti_ratio": 0.003227
+      },
+      "csiStatus": {
+        "monthly_income": "CRITICAL",
+        "loan_amount": "STABLE",
+        "dti_ratio": "STABLE"
+      },
+      "overallStatus": "WARNING",
+      "triggerAction": "CONSIDER_RETRAIN"
+    }
+  },
+  "ext_model/01_clean.csv": {
+    "modelId": "ext_model",
+    "file": "01_clean.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.048615,
+        "critical": 0.051799
+      },
+      "csi_features": {
+        "รายได้ต่อเดือน": {
+          "warning": 0.046546,
+          "critical": 0.05555
+        },
+        "วงเงินสินเชื่อ": {
+          "warning": 0.048732,
+          "critical": 0.051044
+        },
+        "สัดส่วนภาระหนี้": {
+          "warning": 0.043722,
+          "critical": 0.058856
+        },
+        "กลุ่มอาชีพ": {
+          "warning": 0.023063,
+          "critical": 0.027005
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.017199,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "รายได้ต่อเดือน": 0.022246,
+        "วงเงินสินเชื่อ": 0.030505,
+        "สัดส่วนภาระหนี้": 0.01402,
+        "กลุ่มอาชีพ": 0.007987
+      },
+      "csiStatus": {
+        "รายได้ต่อเดือน": "STABLE",
+        "วงเงินสินเชื่อ": "STABLE",
+        "สัดส่วนภาระหนี้": "STABLE",
+        "กลุ่มอาชีพ": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.017199,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "รายได้ต่อเดือน": 0.022246,
+        "วงเงินสินเชื่อ": 0.030505,
+        "สัดส่วนภาระหนี้": 0.01402,
+        "กลุ่มอาชีพ": 0.007987
+      },
+      "csiStatus": {
+        "รายได้ต่อเดือน": "STABLE",
+        "วงเงินสินเชื่อ": "STABLE",
+        "สัดส่วนภาระหนี้": "STABLE",
+        "กลุ่มอาชีพ": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    }
+  },
+  "ext_model/02_unseen_category.csv": {
+    "modelId": "ext_model",
+    "file": "02_unseen_category.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.048615,
+        "critical": 0.051799
+      },
+      "csi_features": {
+        "รายได้ต่อเดือน": {
+          "warning": 0.046546,
+          "critical": 0.05555
+        },
+        "วงเงินสินเชื่อ": {
+          "warning": 0.048732,
+          "critical": 0.051044
+        },
+        "สัดส่วนภาระหนี้": {
+          "warning": 0.043722,
+          "critical": 0.058856
+        },
+        "กลุ่มอาชีพ": {
+          "warning": 0.023063,
+          "critical": 0.027005
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.017199,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "รายได้ต่อเดือน": 0.022246,
+        "วงเงินสินเชื่อ": 0.030505,
+        "สัดส่วนภาระหนี้": 0.01402,
+        "กลุ่มอาชีพ": 0.320656
+      },
+      "csiStatus": {
+        "รายได้ต่อเดือน": "STABLE",
+        "วงเงินสินเชื่อ": "STABLE",
+        "สัดส่วนภาระหนี้": "STABLE",
+        "กลุ่มอาชีพ": "CRITICAL"
+      },
+      "overallStatus": "CRITICAL",
+      "triggerAction": "INVESTIGATE_DATA"
+    },
+    "calibrated": {
+      "scorePsi": 0.017199,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "รายได้ต่อเดือน": 0.022246,
+        "วงเงินสินเชื่อ": 0.030505,
+        "สัดส่วนภาระหนี้": 0.01402,
+        "กลุ่มอาชีพ": 0.320656
+      },
+      "csiStatus": {
+        "รายได้ต่อเดือน": "STABLE",
+        "วงเงินสินเชื่อ": "STABLE",
+        "สัดส่วนภาระหนี้": "STABLE",
+        "กลุ่มอาชีพ": "CRITICAL"
+      },
+      "overallStatus": "CRITICAL",
+      "triggerAction": "INVESTIGATE_DATA"
+    }
+  },
+  "ext_model/03_category_shift.csv": {
+    "modelId": "ext_model",
+    "file": "03_category_shift.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.048615,
+        "critical": 0.051799
+      },
+      "csi_features": {
+        "รายได้ต่อเดือน": {
+          "warning": 0.046546,
+          "critical": 0.05555
+        },
+        "วงเงินสินเชื่อ": {
+          "warning": 0.048732,
+          "critical": 0.051044
+        },
+        "สัดส่วนภาระหนี้": {
+          "warning": 0.043722,
+          "critical": 0.058856
+        },
+        "กลุ่มอาชีพ": {
+          "warning": 0.023063,
+          "critical": 0.027005
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.017199,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "รายได้ต่อเดือน": 0.022246,
+        "วงเงินสินเชื่อ": 0.030505,
+        "สัดส่วนภาระหนี้": 0.01402,
+        "กลุ่มอาชีพ": 0.294298
+      },
+      "csiStatus": {
+        "รายได้ต่อเดือน": "STABLE",
+        "วงเงินสินเชื่อ": "STABLE",
+        "สัดส่วนภาระหนี้": "STABLE",
+        "กลุ่มอาชีพ": "CRITICAL"
+      },
+      "overallStatus": "CRITICAL",
+      "triggerAction": "INVESTIGATE_DRIFT"
+    },
+    "calibrated": {
+      "scorePsi": 0.017199,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "รายได้ต่อเดือน": 0.022246,
+        "วงเงินสินเชื่อ": 0.030505,
+        "สัดส่วนภาระหนี้": 0.01402,
+        "กลุ่มอาชีพ": 0.294298
+      },
+      "csiStatus": {
+        "รายได้ต่อเดือน": "STABLE",
+        "วงเงินสินเชื่อ": "STABLE",
+        "สัดส่วนภาระหนี้": "STABLE",
+        "กลุ่มอาชีพ": "CRITICAL"
+      },
+      "overallStatus": "CRITICAL",
+      "triggerAction": "INVESTIGATE_DRIFT"
+    }
+  },
+  "ext_model/04_missing_drift.csv": {
+    "modelId": "ext_model",
+    "file": "04_missing_drift.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.048615,
+        "critical": 0.051799
+      },
+      "csi_features": {
+        "รายได้ต่อเดือน": {
+          "warning": 0.046546,
+          "critical": 0.05555
+        },
+        "วงเงินสินเชื่อ": {
+          "warning": 0.048732,
+          "critical": 0.051044
+        },
+        "สัดส่วนภาระหนี้": {
+          "warning": 0.043722,
+          "critical": 0.058856
+        },
+        "กลุ่มอาชีพ": {
+          "warning": 0.023063,
+          "critical": 0.027005
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.017199,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "รายได้ต่อเดือน": 0.083979,
+        "วงเงินสินเชื่อ": 0.030505,
+        "สัดส่วนภาระหนี้": 0.01402,
+        "กลุ่มอาชีพ": 0.007987
+      },
+      "csiStatus": {
+        "รายได้ต่อเดือน": "STABLE",
+        "วงเงินสินเชื่อ": "STABLE",
+        "สัดส่วนภาระหนี้": "STABLE",
+        "กลุ่มอาชีพ": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "INVESTIGATE_DATA"
+    },
+    "calibrated": {
+      "scorePsi": 0.017199,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "รายได้ต่อเดือน": 0.083979,
+        "วงเงินสินเชื่อ": 0.030505,
+        "สัดส่วนภาระหนี้": 0.01402,
+        "กลุ่มอาชีพ": 0.007987
+      },
+      "csiStatus": {
+        "รายได้ต่อเดือน": "CRITICAL",
+        "วงเงินสินเชื่อ": "STABLE",
+        "สัดส่วนภาระหนี้": "STABLE",
+        "กลุ่มอาชีพ": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "INVESTIGATE_DATA"
+    }
+  },
+  "new_model_auto_loan/monitor_clean.csv": {
+    "modelId": "new_model_auto_loan",
+    "file": "monitor_clean.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.049739,
+        "critical": 0.062607
+      },
+      "csi_features": {
+        "ราคารถ": {
+          "warning": 0.049418,
+          "critical": 0.055284
+        },
+        "เงินดาวน์_pct": {
+          "warning": 0.048238,
+          "critical": 0.054906
+        },
+        "ระยะผ่อน_เดือน": {
+          "warning": 0.027109,
+          "critical": 0.030334
+        },
+        "ประเภทรถ": {
+          "warning": 0.029756,
+          "critical": 0.03694
+        },
+        "อายุผู้กู้": {
+          "warning": 0.052842,
+          "critical": 0.06269
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.009646,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "ราคารถ": 0.012662,
+        "เงินดาวน์_pct": 0.021845,
+        "ระยะผ่อน_เดือน": 0.001306,
+        "อายุผู้กู้": 0.038937,
+        "ประเภทรถ": 0.013589
+      },
+      "csiStatus": {
+        "ราคารถ": "STABLE",
+        "เงินดาวน์_pct": "STABLE",
+        "ระยะผ่อน_เดือน": "STABLE",
+        "อายุผู้กู้": "STABLE",
+        "ประเภทรถ": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    },
+    "calibrated": {
+      "scorePsi": 0.009646,
+      "scoreStatus": "STABLE",
+      "csiFeatures": {
+        "ราคารถ": 0.012662,
+        "เงินดาวน์_pct": 0.021845,
+        "ระยะผ่อน_เดือน": 0.001306,
+        "อายุผู้กู้": 0.038937,
+        "ประเภทรถ": 0.013589
+      },
+      "csiStatus": {
+        "ราคารถ": "STABLE",
+        "เงินดาวน์_pct": "STABLE",
+        "ระยะผ่อน_เดือน": "STABLE",
+        "อายุผู้กู้": "STABLE",
+        "ประเภทรถ": "STABLE"
+      },
+      "overallStatus": "STABLE",
+      "triggerAction": "CONTINUE"
+    }
+  },
+  "new_model_auto_loan/monitor_drift.csv": {
+    "modelId": "new_model_auto_loan",
+    "file": "monitor_drift.csv",
+    "calibratedThresholds": {
+      "score": {
+        "warning": 0.049739,
+        "critical": 0.062607
+      },
+      "csi_features": {
+        "ราคารถ": {
+          "warning": 0.049418,
+          "critical": 0.055284
+        },
+        "เงินดาวน์_pct": {
+          "warning": 0.048238,
+          "critical": 0.054906
+        },
+        "ระยะผ่อน_เดือน": {
+          "warning": 0.027109,
+          "critical": 0.030334
+        },
+        "ประเภทรถ": {
+          "warning": 0.029756,
+          "critical": 0.03694
+        },
+        "อายุผู้กู้": {
+          "warning": 0.052842,
+          "critical": 0.06269
+        }
+      }
+    },
+    "fixed": {
+      "scorePsi": 0.825714,
+      "scoreStatus": "CRITICAL",
+      "csiFeatures": {
+        "ราคารถ": 0.018538,
+        "เงินดาวน์_pct": 3.89984,
+        "ระยะผ่อน_เดือน": 0.011121,
+        "อายุผู้กู้": 0.023106,
+        "ประเภทรถ": 0.448084
+      },
+      "csiStatus": {
+        "ราคารถ": "STABLE",
+        "เงินดาวน์_pct": "CRITICAL",
+        "ระยะผ่อน_เดือน": "STABLE",
+        "อายุผู้กู้": "STABLE",
+        "ประเภทรถ": "CRITICAL"
+      },
+      "overallStatus": "CRITICAL",
+      "triggerAction": "RECALIBRATE"
+    },
+    "calibrated": {
+      "scorePsi": 0.825714,
+      "scoreStatus": "CRITICAL",
+      "csiFeatures": {
+        "ราคารถ": 0.018538,
+        "เงินดาวน์_pct": 3.89984,
+        "ระยะผ่อน_เดือน": 0.011121,
+        "อายุผู้กู้": 0.023106,
+        "ประเภทรถ": 0.448084
+      },
+      "csiStatus": {
+        "ราคารถ": "STABLE",
+        "เงินดาวน์_pct": "CRITICAL",
+        "ระยะผ่อน_เดือน": "STABLE",
+        "อายุผู้กู้": "STABLE",
+        "ประเภทรถ": "CRITICAL"
+      },
+      "overallStatus": "CRITICAL",
+      "triggerAction": "INVESTIGATE_DRIFT"
+    }
+  }
+}

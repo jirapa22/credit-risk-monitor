@@ -11,6 +11,8 @@
  *   0.10–0.25 — Moderate shift (warn)
  *   > 0.25  — Significant shift (critical)
  *
+ * ค่าเริ่มต้นเชิงปฏิบัติที่ผู้พัฒนาตั้งไว้ (PSI 0.10/0.25 เป็นกฎหัวแม่มือ ไม่ใช่ข้อบังคับ) ผู้ใช้ปรับได้ต่อโมเดล
+ *
  * The thresholds here are intentionally tighter than the textbook values
  * because this model operates in a high-volume retail credit context.
  */

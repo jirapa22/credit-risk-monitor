@@ -22,9 +22,22 @@ export function toLegacyLog(run: MonitoringRun) {
           psi: run.drift.psi.value,
           csi: Object.fromEntries(Object.entries(run.drift.csi).map(([k, v]) => [k, v.value])),
           csiStatus: Object.fromEntries(Object.entries(run.drift.csi).map(([k, v]) => [k, v.status])),
+          csiDetail: Object.fromEntries(Object.entries(run.drift.csi).map(([k, v]: [string, any]) => [k, {
+            value: v.value,
+            status: v.status,
+            pValue: (run.driftReport?.covariate?.metrics?.features as any)?.[k]?.pValue ?? (run.driftReport?.covariate?.metrics?.features as any)?.[k]?.psiOrCsi?.pValue ?? null,
+            unseenCount: (run.validation?.issues || []).filter(i => i.type === 'UNSEEN_CATEGORY' && i.column === k).length,
+          }])),
           status: run.drift.overallStatus,
         }
       : null,
+    labelDrift: run.driftReport?.label ? {
+      status: run.driftReport.label.status,
+      reason: run.driftReport.label.reason,
+      pValue: run.driftReport.label.metrics?.pValue,
+      refBadRate: run.driftReport.label.metrics?.referenceBadRate,
+      actBadRate: run.driftReport.label.metrics?.actualBadRate,
+    } : null,
     uploadSummary: run.uploadSummary,
     verdict: run.drift ? run.drift.overallStatus : 'INVALID_DATA',
     // ── Anomaly screening (new; absent/null for older runs) ──

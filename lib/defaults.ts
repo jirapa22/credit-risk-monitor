@@ -10,6 +10,19 @@ export const DEFAULT_DATE_COLUMN = 'application_date';
 export const DEFAULT_LABEL_COLUMN = 'default_flag';
 export const LEGACY_SCORE_KEY = 'aScore';
 
+/**
+ * ค่าเริ่มต้นเชิงปฏิบัติที่ผู้พัฒนาตั้งไว้ (PSI 0.10/0.25 เป็นกฎหัวแม่มือ ไม่ใช่ข้อบังคับ) ผู้ใช้ปรับได้ต่อโมเดล
+ */
+export const DEFAULT_PSI_WARNING = 0.10;
+export const DEFAULT_PSI_CRITICAL = 0.25;
+
+/**
+ * ค่าเริ่มต้นเชิงปฏิบัติที่ผู้พัฒนาตั้งไว้ ผู้ใช้ปรับได้ต่อโมเดล
+ */
+export const DEFAULT_AUC_MIN = 0.55;
+export const DEFAULT_GINI_MIN = 0.10;
+export const DEFAULT_KS_MIN = 0.10;
+
 export interface ModelColumnConfig {
   idColumn: string;
   dateColumn: string | null;

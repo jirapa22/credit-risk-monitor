@@ -44,7 +44,15 @@ import type {
 } from './types';
 import type { ReferenceProfile } from './reference';
 import type { CleanRow } from './validation';
-import { DEFAULT_LABEL_COLUMN, resolveModelColumns } from './defaults';
+import {
+  DEFAULT_LABEL_COLUMN,
+  resolveModelColumns,
+  DEFAULT_AUC_MIN,
+  DEFAULT_GINI_MIN,
+  DEFAULT_KS_MIN,
+  DEFAULT_PSI_WARNING,
+  DEFAULT_PSI_CRITICAL,
+} from './defaults';
 import { classify, resolveCsiFeatures, runDriftDetection } from './drift';
 import { getNearestSize } from './calibration';
 import { calculateAScore } from './scoring';
@@ -87,11 +95,11 @@ export const DEFAULT_DRIFT_CONFIG: Required<DriftConfig> = {
 };
 
 const DEFAULT_THRESHOLDS: MonitoringThresholds = {
-  psi_warning: 0.10,
-  psi_critical: 0.25,
-  gini_min: 0.10,
-  auc_min: 0.55,
-  ks_min: 0.10,
+  psi_warning: DEFAULT_PSI_WARNING,
+  psi_critical: DEFAULT_PSI_CRITICAL,
+  gini_min: DEFAULT_GINI_MIN,
+  auc_min: DEFAULT_AUC_MIN,
+  ks_min: DEFAULT_KS_MIN,
   csi_features: {},
 };
 

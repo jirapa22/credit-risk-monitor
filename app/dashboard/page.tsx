@@ -4,6 +4,13 @@ import AnomalyExperimentPanel from './components/AnomalyExperimentPanel';
 import BaselineRegistryPanel from './components/BaselineRegistryPanel';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
 import { formatAppDateTime } from '../../lib/time';
+import {
+  DEFAULT_AUC_MIN,
+  DEFAULT_GINI_MIN,
+  DEFAULT_KS_MIN,
+  DEFAULT_PSI_WARNING,
+  DEFAULT_PSI_CRITICAL,
+} from '../../lib/defaults';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface ModelConfig {
@@ -90,6 +97,7 @@ const ISSUE_LABEL: Record<string, string> = {
   EMPTY_FILE: 'ไฟล์/ข้อมูลไม่พอ', MISSING_COLUMN: 'ไม่พบคอลัมน์', DUPLICATE_COLUMN: 'คอลัมน์ซ้ำ', MISSING_VALUE: 'ค่าว่าง',
   INVALID_TYPE: 'ชนิดข้อมูลผิด', OUT_OF_RANGE: 'ค่านอกช่วง', INVALID_DATE: 'วันที่ผิดรูปแบบ', INVALID_BINARY: 'ต้องเป็น 0/1',
   DUPLICATE_ID: 'รหัสลูกค้าซ้ำ', MALFORMED_ROW: 'แถวผิดรูปแบบ',
+  UNSEEN_CATEGORY: 'หมวดหมู่ใหม่ที่ไม่เคยพบใน Reference',
 };
 
 type ActiveTab = 'registry' | 'sandbox' | 'monitor';
@@ -208,18 +216,38 @@ function deriveVerdictReason(
   const csiCriticals: string[] = [];
   const csiWarnings: string[] = [];
   const csiStatus = (l.results as any)?.csiStatus as Record<string, string> | undefined;
+  const csiDetail = (l.results as any)?.csiDetail as Record<string, any> | undefined;
 
   for (const f of csiFeatures) {
     const val = l.results.csi?.[f.key];
     const st = csiStatus?.[f.key];
-    const thr = parseFloat(f.threshold) || 0.10;
+    const det = csiDetail?.[f.key];
+    const thr = parseFloat(f.threshold) || DEFAULT_PSI_WARNING;
     const isCrit = st === 'CRITICAL' || (val !== undefined && val >= Math.max(critPsi, thr));
     const isWarn = st === 'WARNING' || (val !== undefined && val >= thr && !isCrit);
 
-    if (isCrit && val !== undefined) {
-      csiCriticals.push(`${f.label || f.key} (CSI: ${val.toFixed(4)})`);
-    } else if (isWarn && val !== undefined) {
-      csiWarnings.push(`${f.label || f.key} (CSI: ${val.toFixed(4)})`);
+    if (val !== undefined) {
+      const pValStr = det?.pValue !== undefined && det?.pValue !== null ? `, p=${Number(det.pValue).toFixed(4)}` : '';
+      const unseenStr = det?.unseenCount && det.unseenCount > 0 ? `, พบหมวดหมู่ใหม่ที่ไม่เคยพบ ${det.unseenCount} รายการ` : '';
+      const text = `${f.label || f.key} (CSI: ${val.toFixed(4)}${pValStr}${unseenStr})`;
+      if (isCrit) {
+        csiCriticals.push(text);
+      } else if (isWarn) {
+        csiWarnings.push(text);
+      }
+    }
+  }
+
+  // Check skipped optional features
+  const totalMonitoredCount = csiFeatures.length;
+  const evaluatedCount = Object.keys(l.results.csi || {}).length;
+  let skippedFeaturesNote = '';
+  if (totalMonitoredCount > 0 && evaluatedCount < totalMonitoredCount) {
+    const skippedKeys = csiFeatures
+      .filter(f => l.results?.csi?.[f.key] === undefined)
+      .map(f => f.label || f.key);
+    if (skippedKeys.length > 0) {
+      skippedFeaturesNote = `ตรวจ CSI ${evaluatedCount} จาก ${totalMonitoredCount} ตัวแปร (ข้าม: ${skippedKeys.join(', ')})`;
     }
   }
 
@@ -235,20 +263,39 @@ function deriveVerdictReason(
   const missingNote = missingParts.length > 0 ? `พบค่าว่าง: ${missingParts.join(', ')}` : '';
   const skippedNote = l.skippedRows && l.skippedRows > 0 ? `(ตัดแถวออก ${l.skippedRows.toLocaleString()} แถว)` : '';
 
+  // Check label drift signals (e.g. m06)
+  const labelDrift = (l as any)?.labelDrift;
+  let labelDriftNote = '';
+  if (labelDrift && labelDrift.status !== 'STABLE' && labelDrift.status !== 'NOT_AVAILABLE') {
+    const pStr = labelDrift.pValue !== undefined ? ` (p=${Number(labelDrift.pValue).toFixed(4)} เทียบเกณฑ์ p < 0.05)` : '';
+    labelDriftNote = `สัญญาณ Label Drift: ${labelDrift.reason || 'อัตราหนี้เสียเปลี่ยนแปลงอย่างมีนัยสำคัญ'}${pStr}`;
+  } else {
+    const lReason = l.triggerReasons?.find(r => r.includes('Label Drift') || r.includes('Bad Rate') || r.includes('อัตราผิดนัดชำระหนี้'));
+    if (lReason) {
+      labelDriftNote = `สัญญาณ Label Drift: ${lReason.replace(/^\[[^\]]+\]\s*/, '')}`;
+    }
+  }
+
   if (l.verdict === 'CRITICAL') {
     const reasons: string[] = [];
     if (psiVal >= critPsi) {
-      reasons.push(`PSI (${psiVal.toFixed(4)}) เกินเกณฑ์วิกฤต (≥ ${critPsi.toFixed(2)})`);
+      reasons.push(`PSI รวม (${psiVal.toFixed(4)}) เกินเกณฑ์วิกฤต (≥ ${critPsi.toFixed(2)})`);
+      if (csiCriticals.length > 0) {
+        reasons.push(`CSI ของ ${csiCriticals.join(', ')} เกินเกณฑ์วิกฤต`);
+      }
+    } else {
+      reasons.push(
+        `PSI รวม (${psiVal.toFixed(4)}) ยังต่ำกว่าเกณฑ์วิกฤต (< ${critPsi.toFixed(2)}) แต่สถานะภาพรวมเป็น CRITICAL เนื่องจากพบตัวแปรที่มีการเปลี่ยนแปลงรุนแรง: ${csiCriticals.length > 0 ? csiCriticals.join(', ') : 'ตัวแปรรายตัวเกินเกณฑ์'}`
+      );
     }
-    if (csiCriticals.length > 0) {
-      reasons.push(`CSI ของ ${csiCriticals.join(', ')} เกินเกณฑ์วิกฤต`);
-    }
+    if (labelDriftNote) reasons.push(labelDriftNote);
     if (reasons.length === 0 && l.verdictReason) {
       reasons.push(l.verdictReason);
     }
     if (reasons.length === 0) {
       reasons.push(`ผลลัพธ์ของโมเดลอยู่ในระดับวิกฤต (PSI: ${psiVal.toFixed(4)})`);
     }
+    if (skippedFeaturesNote) reasons.push(skippedFeaturesNote);
     if (missingNote) reasons.push(missingNote);
     if (skippedNote) reasons.push(skippedNote);
     return `${reasons.join(' · ')}${modeTag}`;
@@ -257,10 +304,13 @@ function deriveVerdictReason(
   if (l.verdict === 'WARNING') {
     const reasons: string[] = [];
     if (psiVal >= warnPsi) {
-      reasons.push(`PSI (${psiVal.toFixed(4)}) เกินเกณฑ์เฝ้าระวัง (≥ ${warnPsi.toFixed(2)})`);
+      reasons.push(`PSI รวม (${psiVal.toFixed(4)}) เกินเกณฑ์เฝ้าระวัง (≥ ${warnPsi.toFixed(2)})`);
     }
     if (csiWarnings.length > 0) {
       reasons.push(`CSI ของ ${csiWarnings.join(', ')} เกินเกณฑ์เฝ้าระวัง`);
+    }
+    if (labelDriftNote) {
+      reasons.push(labelDriftNote);
     }
     if (reasons.length === 0 && l.verdictReason) {
       reasons.push(l.verdictReason);
@@ -268,6 +318,7 @@ function deriveVerdictReason(
     if (reasons.length === 0) {
       reasons.push(`ผลลัพธ์ของโมเดลอยู่ในระดับเฝ้าระวัง (PSI: ${psiVal.toFixed(4)})`);
     }
+    if (skippedFeaturesNote) reasons.push(skippedFeaturesNote);
     if (missingNote) reasons.push(missingNote);
     if (skippedNote) reasons.push(skippedNote);
     return `${reasons.join(' · ')}${modeTag}`;
@@ -275,6 +326,7 @@ function deriveVerdictReason(
 
   if (l.verdict === 'STABLE') {
     const notes: string[] = [`PSI (${psiVal.toFixed(4)}) และ CSI ทุกตัวแปรอยู่ในเกณฑ์ปกติ (ต่ำกว่า ${warnPsi.toFixed(2)})`];
+    if (skippedFeaturesNote) notes.push(skippedFeaturesNote);
     if (missingNote) notes.push(missingNote);
     if (skippedNote) notes.push(skippedNote);
     return `${notes.join(' · ')}${modeTag}`;
@@ -313,10 +365,10 @@ const TrendTooltip = ({ active, payload }: any) => {
   if (!data) return null;
 
   return (
-    <div className="bg-slate-900 border border-slate-700/80 rounded-xl p-3 shadow-2xl max-w-md text-xs space-y-2.5 pointer-events-none">
+    <div className="bg-slate-900 border border-slate-700/80 rounded-xl p-3 shadow-2xl max-w-sm text-xs space-y-2 pointer-events-none z-50">
       {/* Header */}
       <div className="border-b border-slate-800 pb-1.5 flex items-center justify-between gap-2">
-        <span className="font-semibold text-slate-200 truncate max-w-[200px]" title={data.fileName}>
+        <span className="font-semibold text-slate-200 truncate max-w-[180px]" title={data.fileName}>
           📁 {data.fileName}
         </span>
         <div className="flex items-center gap-1.5 font-mono text-[10px]">
@@ -396,10 +448,18 @@ const TrendTooltip = ({ active, payload }: any) => {
           <p className="font-semibold text-slate-400 mb-1">CSI รายตัวแปร:</p>
           <div className="grid grid-cols-1 gap-1 max-h-24 overflow-y-auto pr-1">
             {data.csiItems.map((c: any) => (
-              <div key={c.key} className="flex justify-between text-slate-400 font-mono">
-                <span className="truncate max-w-[170px]">{c.label}:</span>
-                <span className={c.value !== null && c.value >= 0.25 ? 'text-rose-400 font-bold' : c.value !== null && c.value >= 0.10 ? 'text-amber-400 font-bold' : 'text-slate-300'}>
+              <div key={c.key} className="flex justify-between items-center text-slate-400 font-mono text-[10px]">
+                <span className="truncate max-w-[170px]" title={c.label}>
+                  {c.label}:
+                  {c.unseenCount && c.unseenCount > 0 ? (
+                    <span className="ml-1 text-[9px] text-amber-300 font-sans">
+                      (พบหมวดหมู่ใหม่ {c.unseenCount})
+                    </span>
+                  ) : null}
+                </span>
+                <span className={c.value !== null && c.value >= DEFAULT_PSI_CRITICAL ? 'text-rose-400 font-bold' : c.value !== null && c.value >= DEFAULT_PSI_WARNING ? 'text-amber-400 font-bold' : 'text-slate-300'}>
                   {c.value !== null ? c.value.toFixed(4) : '—'}
+                  {c.pValue !== undefined && c.pValue !== null ? ` (p=${Number(c.pValue).toFixed(3)})` : ''}
                 </span>
               </div>
             ))}
@@ -410,55 +470,69 @@ const TrendTooltip = ({ active, payload }: any) => {
   );
 };
 
+export interface ColumnTierGroups {
+  requiredCols: string[];
+  optionalFeatureCols: string[];
+  alternativeCols: string[];
+}
+
 function getModelExpectedColumns(
   effectiveModel: any,
   fallbackFeatures: CsiFeatureItem[] = []
-): { requiredCols: string[]; optionalCols: string[] } {
+): ColumnTierGroups {
   const reqSet = new Set<string>();
-  const optSet = new Set<string>();
+  const optFeatureSet = new Set<string>();
+  const altSet = new Set<string>();
 
   // 1. Feature columns
-  if (effectiveModel?.scoring?.scorecard) {
-    for (const k of Object.keys(effectiveModel.scoring.scorecard)) {
-      if (k) reqSet.add(k);
-    }
-  }
+  const scorecardKeys = new Set<string>(
+    effectiveModel?.scoring?.scorecard ? Object.keys(effectiveModel.scoring.scorecard).filter(Boolean) : []
+  );
+  scorecardKeys.forEach(k => reqSet.add(k));
+
   if (effectiveModel?.featureRegistry) {
-    for (const k of Object.keys(effectiveModel.featureRegistry)) {
-      if (k) reqSet.add(k);
-    }
-  }
-  if (effectiveModel?.thresholds?.csi_features) {
-    for (const k of Object.keys(effectiveModel.thresholds.csi_features)) {
-      if (k) reqSet.add(k);
-    }
-  }
-  if (reqSet.size === 0 && fallbackFeatures.length > 0) {
-    for (const f of fallbackFeatures) {
-      if (f.key) reqSet.add(f.key);
-    }
-  }
-  if (reqSet.size === 0 && Array.isArray(effectiveModel?.features)) {
-    for (const f of effectiveModel.features) {
-      if (f) reqSet.add(f);
+    for (const [k, def] of Object.entries(effectiveModel.featureRegistry as Record<string, any>)) {
+      if (!k) continue;
+      const col = def?.columnName || k;
+      if (scorecardKeys.has(k) || def?.required === true) {
+        reqSet.add(col);
+      } else {
+        optFeatureSet.add(col);
+      }
     }
   }
 
-  // 2. Score column (if model relies on precomputed score or requires it)
+  // Fallbacks if no features found yet
+  if (reqSet.size === 0 && optFeatureSet.size === 0) {
+    if (fallbackFeatures.length > 0) {
+      for (const f of fallbackFeatures) if (f.key) reqSet.add(f.key);
+    } else if (Array.isArray(effectiveModel?.features)) {
+      for (const f of effectiveModel.features) if (f) reqSet.add(f);
+    }
+  }
+
+  // 2. Score column
   const scoreCol = effectiveModel?.columns?.scoreColumn;
   if (scoreCol) {
-    if (reqSet.size === 0) reqSet.add(scoreCol);
-    else optSet.add(`${scoreCol} (คะแนนเดิม ถ้ามี)`);
+    if (reqSet.size === 0 && optFeatureSet.size === 0) {
+      reqSet.add(scoreCol);
+    } else {
+      altSet.add(`${scoreCol} (คะแนนเดิม ถ้ามี)`);
+    }
   }
 
   // 3. Optional metadata columns
   const cols = effectiveModel?.columns;
-  if (cols?.labelColumn) optSet.add(`${cols.labelColumn} (ผลจริง/Default Flag สำหรับวัด Performance)`);
-  if (cols?.dateColumn) optSet.add(`${cols.dateColumn} (วันที่/Period)`);
-  if (cols?.idColumn) optSet.add(`${cols.idColumn} (รหัสอ้างอิง)`);
-  if (cols?.segmentColumn) optSet.add(`${cols.segmentColumn} (กลุ่มลูกค้า)`);
+  if (cols?.idColumn) altSet.add(`${cols.idColumn} (รหัสอ้างอิง)`);
+  if (cols?.dateColumn) altSet.add(`${cols.dateColumn} (วันที่/Period)`);
+  if (cols?.labelColumn) altSet.add(`${cols.labelColumn} (ผลจริง/Default Flag สำหรับวัด Performance)`);
+  if (cols?.segmentColumn) altSet.add(`${cols.segmentColumn} (กลุ่มลูกค้า)`);
 
-  return { requiredCols: Array.from(reqSet), optionalCols: Array.from(optSet) };
+  return {
+    requiredCols: Array.from(reqSet),
+    optionalFeatureCols: Array.from(optFeatureSet),
+    alternativeCols: Array.from(altSet),
+  };
 }
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
@@ -475,8 +549,11 @@ export default function Dashboard() {
 
   // Sandbox state
   const [thresholds, setThresholds] = useState({
-    psi_warning: '0.10', psi_critical: '0.25',
-    gini_min: '0.10', auc_min: '0.55', ks_min: '0.10',
+    psi_warning: String(DEFAULT_PSI_WARNING),
+    psi_critical: String(DEFAULT_PSI_CRITICAL),
+    gini_min: String(DEFAULT_GINI_MIN),
+    auc_min: String(DEFAULT_AUC_MIN),
+    ks_min: String(DEFAULT_KS_MIN),
   });
   const defaultCsiFeatures: CsiFeatureItem[] = [];
   const [csiFeatures, setCsiFeatures] = useState<CsiFeatureItem[]>(defaultCsiFeatures);
@@ -566,11 +643,11 @@ export default function Dashboard() {
         if (currentModel?.thresholds) {
           const t = currentModel.thresholds;
           setThresholds({
-            psi_warning:  String(t.psi_warning  ?? 0.10),
-            psi_critical: String(t.psi_critical ?? 0.25),
-            gini_min:     String(t.gini_min     ?? 0.10),
-            auc_min:      String(t.auc_min      ?? 0.55),
-            ks_min:       String(t.ks_min       ?? 0.10),
+            psi_warning:  String(t.psi_warning  ?? DEFAULT_PSI_WARNING),
+            psi_critical: String(t.psi_critical ?? DEFAULT_PSI_CRITICAL),
+            gini_min:     String(t.gini_min     ?? DEFAULT_GINI_MIN),
+            auc_min:      String(t.auc_min      ?? DEFAULT_AUC_MIN),
+            ks_min:       String(t.ks_min       ?? DEFAULT_KS_MIN),
           });
           const loaded: CsiFeatureItem[] = [];
           if (t.csi_features) {
@@ -898,8 +975,8 @@ export default function Dashboard() {
   );
 
 
-  const psiWarningNum = parseFloat(thresholds.psi_warning) || 0.10;
-  const psiCriticalNum = parseFloat(thresholds.psi_critical) || 0.25;
+  const psiWarningNum = parseFloat(thresholds.psi_warning) || DEFAULT_PSI_WARNING;
+  const psiCriticalNum = parseFloat(thresholds.psi_critical) || DEFAULT_PSI_CRITICAL;
 
   const ksDecileTable = model?.baseline?.ksDecileTable ?? [];
   const maxKS = ksDecileTable.length > 0 ? Math.max(...ksDecileTable.map(r => r.ks)) : 0;
@@ -1953,18 +2030,28 @@ export default function Dashboard() {
                         {(() => {
                           const expected = getModelExpectedColumns(activeVer || displayVer || model, csiFeatures);
                           return (
-                            <div className="text-[11px] text-slate-400 mt-2 space-y-1 text-left max-w-lg mx-auto bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
+                            <div className="text-[11px] text-slate-400 mt-2 space-y-1.5 text-left max-w-lg mx-auto bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
                               <p>
-                                <strong className="text-cyan-400 font-semibold">• คอลัมน์ที่จำเป็น (Required):</strong>{' '}
+                                <strong className="text-rose-400 font-semibold">• 🔴 จำเป็น (Required):</strong>{' '}
                                 <span className="font-mono text-slate-200">
-                                  {expected.requiredCols.length > 0 ? expected.requiredCols.join(', ') : 'คอลัมน์ตัวแปรโมเดล (ตาม Feature Registry)'}
-                                </span>
+                                  {expected.requiredCols.length > 0 ? expected.requiredCols.join(', ') : 'คอลัมน์ตัวแปรโมเดล'}
+                                </span>{' '}
+                                <span className="text-[10px] text-rose-300/80">(ไฟล์ถูกปฏิเสธถ้าขาด)</span>
                               </p>
-                              {expected.optionalCols.length > 0 && (
+                              {expected.optionalFeatureCols.length > 0 && (
                                 <p>
-                                  <strong className="text-slate-400 font-semibold">• คอลัมน์ทางเลือก (Optional):</strong>{' '}
+                                  <strong className="text-amber-400 font-semibold">• 🟡 ใช้ถ้ามี (Optional Monitored):</strong>{' '}
                                   <span className="font-mono text-slate-300">
-                                    {expected.optionalCols.join(', ')}
+                                    {expected.optionalFeatureCols.join(', ')}
+                                  </span>{' '}
+                                  <span className="text-[10px] text-amber-300/80">(ขาดแล้วข้ามการตรวจ Drift ตัวนั้น)</span>
+                                </p>
+                              )}
+                              {expected.alternativeCols.length > 0 && (
+                                <p>
+                                  <strong className="text-slate-400 font-semibold">• ⚪ ทางเลือกอื่น (Alternatives / Metadata):</strong>{' '}
+                                  <span className="font-mono text-slate-300">
+                                    {expected.alternativeCols.join(', ')}
                                   </span>
                                 </p>
                               )}
@@ -2384,44 +2471,87 @@ export default function Dashboard() {
 
                   {/* ── ผลของการใช้แบบจำลอง — Risk Grade Distribution ── */}
                   {uploadedRiskGrades.length > 0 && (() => {
-                    const total   = uploadedRiskGrades.reduce((s, g) => s + g.count, 0);
+                    const total = uploadedRiskGrades.reduce((s, g) => s + g.count, 0);
+                    const isLetterGrades = uploadedRiskGrades.some(g =>
+                      ['AAA', 'AA+', 'AA', 'AA-', 'A+', 'A', 'A-', 'BBB+', 'BBB', 'BBB-'].includes(g.grade)
+                    );
                     const igGrades = uploadedRiskGrades.filter(g => ['AAA','AA+','AA','AA-','A+','A','A-'].includes(g.grade));
                     const bbbGrades = uploadedRiskGrades.filter(g => ['BBB+','BBB','BBB-'].includes(g.grade));
                     const igPct  = igGrades.reduce((s, g) => s + g.pct, 0);
                     const bbbPct = bbbGrades.reduce((s, g) => s + g.pct, 0);
-                    const topGrade = uploadedRiskGrades.find(g => g.count > 0)?.grade ?? '—';
                     const highestBucket = [...uploadedRiskGrades].sort((a, b) => b.count - a.count)[0];
+                    const scoreDir = (activeVer?.scoreDirection || displayVer?.scoreDirection || (model as any)?.scoreDirection || 'higher_is_safer') as 'higher_is_safer' | 'higher_is_riskier';
 
-                    const gradeColor = (g: string) =>
-                      g.startsWith('AAA') || g.startsWith('AA') ? '#22d3ee'
-                      : g.startsWith('A')  ? '#6366f1'
-                      : g.startsWith('BBB+') || g === 'BBB' ? '#f59e0b'
-                      : '#f87171';
+                    const d1 = uploadedRiskGrades.find(g => g.grade === 'D1')?.pct ?? 0;
+                    const d2 = uploadedRiskGrades.find(g => g.grade === 'D2')?.pct ?? 0;
+                    const safeDecilePct = +(d1 + d2).toFixed(1);
+
+                    const lastTwo = uploadedRiskGrades.slice(-2);
+                    const riskDecilePct = +lastTwo.reduce((s, g) => s + g.pct, 0).toFixed(1);
+                    const riskDecileNames = lastTwo.map(g => g.grade).join('–');
+
+                    const gradeColor = (g: string) => {
+                      if (isLetterGrades) {
+                        return g.startsWith('AAA') || g.startsWith('AA') ? '#22d3ee'
+                          : g.startsWith('A')  ? '#6366f1'
+                          : g.startsWith('BBB+') || g === 'BBB' ? '#f59e0b'
+                          : '#f87171';
+                      }
+                      const num = parseInt(g.replace(/\D/g, ''), 10);
+                      if (num <= 2) return '#22d3ee';
+                      if (num <= 4) return '#6366f1';
+                      if (num <= 7) return '#3b82f6';
+                      if (num <= 8) return '#f59e0b';
+                      return '#f87171';
+                    };
 
                     return (
                       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
                         <h3 className="text-sm font-bold text-slate-200 mb-1">📊 ผลของการใช้แบบจำลอง — การกระจายระดับความเสี่ยง</h3>
                         <p className="text-[9px] text-slate-500 mb-4">
-                          คะแนน A-Score แปลงเป็น Risk Grade ตาม KS Decile bounds จาก ascore_model_report.xlsx (n = {total.toLocaleString()})
+                          {isLetterGrades
+                            ? `คะแนน A-Score แปลงเป็น Risk Grade ตาม KS Decile bounds จาก ascore_model_report.xlsx (n = ${total.toLocaleString()})`
+                            : `คะแนนแปลงเป็น Risk Grade ตาม KS Decile bounds จาก Reference Profile (n = ${total.toLocaleString()})`}
                         </p>
 
                         {/* Summary bullets */}
                         <div className="mb-4 space-y-1.5 text-[11px] text-slate-300">
-                          <p>● แบบจำลองมีการกระจายตัวของระดับความเสี่ยงที่{' '}
-                            <span className={igPct > 50 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
-                              {igPct > 70 ? 'เหมาะสม' : igPct > 40 ? 'พอใช้ได้' : 'ต้องตรวจสอบ'}
-                            </span>{' '}
-                            — ลูกค้าในระดับ AAA–A รวม{' '}
-                            <span className="text-cyan-400 font-bold">{igPct.toFixed(1)}%</span>
-                          </p>
-                          <p>● กลุ่มที่มีลูกค้ามากที่สุดคือระดับ{' '}
-                            <span className="text-indigo-400 font-bold">{highestBucket?.grade}</span>{' '}
-                            ({highestBucket?.count.toLocaleString()} ราย · {highestBucket?.pct}%)
-                          </p>
-                          <p>● ลูกค้าระดับ BBB+–BBB- รวม{' '}
-                            <span className="text-amber-400 font-bold">{bbbPct.toFixed(1)}%</span>{' '}
-                            — ระดับความเสี่ยงค่อนข้างสูง ควรติดตาม NPL Rate อย่างใกล้ชิด
-                          </p>
+                          {isLetterGrades ? (
+                            <>
+                              <p>● แบบจำลองมีการกระจายตัวของระดับความเสี่ยงที่{' '}
+                                <span className={igPct > 50 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                                  {igPct > 70 ? 'เหมาะสม' : igPct > 40 ? 'พอใช้ได้' : 'ต้องตรวจสอบ'}
+                                </span>{' '}
+                                — ลูกค้าในระดับ AAA–A รวม{' '}
+                                <span className="text-cyan-400 font-bold">{igPct.toFixed(1)}%</span>
+                              </p>
+                              <p>● กลุ่มที่มีลูกค้ามากที่สุดคือระดับ{' '}
+                                <span className="text-indigo-400 font-bold">{highestBucket?.grade}</span>{' '}
+                                ({highestBucket?.count.toLocaleString()} ราย · {highestBucket?.pct}%)
+                              </p>
+                              <p>● ลูกค้าระดับ BBB+–BBB- รวม{' '}
+                                <span className="text-amber-400 font-bold">{bbbPct.toFixed(1)}%</span>{' '}
+                                — ระดับความเสี่ยงค่อนข้างสูง ควรติดตาม NPL Rate อย่างใกล้ชิด
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <p>● การกระจายตัวตาม Decile: ลูกค้ากลุ่มความเสี่ยงต่ำสุด (D1–D2) รวม{' '}
+                                <span className="text-cyan-400 font-bold">{safeDecilePct}%</span>
+                              </p>
+                              <p>● กลุ่มที่มีลูกค้าหนาแน่นที่สุดคือระดับ{' '}
+                                <span className="text-indigo-400 font-bold">{highestBucket?.grade}</span>{' '}
+                                ({highestBucket?.count.toLocaleString()} ราย · {highestBucket?.pct}%)
+                              </p>
+                              <p>● ลูกค้ากลุ่มความเสี่ยงสูงสุด ({riskDecileNames}) รวม{' '}
+                                <span className="text-amber-400 font-bold">{riskDecilePct}%</span>{' '}
+                                — ระดับความเสี่ยงสูง ควรติดตาม NPL Rate และการผิดนัดชำระอย่างใกล้ชิด
+                              </p>
+                              <p className="text-[10px] text-slate-400">
+                                ● ทิศทางคะแนน: {scoreDir === 'higher_is_riskier' ? 'คะแนนยิ่งสูงยิ่งเสี่ยง (Higher is Riskier)' : 'คะแนนยิ่งสูงยิ่งปลอดภัย (Higher is Safer)'} — จัดกลุ่ม D1 (เสี่ยงต่ำสุด) ถึง D{uploadedRiskGrades.length} (เสี่ยงสูงสุด)
+                              </p>
+                            </>
+                          )}
                         </div>
 
                         {/* Grade bar chart */}
@@ -2447,10 +2577,21 @@ export default function Dashboard() {
 
                         {/* Grade legend */}
                         <div className="mt-4 pt-3 border-t border-slate-800/60 grid grid-cols-2 gap-1 text-[9px] text-slate-600">
-                          <span style={{ color: '#22d3ee' }}>■ AAA–AA-  : ความเสี่ยงต่ำมาก</span>
-                          <span style={{ color: '#6366f1' }}>■ A+–A-   : ความเสี่ยงต่ำ</span>
-                          <span style={{ color: '#f59e0b' }}>■ BBB+–BBB : ความเสี่ยงปานกลาง</span>
-                          <span style={{ color: '#f87171' }}>■ BBB-    : ความเสี่ยงสูง</span>
+                          {isLetterGrades ? (
+                            <>
+                              <span style={{ color: '#22d3ee' }}>■ AAA–AA-  : ความเสี่ยงต่ำมาก</span>
+                              <span style={{ color: '#6366f1' }}>■ A+–A-   : ความเสี่ยงต่ำ</span>
+                              <span style={{ color: '#f59e0b' }}>■ BBB+–BBB : ความเสี่ยงปานกลาง</span>
+                              <span style={{ color: '#f87171' }}>■ BBB-    : ความเสี่ยงสูง</span>
+                            </>
+                          ) : (
+                            <>
+                              <span style={{ color: '#22d3ee' }}>■ D1–D2 : ความเสี่ยงต่ำสุด (Safest)</span>
+                              <span style={{ color: '#6366f1' }}>■ D3–D4 : ความเสี่ยงต่ำ</span>
+                              <span style={{ color: '#3b82f6' }}>■ D5–D7 : ความเสี่ยงปานกลาง</span>
+                              <span style={{ color: '#f87171' }}>■ D8–D{uploadedRiskGrades.length} : ความเสี่ยงสูงสุด (Highest risk)</span>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
@@ -2630,11 +2771,11 @@ export default function Dashboard() {
                                 />
                               </td>
                               <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">{formatAppDateTime(log.uploadedAt)}</td>
-                              <td className="py-2.5 px-3 text-slate-300 max-w-32 truncate" title={log.fileName}>
-                                <div className="flex items-center gap-1.5">
-                                  <span>{log.fileName}</span>
+                              <td className="py-2.5 px-3 text-slate-300 max-w-xs" title={log.fileName}>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="truncate">{log.fileName}</span>
                                   {log.hasDetail && (
-                                    <span className="text-[9px] px-1 rounded bg-indigo-500/20 text-indigo-400 font-mono" title="มีรายละเอียดการรัน">
+                                    <span className="shrink-0 text-[9px] px-1 rounded bg-indigo-500/20 text-indigo-400 font-mono" title="มีรายละเอียดการรัน">
                                       detail
                                     </span>
                                   )}
@@ -2888,8 +3029,8 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <ResponsiveContainer width="100%" height={230}>
-                      <LineChart data={chartData}>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <LineChart data={chartData} margin={{ top: 10, right: 20, bottom: 20, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                         <XAxis
                           dataKey="date"
@@ -2900,8 +3041,8 @@ export default function Dashboard() {
                           }}
                         />
                         <YAxis domain={[0, yMax]} ticks={yTicks} tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={v => v.toFixed(2)} />
-                        <Tooltip content={<TrendTooltip />} />
-                        <Legend wrapperStyle={{ fontSize: 11, paddingTop: '8px' }} />
+                        <Tooltip content={<TrendTooltip />} wrapperStyle={{ zIndex: 50, outline: 'none' }} allowEscapeViewBox={{ x: false, y: false }} />
+                        <Legend wrapperStyle={{ fontSize: 11, paddingTop: '16px', position: 'relative', zIndex: 10 }} />
                         <ReferenceLine
                           y={effectivePsiWarning}
                           stroke="#f59e0b"

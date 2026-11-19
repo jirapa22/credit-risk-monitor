@@ -18,7 +18,15 @@ import type {
   ScoringConfig,
 } from './types';
 import { buildReferenceProfileFromData } from './reference';
-import { DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from './defaults';
+import {
+  DEFAULT_ID_COLUMN,
+  DEFAULT_LABEL_COLUMN,
+  DEFAULT_AUC_MIN,
+  DEFAULT_GINI_MIN,
+  DEFAULT_KS_MIN,
+  DEFAULT_PSI_WARNING,
+  DEFAULT_PSI_CRITICAL,
+} from './defaults';
 import { computeRowsSha256, type ReferenceDatasetBlob } from './storage/blob';
 import { validateScoringConfig } from './scoring';
 import { importModelTableFromRows, modelTableToScoring, type ScorecardComparisonReport } from './scorecardImport';
@@ -224,11 +232,11 @@ function normalizeBaselineSpec(baseline: BaselineVersion | any) {
   const featureRegistry = (baseline.featureRegistry ?? {}) as Record<string, FeatureDefinition>;
   const scoring = baseline.scoring as ScoringConfig | undefined;
   const thresholds = baseline.thresholds ?? {
-    psi_warning: 0.10,
-    psi_critical: 0.25,
-    gini_min: 0.10,
-    auc_min: 0.55,
-    ks_min: 0.10,
+    psi_warning: DEFAULT_PSI_WARNING,
+    psi_critical: DEFAULT_PSI_CRITICAL,
+    gini_min: DEFAULT_GINI_MIN,
+    auc_min: DEFAULT_AUC_MIN,
+    ks_min: DEFAULT_KS_MIN,
     csi_features: {},
   };
   const referenceDatasetId: string = String(baseline.referenceDatasetId ?? '');
@@ -640,8 +648,8 @@ export function validateBaseline(
         reliable: rel.reliable,
         warnings: rel.warnings,
       };
-      if (auc < (spec.thresholds?.auc_min ?? 0.55)) {
-        const aucMin = spec.thresholds?.auc_min ?? 0.55;
+      if (auc < (spec.thresholds?.auc_min ?? DEFAULT_AUC_MIN)) {
+        const aucMin = spec.thresholds?.auc_min ?? DEFAULT_AUC_MIN;
         warnings.push({
           code: 'LOW_REFERENCE_AUC',
           field: 'scoreDirection',

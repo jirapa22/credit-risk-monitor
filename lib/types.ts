@@ -674,6 +674,15 @@ export interface TriggerEvidence {
     conceptStatus?: DriftSectionStatus;
     officialDriftStatus?: DriftStatus | null;
     driftExcludingFlaggedStatus?: DriftStatus | null;
+    labelEvidence?: {
+      status: DriftSectionStatus;
+      refBadRate?: number;
+      actBadRate?: number;
+      relativeChange?: number | null;
+      pValue?: number;
+      pThreshold?: number;
+      reason?: string;
+    } | null;
   } | null;
 }
 

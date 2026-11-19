@@ -50,7 +50,16 @@ import {
   unregisterReferenceDataset,
   type ReferenceProfile,
 } from '../reference';
-import { DEFAULT_DATE_COLUMN, DEFAULT_ID_COLUMN, DEFAULT_LABEL_COLUMN } from '../defaults';
+import {
+  DEFAULT_DATE_COLUMN,
+  DEFAULT_ID_COLUMN,
+  DEFAULT_LABEL_COLUMN,
+  DEFAULT_AUC_MIN,
+  DEFAULT_GINI_MIN,
+  DEFAULT_KS_MIN,
+  DEFAULT_PSI_WARNING,
+  DEFAULT_PSI_CRITICAL,
+} from '../defaults';
 import { validateBaseline, computeBaselineConfigHash } from '../baselineValidation';
 import { calibrateThresholds, DEFAULT_CALIBRATION_RESAMPLES, type CalibrateOptions } from '../calibration';
 import { computeDistributionStats } from '../driftReport';
@@ -879,11 +888,11 @@ export async function createDraftBaselineVersion(
     featureRegistry: input.featureRegistry ?? {},
     ...(mode === 'scorecard' && input.scoring ? { scoring: input.scoring } : {}),
     thresholds: input.thresholds ?? {
-      psi_warning: 0.10,
-      psi_critical: 0.25,
-      gini_min: 0.10,
-      auc_min: 0.55,
-      ks_min: 0.10,
+      psi_warning: DEFAULT_PSI_WARNING,
+      psi_critical: DEFAULT_PSI_CRITICAL,
+      gini_min: DEFAULT_GINI_MIN,
+      auc_min: DEFAULT_AUC_MIN,
+      ks_min: DEFAULT_KS_MIN,
       csi_features: {},
     },
     ...(input.anomalyConfig ? { anomalyConfig: input.anomalyConfig } : {}),

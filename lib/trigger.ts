@@ -332,8 +332,16 @@ function describeSectionEvidence(run: MonitoringRun, section: TriggerSectionName
       return `Label Drift = ${dr.label.status}: ${dr.label.reason}`;
     case 'concept':
       return `Concept Drift = ${dr.concept.status}: ${dr.concept.reason}`;
-    case 'overall':
-      return `Overall Drift = ${dr.summary.overallStatus}: ${dr.summary.reason}`;
+    case 'overall': {
+      let extra = '';
+      if (dr.label && dr.label.status !== 'STABLE' && dr.label.status !== 'NOT_AVAILABLE') {
+        const pVal = dr.label.metrics?.pValue;
+        const pThr = dr.label.metrics?.threshold?.pValueThreshold ?? 0.05;
+        const pStr = pVal !== undefined && pVal !== null ? ` (p=${pVal.toFixed(4)} เทียบเกณฑ์ ${pThr})` : '';
+        extra = ` · สัญญาณ Label Drift: ${dr.label.reason}${pStr}`;
+      }
+      return `Overall Drift = ${dr.summary.overallStatus}: ${dr.summary.reason}${extra}`;
+    }
   }
 }
 
@@ -553,6 +561,17 @@ function buildEvidence(run: MonitoringRun): TriggerEvidence {
           conceptStatus: run.driftReport.concept.status,
           officialDriftStatus: run.drift?.overallStatus ?? null,
           driftExcludingFlaggedStatus: run.driftExcludingFlagged?.overallStatus ?? null,
+          labelEvidence: run.driftReport.label?.metrics
+            ? {
+                status: run.driftReport.label.status,
+                refBadRate: +(run.driftReport.label.metrics.referenceBadRate * 100).toFixed(2),
+                actBadRate: +(run.driftReport.label.metrics.actualBadRate * 100).toFixed(2),
+                relativeChange: run.driftReport.label.metrics.relativeChange !== null ? +(run.driftReport.label.metrics.relativeChange * 100).toFixed(1) : null,
+                pValue: run.driftReport.label.metrics.pValue !== undefined && run.driftReport.label.metrics.pValue !== null ? +run.driftReport.label.metrics.pValue.toFixed(4) : undefined,
+                pThreshold: run.driftReport.label.metrics.threshold?.pValueThreshold ?? 0.05,
+                reason: run.driftReport.label.reason,
+              }
+            : null,
         }
       : run.drift
         ? {
@@ -587,6 +606,16 @@ export function evaluateTrigger(
         const actualPct = run.anomaly.flaggedPct.toFixed(1);
         const refPct = getReferenceFlaggedPct(run).toFixed(1);
         ruleMessage = `พบแถวผิดปกติมากกว่าปกติ ${actualPct}% (ปกติ ${refPct}%) แม้ยังไม่กระทบตัวชี้วัด drift — ตรวจแถวที่โดนธงก่อนใช้ข้อมูลรอบนี้`;
+      } else if (rule.id === 'R5' && run.driftReport?.label?.metrics) {
+        const m = run.driftReport.label.metrics;
+        const relStr = m.relativeChange !== null ? `${(m.relativeChange * 100).toFixed(1)}%` : 'N/A';
+        const pStr = m.pValue !== undefined && m.pValue !== null ? ` (p=${m.pValue.toFixed(4)} เทียบเกณฑ์ 0.05)` : '';
+        ruleMessage = `อัตราหนี้เสียเปลี่ยนแต่ความสามารถจัดอันดับยังดี (Bad Rate: Reference ${(m.referenceBadRate * 100).toFixed(2)}% → ใหม่ ${(m.actualBadRate * 100).toFixed(2)}%, เปลี่ยนแปลง ${relStr}${pStr}) — พิจารณาปรับ cut-off หรือ calibration แทนการ retrain`;
+      } else if (rule.id === 'R8' && run.driftReport?.label && run.driftReport.label.status !== 'STABLE' && run.driftReport.label.status !== 'NOT_AVAILABLE') {
+        const m = run.driftReport.label.metrics;
+        const pStr = m?.pValue !== undefined && m?.pValue !== null ? ` (p=${m.pValue.toFixed(4)} เทียบเกณฑ์ 0.05)` : '';
+        const relStr = m?.relativeChange !== null && m?.relativeChange !== undefined ? `เปลี่ยนแปลง ${(m.relativeChange * 100).toFixed(1)}%` : '';
+        ruleMessage = `พบสัญญาณเตือนระดับเฝ้าระวังจาก Label Drift (Bad Rate: Reference ${((m?.referenceBadRate ?? 0) * 100).toFixed(2)}% → ใหม่ ${((m?.actualBadRate ?? 0) * 100).toFixed(2)}% ${relStr}${pStr}) — ติดตามผลในรอบถัดไปอย่างใกล้ชิด`;
       }
       const reasons: string[] = [
         `[${rule.id}] ${ruleMessage}`,

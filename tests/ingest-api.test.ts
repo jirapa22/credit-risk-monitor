@@ -425,5 +425,43 @@ describe('Automated Ingestion API (/api/ingest) Tests', () => {
     const audits = await listDeletionAuditLogs();
     const repAudit = audits.find(a => a.action === 'RUN_REPLACED' && a.modelId === modelId);
     expect(repAudit).toBeDefined();
+    expect(repAudit?.actor).toBe('api');
+  });
+
+  it('(8) API replace with bad file (validation failure) returns 422, keeps existing run intact, and does NOT record RUN_REPLACED audit', async () => {
+    process.env.MONITOR_API_TOKEN = TEST_TOKEN;
+    const auditsBefore = await listDeletionAuditLogs();
+    const replaceAuditsBefore = auditsBefore.filter(a => a.action === 'RUN_REPLACED' && a.modelId === modelId).length;
+
+    // Bad CSV missing required scorecard feature columns
+    const badCsv = 'app_id,app_date,default_12m\nid_001,2025-07-01,0\nid_002,2025-07-02,1';
+
+    const res = await ingestHandler(new Request('http://localhost:3000/api/ingest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${TEST_TOKEN}`,
+      },
+      body: JSON.stringify({
+        modelId,
+        fileName: 'bad_api_file.csv',
+        csvText: badCsv,
+        onDuplicate: 'replace',
+      }),
+    }));
+
+    // Expect 422 INVALID_DATA
+    expect(res.status).toBe(422);
+    const data = (await res.json()) as { code: string };
+    expect(data.code).toBe('INVALID_DATA');
+
+    // Confirm existing run remains completely intact
+    const stored = await listRuns<MonitoringRun>('monitoring', modelId);
+    expect(stored.some(r => r.fileName === 'm01_api_replaced.csv')).toBe(true);
+
+    // Confirm NO new RUN_REPLACED audit log was recorded
+    const auditsAfter = await listDeletionAuditLogs();
+    const replaceAuditsAfter = auditsAfter.filter(a => a.action === 'RUN_REPLACED' && a.modelId === modelId).length;
+    expect(replaceAuditsAfter).toBe(replaceAuditsBefore);
   });
 });

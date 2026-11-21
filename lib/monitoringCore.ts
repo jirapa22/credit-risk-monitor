@@ -47,13 +47,14 @@ export class DuplicatePeriodError extends Error {
 
 export interface PeriodResolution {
   period: string | null;
-  source: 'data' | 'request' | 'none';
+  source: 'data' | 'request' | 'filename' | 'none';
   warning: string | null;
 }
 
 export function resolvePeriod(
   uploadSummary: unknown,
   requestPeriod?: string | null,
+  fileName?: string,
 ): PeriodResolution {
   const summary = uploadSummary as { periods?: Array<{ period: string; count: number; pct: number }> } | undefined;
   const rawPeriods = summary?.periods || [];
@@ -71,7 +72,23 @@ export function resolvePeriod(
   if (requestPeriod && typeof requestPeriod === 'string' && requestPeriod.trim() !== '') {
     return { period: requestPeriod.trim(), source: 'request', warning: null };
   }
+  if (fileName) {
+    const match = fileName.match(/(20\d{2}[-_]\d{2})/);
+    if (match) {
+      return { period: match[1].replace('_', '-'), source: 'filename', warning: null };
+    }
+  }
   return { period: null, source: 'none', warning: 'ไม่ทราบงวด' };
+}
+
+export function getRunPeriod(run: MonitoringRun): string | null {
+  if (run.period) return run.period;
+  const fromSummary = resolvePeriod(
+    run.uploadSummary ?? run.detail?.uploadSummary,
+    null,
+    run.fileName,
+  );
+  return fromSummary.period;
 }
 
 export interface MonitoringExecutionInput {
@@ -132,28 +149,16 @@ export async function executeMonitoringPipeline(
     history,
   });
 
-  const resolution = resolvePeriod(run.uploadSummary, input.period);
+  const resolution = resolvePeriod(run.uploadSummary, input.period, input.fileName || run.fileName);
   const resolvedPeriod = resolution.period;
   let replacedRunId: string | undefined;
 
+  let existingRun: MonitoringRun | undefined;
   if (resolvedPeriod !== null) {
-    const existingRun = history.find(h => {
-      const hPeriod = h.period ?? resolvePeriod(h.uploadSummary ?? h.detail?.uploadSummary, null).period;
-      return hPeriod === resolvedPeriod;
-    });
+    existingRun = history.find(h => getRunPeriod(h) === resolvedPeriod);
 
     if (existingRun) {
-      if (input.onDuplicate === 'replace') {
-        await replaceMonitoringRun({
-          modelId: model.id,
-          oldRunId: existingRun.runId,
-          newRunId: run.runId,
-          fileName: existingRun.fileName,
-          period: resolvedPeriod,
-          actor: input.actor || (input.source === 'api' ? 'api' : 'manual_upload'),
-        });
-        replacedRunId = existingRun.runId;
-      } else {
+      if (input.onDuplicate !== 'replace') {
         throw new DuplicatePeriodError(resolvedPeriod, existingRun);
       }
     }
@@ -238,6 +243,84 @@ export async function executeMonitoringPipeline(
     processedRows: run.validation.validRows,
     skippedRows: run.validation.rejectedRows,
   };
+
+  // Safe Replace Invariant:
+  // If the new file fails validation (!run.drift):
+  // - The existing run must remain 100% intact (not deleted, blob preserved, events preserved).
+  // - No RUN_REPLACED audit log is recorded.
+  // - The new failed run is NOT persisted over the existing run.
+  if (!run.drift) {
+    if (!existingRun) {
+      // If there was no existing run for this period, persist the failed run metadata for UI inspection
+      let storageErr: string | undefined;
+      try {
+        await saveRun(run);
+      } catch (e) {
+        storageErr = String(e);
+      }
+      return {
+        run,
+        detail,
+        validation: run.validation,
+        drift: null,
+        period: resolvedPeriod,
+        periodWarning: resolution.warning,
+        source: runSource,
+        duplicateWarning,
+        duplicateInfo,
+        csi,
+        csiDetail,
+        csiSkipped: skipped,
+        devPsi: null,
+        devStability: null,
+        scored,
+        riskGradeDist,
+        riskGradeStatus,
+        referenceMeta: getReferenceMeta(run.referenceId),
+        storage: { ...storageInfo(), error: storageErr },
+        model,
+      };
+    }
+
+    // Attempted replace with an invalid file:
+    // Do NOT touch existingRun. Do NOT save new run.
+    return {
+      run,
+      detail,
+      validation: run.validation,
+      drift: null,
+      period: resolvedPeriod,
+      periodWarning: resolution.warning,
+      source: runSource,
+      duplicateWarning,
+      duplicateInfo,
+      csi,
+      csiDetail,
+      csiSkipped: skipped,
+      devPsi: null,
+      devStability: null,
+      scored,
+      riskGradeDist,
+      riskGradeStatus,
+      referenceMeta: getReferenceMeta(run.referenceId),
+      storage: { ...storageInfo() },
+      model,
+    };
+  }
+
+  // Pipeline succeeded (validation.ok && run.drift !== null)
+  // Now it is safe to replace the existing run
+  if (existingRun && input.onDuplicate === 'replace') {
+    await replaceMonitoringRun({
+      modelId: model.id,
+      oldRunId: existingRun.runId,
+      newRunId: run.runId,
+      fileName: existingRun.fileName,
+      period: resolvedPeriod,
+      actor: input.actor || (input.source === 'api' ? 'api' : 'manual'),
+    });
+    replacedRunId = existingRun.runId;
+  }
 
   const DETAIL_BLOB_THRESHOLD = 500 * 1024; // 500 KB
   const detailStr = JSON.stringify(detail);

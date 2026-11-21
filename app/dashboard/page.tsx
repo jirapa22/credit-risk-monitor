@@ -67,6 +67,8 @@ interface MonitorLog {
   referenceId?: string;
   uploadedAt: string;
   fileName: string;
+  period?: string | null;
+  source?: 'manual' | 'api' | null;
   rowCount: number;
   processedRows?: number;
   skippedRows?: number;
@@ -607,6 +609,11 @@ export default function Dashboard() {
     ids: string[];
     displayInfo: string;
   } | null>(null);
+  const [duplicatePeriodModal, setDuplicatePeriodModal] = useState<{
+    period: string;
+    existingRun?: { runId: string; fileName: string; createdAt: string };
+    payload: { csvText: string; fileName: string; modelId?: string };
+  } | null>(null);
   const [isDeletingLog, setIsDeletingLog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -765,6 +772,55 @@ export default function Dashboard() {
     setCsiFeatures(prev => prev.filter((_, i) => i !== idx));
   };
 
+  const handleConfirmReplacePeriod = async () => {
+    if (!duplicatePeriodModal) return;
+    const { payload } = duplicatePeriodModal;
+    setDuplicatePeriodModal(null);
+    setIsUploading(true);
+    setUploadError('');
+    setUploadErrorCode('');
+    try {
+      const res = await fetch('/api/monitor-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, onDuplicate: 'replace' }),
+      });
+      const data = await res.json();
+      if (data.validation) {
+        setValidation(data.validation);
+        setRowCount(data.validation.totalRows);
+      }
+      if (data.storage) setStorage(data.storage);
+      if (data.uploadSummary) setUploadSummary(data.uploadSummary);
+      if (!res.ok) {
+        await loadLogs();
+        const errText = data.error || data.detail || 'เกิดข้อผิดพลาดในการประมวลผล';
+        setUploadError(errText);
+        throw new Error(errText);
+      }
+      setUploadedMetrics(data);
+      setUploadedCsiDetail(data.csiDetail || null);
+      setUploadedRiskGrades(data.riskGradeDist || []);
+      setPreviewCustomers(data.scoredCustomers || []);
+      setLatestUploadSession({
+        uploadedMetrics: data,
+        uploadedCsiDetail: data.csiDetail || null,
+        uploadedRiskGrades: data.riskGradeDist || [],
+        previewCustomers: data.scoredCustomers || [],
+        validation: data.validation || null,
+        uploadSummary: data.uploadSummary || null,
+        fileName: payload.fileName,
+        rowCount: data.validation?.totalRows || 0,
+      });
+      setViewingHistoricalRun(null);
+      await loadLogs();
+    } catch (err: unknown) {
+      console.error('replace duplicate period error:', err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // ── File upload ──
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -800,6 +856,15 @@ export default function Dashboard() {
         if (data.storage) setStorage(data.storage);
         if (data.uploadSummary) setUploadSummary(data.uploadSummary);
         if (!res.ok) {
+          if (res.status === 409 && data.code === 'DUPLICATE_PERIOD') {
+            setIsUploading(false);
+            setDuplicatePeriodModal({
+              period: data.period,
+              existingRun: data.existingRun,
+              payload: { csvText: text, fileName: file.name, modelId: selectedModelId },
+            });
+            return;
+          }
           await loadLogs();
           let errText = data.error || data.detail || 'เกิดข้อผิดพลาดในการประมวลผล';
           const isNoActive =
@@ -2768,7 +2833,7 @@ export default function Dashboard() {
                             />
                           </th>
                           {/* Headers — dynamic CSI columns */}
-                          {['วันที่', 'ไฟล์', 'Config', 'Valid / Rows', 'PSI',
+                          {['วันที่', 'ไฟล์', 'ช่องทาง', 'Config', 'Valid / Rows', 'PSI',
                             ...csiFeatures.map(f => `CSI — ${f.label || f.key}`),
                             'Verdict'
                           ].map(h => (
@@ -2812,6 +2877,17 @@ export default function Dashboard() {
                                     </span>
                                   )}
                                 </div>
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                  log.source === 'api'
+                                    ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
+                                    : log.source === 'manual'
+                                    ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
+                                    : 'bg-slate-700/30 text-slate-400 border border-slate-700/50'
+                                }`}>
+                                  {log.source === 'api' ? 'API' : log.source === 'manual' ? 'อัปโหลดมือ' : 'ไม่ระบุ'}
+                                </span>
                               </td>
                               <td className="py-2.5 px-3 font-mono text-[10px] text-slate-500">{log.configVersion ? `v${log.configVersion}` : '—'}</td>
                               <td className="py-2.5 px-3 font-mono text-slate-400">{(log.processedRows ?? log.rowCount).toLocaleString()} / {log.rowCount.toLocaleString()}</td>
@@ -2858,7 +2934,7 @@ export default function Dashboard() {
                             </tr>
                             {isSelected && !viewingHistoricalRun?.hasDetail && (
                               <tr key={`${log.logId}-detail`} className="bg-slate-950/40">
-                                <td colSpan={8 + csiFeatures.length} className="px-4 py-3">
+                                <td colSpan={9 + csiFeatures.length} className="px-4 py-3">
                                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     <div>
                                       <p className="text-[9px] font-bold text-cyan-400 uppercase tracking-wider mb-2">🗓️ ช่วงเวลาของไฟล์นี้</p>
@@ -3181,6 +3257,50 @@ export default function Dashboard() {
                 className="px-4 py-2 text-xs rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors flex items-center gap-1.5"
               >
                 {isDeletingLog ? 'กำลังลบ...' : 'ยืนยันการลบ'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Period Confirmation Modal */}
+      {duplicatePeriodModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/30 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 text-lg">
+                ⚠️
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-100">ตรวจพบงวดข้อมูลซ้ำกับรอบที่เคยประมวลผลแล้ว</h4>
+                <p className="text-xs text-slate-400 mt-0.5">งวดข้อมูล: <span className="font-mono text-amber-300 font-semibold">{duplicatePeriodModal.period}</span></p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 space-y-1">
+              <div className="text-slate-400 text-[11px]">รอบเดิมที่เคยบันทึกไว้:</div>
+              <div className="font-mono text-slate-200 truncate">{duplicatePeriodModal.existingRun?.fileName || '—'}</div>
+              {duplicatePeriodModal.existingRun?.createdAt && (
+                <div className="text-[10px] text-slate-500">อัปโหลดเมื่อ {formatAppDateTime(duplicatePeriodModal.existingRun.createdAt)}</div>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              ต้องการแทนที่รอบเดิมด้วยข้อมูลใหม่นี้หรือไม่? หากเลือกแทนที่ ระบบจะบันทึก Audit Log การแทนที่รอบเดิม
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setDuplicatePeriodModal(null)}
+                className="px-4 py-2 text-xs rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleConfirmReplacePeriod}
+                className="px-4 py-2 text-xs rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold transition-colors flex items-center gap-1.5"
+              >
+                แทนที่รอบเดิม
               </button>
             </div>
           </div>

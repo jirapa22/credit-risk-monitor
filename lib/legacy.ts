@@ -48,6 +48,8 @@ export function toLegacyLog(run: MonitoringRun) {
       actBadRate: run.driftReport.label.metrics?.actualBadRate,
     } : null,
     uploadSummary: run.uploadSummary,
+    period: run.period ?? null,
+    source: run.source ?? null,
     verdict: run.drift ? run.drift.overallStatus : 'INVALID_DATA',
     // ── Anomaly screening (new; absent/null for older runs) ──
     flaggedRows: run.anomaly?.flaggedRowCount ?? null,

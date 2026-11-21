@@ -295,7 +295,7 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
       const uploadRes = await monitorUploadHandler(new Request('http://localhost:3000/api/monitor-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modelId, csvText: csv, fileName: fn }),
+        body: JSON.stringify({ modelId, csvText: csv, fileName: fn, onDuplicate: 'replace' }),
       }));
       const data = await uploadRes.json();
       const detailRes = await getMonitoringRunDetail(modelId, data.run.runId);

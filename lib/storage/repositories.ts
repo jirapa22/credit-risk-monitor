@@ -2435,6 +2435,88 @@ export async function recordRunDeletionAudit(opts: {
   });
 }
 
+export async function recordRunReplaceAudit(opts: {
+  modelId: string;
+  oldRunId: string;
+  newRunId?: string;
+  fileName: string;
+  period?: string | null;
+  actor?: string;
+  note?: string;
+  blobDeleted?: boolean;
+}): Promise<DeletionAuditEntry> {
+  return recordDeletionAudit({
+    action: 'RUN_REPLACED',
+    actor: opts.actor || 'system',
+    modelId: opts.modelId,
+    timestamp: new Date().toISOString(),
+    runId: opts.oldRunId,
+    fileName: opts.fileName,
+    note: opts.note || (opts.newRunId ? `แทนที่ด้วยรอบ ${opts.newRunId} (งวด ${opts.period ?? 'ไม่ระบุ'})` : `แทนที่รอบเดิม (งวด ${opts.period ?? 'ไม่ระบุ'})`),
+    clearedCounts: {
+      monitoringRuns: 1,
+      sandboxRuns: 0,
+      events: 0,
+      reviews: 0,
+      total: 1,
+    },
+    blobDeleted: Boolean(opts.blobDeleted),
+  });
+}
+
+export async function replaceMonitoringRun(opts: {
+  modelId: string;
+  oldRunId: string;
+  newRunId?: string;
+  fileName?: string;
+  actor?: string;
+  period?: string | null;
+}): Promise<{ replaced: boolean; oldRun?: MonitoringRun }> {
+  if (!opts.modelId || !opts.modelId.trim()) {
+    throw new Error('ต้องระบุ modelId');
+  }
+  const currentRuns = await listRuns<MonitoringRun>('monitoring', opts.modelId);
+  const target = currentRuns.find(r => r.runId === opts.oldRunId);
+  if (!target) {
+    return { replaced: false };
+  }
+  let blobDeleted = false;
+  if (target.detailBlobUrl) {
+    try {
+      await deleteRunDetailBlob(target.detailBlobUrl);
+      blobDeleted = true;
+    } catch (err) {
+      console.warn(`Failed to delete blob for run ${target.runId}:`, err);
+    }
+  }
+  const remaining = currentRuns.filter(r => r.runId !== opts.oldRunId);
+  await setRuns('monitoring', opts.modelId, remaining);
+
+  try {
+    const store = getStore();
+    const evKey = eventsKey(opts.modelId);
+    const evList = (await store.get<TriggerEvent[]>(evKey)) ?? [];
+    const filteredEv = evList.filter(e => e.runId !== opts.oldRunId);
+    if (filteredEv.length !== evList.length) {
+      await store.set(evKey, filteredEv);
+    }
+  } catch (err) {
+    console.warn('Failed to clean up trigger events for replaced run:', err);
+  }
+
+  await recordRunReplaceAudit({
+    modelId: opts.modelId,
+    oldRunId: target.runId,
+    newRunId: opts.newRunId,
+    fileName: opts.fileName || target.fileName,
+    period: opts.period ?? target.period ?? null,
+    actor: opts.actor || 'system',
+    blobDeleted,
+  });
+
+  return { replaced: true, oldRun: target };
+}
+
 export async function deleteMonitoringRuns(
   modelId: string,
   runIds: string[],

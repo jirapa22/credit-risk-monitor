@@ -732,6 +732,8 @@ export interface MonitoringRun {
   modelName: string;
   referenceId: string;
   fileName: string;
+  period?: string | null;                     // Data period (e.g. '2025-07' or '2025-07 – 2025-08')
+  source?: 'manual' | 'api';                  // Submission channel: manual UI upload vs automated API
   thresholdsSnapshot: MonitoringThresholds;
   validation: ValidationResult;
   drift: DriftResult | null;                  // null when validation blocked the run
@@ -761,6 +763,8 @@ export interface MonitoringRunDetail {
   configVersion: string;
   referenceId: string;
   fileName: string;
+  period?: string | null;
+  source?: 'manual' | 'api';
   sha256: string;
   createdAt: string;
   thresholdMode: 'fixed' | 'calibrated';
@@ -1029,7 +1033,7 @@ export interface DetectedColumnSchema {
 
 export interface DeletionAuditEntry {
   id: string;
-  action: 'delete_version' | 'archive_version' | 'delete_model' | 'RUN_DELETED' | 'reactivate_failed' | string;
+  action: 'delete_version' | 'archive_version' | 'delete_model' | 'RUN_DELETED' | 'RUN_REPLACED' | 'reactivate_failed' | string;
   actor: string;
   timestamp: string;
   modelId: string;

@@ -11,6 +11,11 @@ export const DEFAULT_LABEL_COLUMN = 'default_flag';
 export const LEGACY_SCORE_KEY = 'aScore';
 
 /**
+ * ขนาดสูงสุดของข้อมูลที่ส่งเข้า API อัตโนมัติ (ไบต์) — ค่าเริ่มต้นเชิงปฏิบัติ 10 MB
+ */
+export const DEFAULT_MAX_INGEST_PAYLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+
+/**
  * ค่าเริ่มต้นเชิงปฏิบัติที่ผู้พัฒนาตั้งไว้ (PSI 0.10/0.25 เป็นกฎหัวแม่มือ ไม่ใช่ข้อบังคับ) ผู้ใช้ปรับได้ต่อโมเดล
  */
 export const DEFAULT_PSI_WARNING = 0.10;

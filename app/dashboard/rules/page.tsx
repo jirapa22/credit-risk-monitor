@@ -875,6 +875,10 @@ export default function RulesPage() {
                       </button>
                     </div>
 
+                    <p className="text-[11px] text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                      ℹ️ <strong>ขอบเขตการจำลอง:</strong> คำนวณระดับสถานะ PSI, CSI, Covariate Drift, Overall Drift และประเมินผล Trigger ใหม่จากค่าตัวเลขจริงที่บันทึกไว้ในแต่ละรอบ (PSI, CSI, Bad Rate, p-value, สัดส่วนปัญหาข้อมูล) ด้วยเกณฑ์ที่ท่านกำหนด โดยไม่ต้องคำนวณจากไฟล์ข้อมูลดิบซ้ำและไม่มีการบันทึกทับข้อมูลจริง
+                    </p>
+
                     <div className="border border-slate-800 rounded-xl overflow-hidden text-xs">
                       <table className="w-full text-left">
                         <thead className="bg-slate-950 text-slate-400 font-mono text-[11px] border-b border-slate-800">
@@ -1108,3 +1112,4 @@ export default function RulesPage() {
     </div>
   );
 }
+

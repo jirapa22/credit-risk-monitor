@@ -143,15 +143,22 @@ export async function executeMonitoringPipeline(
   let activeRuleSet: any = undefined;
   try {
     const rs = await getActiveRuleSet(model.id, model.version);
-    activeRuleSet = {
-      id: rs.setId,
-      name: rs.name,
-      revision: rs.revision,
-      config: rs.config,
-    };
+    if (rs) {
+      activeRuleSet = {
+        id: rs.setId,
+        name: rs.name,
+        revision: rs.revision,
+        config: rs.config,
+      };
+    }
   } catch (err) {
     console.warn('Could not load active rule set, falling back to defaults:', err);
   }
+
+  const tentativePeriod = input.period || (input.fileName ? resolvePeriod(null, input.period, input.fileName).period : null);
+  const effectiveHistory = (input.onDuplicate === 'replace' && tentativePeriod)
+    ? history.filter(h => getRunPeriod(h) !== tentativePeriod)
+    : history;
 
   const { run, scored, riskGradeDist, riskGradeStatus, skipped } = runMonitoring({
     model,
@@ -160,7 +167,7 @@ export async function executeMonitoringPipeline(
     rows: input.customers,
     excludeRows: input.excludeRows,
     anomalyScreening: input.anomalyScreening !== false,
-    history,
+    history: effectiveHistory,
     ruleSet: activeRuleSet,
   });
 

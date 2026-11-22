@@ -355,9 +355,24 @@ export async function listRuleSets(
 export async function getActiveRuleSet(
   modelId: string,
   version: string,
-): Promise<{ setId: string; name: string; revision: number; config: RuleSetConfig }> {
-  const { activeRuleSet } = await listRuleSets(modelId, version);
-  return activeRuleSet;
+): Promise<{ setId: string; name: string; revision: number; config: RuleSetConfig } | null> {
+  const store = getStore();
+  const sets = await store.get<RuleSet[]>(getRuleSetsKey(modelId, version));
+  const activePointer = await store.get<{ setId: string; revision: number }>(getActivePointerKey(modelId, version));
+
+  if (!sets || sets.length === 0 || !activePointer) {
+    return null;
+  }
+
+  const activeSet = sets.find(s => s.id === activePointer.setId) || sets[0];
+  const activeRev = activeSet.revisions.find(r => r.revision === activePointer.revision) || activeSet.revisions[activeSet.revisions.length - 1];
+
+  return {
+    setId: activeSet.id,
+    name: activeSet.name,
+    revision: activeRev.revision,
+    config: activeRev.config,
+  };
 }
 
 export async function createRuleSet(
@@ -674,6 +689,18 @@ export interface SimulationItemResult {
   simulatedReasons: string[];
 }
 
+const DRIFT_RANK: Record<string, number> = {
+  STABLE: 0,
+  WARNING: 1,
+  CRITICAL: 2,
+};
+
+function classifyLevel(val: number, warn: number, crit: number): 'STABLE' | 'WARNING' | 'CRITICAL' {
+  if (val >= crit) return 'CRITICAL';
+  if (val >= warn) return 'WARNING';
+  return 'STABLE';
+}
+
 export function simulateRuleSetOnPastRuns(
   candidateConfig: RuleSetConfig,
   runs: MonitoringRun[],
@@ -698,7 +725,138 @@ export function simulateRuleSetOnPastRuns(
   };
 
   return runs.map(r => {
-    // Clone run to attach ruleSetConfig for trigger evaluation without persisting
+    // Dynamically re-classify PSI status from stored numerical value using candidate thresholds
+    let newPsiStatus = r.drift?.psi?.status ?? 'NOT_AVAILABLE';
+    const psiVal = r.drift?.psi?.value ?? (r.driftReport?.covariate?.metrics as any)?.score?.psi ?? (r.driftReport?.covariate?.metrics as any)?.psi?.value;
+    if (typeof psiVal === 'number' && Number.isFinite(psiVal)) {
+      newPsiStatus = classifyLevel(psiVal, candidateConfig.psi_warning, candidateConfig.psi_critical);
+    }
+
+    // Dynamically re-classify each CSI feature status from stored numerical value
+    const newCsi: Record<string, any> = {};
+    for (const [key, item] of Object.entries(r.drift?.csi || {})) {
+      if (typeof item?.value === 'number' && Number.isFinite(item.value)) {
+        const status = classifyLevel(item.value, candidateConfig.csi_warning, candidateConfig.csi_critical);
+        newCsi[key] = {
+          ...item,
+          status,
+          threshold: {
+            warning: candidateConfig.csi_warning,
+            critical: candidateConfig.csi_critical,
+          },
+        };
+      } else {
+        newCsi[key] = item;
+      }
+    }
+
+    // Recompute covariate status from recomputed PSI & CSI statuses
+    const availableStatuses = [
+      ...(newPsiStatus && newPsiStatus !== 'NOT_AVAILABLE' ? [newPsiStatus] : []),
+      ...Object.values(newCsi).map((c: any) => c.status).filter((s: string) => s && s !== 'NOT_AVAILABLE'),
+    ];
+    const newCovariateStatus = availableStatuses.reduce<any>(
+      (worst, s) => (DRIFT_RANK[s] > DRIFT_RANK[worst] ? s : worst),
+      'STABLE',
+    );
+
+    const otherStatuses = [
+      newCovariateStatus,
+      r.driftReport?.missing?.status,
+      r.driftReport?.label?.status,
+      r.driftReport?.concept?.status,
+    ].filter((s): s is any => Boolean(s) && s !== 'NOT_AVAILABLE');
+
+    const newOverallStatus = otherStatuses.reduce<any>(
+      (worst, s) => (DRIFT_RANK[s] > DRIFT_RANK[worst] ? s : worst),
+      'STABLE',
+    );
+
+    const clonedDrift = r.drift
+      ? {
+          ...r.drift,
+          psi: {
+            ...r.drift.psi,
+            status: newPsiStatus,
+            threshold: {
+              warning: candidateConfig.psi_warning,
+              critical: candidateConfig.psi_critical,
+            },
+          },
+          csi: newCsi,
+          overallStatus: newOverallStatus,
+        }
+      : null;
+
+    const clonedDriftReport = r.driftReport
+      ? {
+          ...r.driftReport,
+          covariate: {
+            ...r.driftReport.covariate,
+            status: newCovariateStatus,
+          },
+          summary: {
+            ...r.driftReport.summary,
+            overallStatus: newOverallStatus,
+          },
+        }
+      : null;
+
+    let clonedDriftExcl = r.driftExcludingFlagged;
+    if (r.driftExcludingFlagged) {
+      let exclPsiStatus = r.driftExcludingFlagged.psi?.status ?? 'NOT_AVAILABLE';
+      const exclPsiVal = r.driftExcludingFlagged.psi?.value;
+      if (typeof exclPsiVal === 'number' && Number.isFinite(exclPsiVal)) {
+        exclPsiStatus = classifyLevel(exclPsiVal, candidateConfig.psi_warning, candidateConfig.psi_critical);
+      }
+      const exclCsi: Record<string, any> = {};
+      for (const [k, item] of Object.entries(r.driftExcludingFlagged.csi || {})) {
+        if (typeof item?.value === 'number' && Number.isFinite(item.value)) {
+          exclCsi[k] = {
+            ...item,
+            status: classifyLevel(item.value, candidateConfig.csi_warning, candidateConfig.csi_critical),
+            threshold: { warning: candidateConfig.csi_warning, critical: candidateConfig.csi_critical },
+          };
+        } else {
+          exclCsi[k] = item;
+        }
+      }
+      const exclStatuses = [
+        ...(exclPsiStatus && exclPsiStatus !== 'NOT_AVAILABLE' ? [exclPsiStatus] : []),
+        ...Object.values(exclCsi).map((c: any) => c.status).filter((s: string) => s && s !== 'NOT_AVAILABLE'),
+      ];
+      const exclOverallStatus = exclStatuses.reduce<any>(
+        (worst, s) => (DRIFT_RANK[s] > DRIFT_RANK[worst] ? s : worst),
+        'STABLE',
+      );
+      clonedDriftExcl = {
+        ...r.driftExcludingFlagged,
+        psi: {
+          ...r.driftExcludingFlagged.psi,
+          status: exclPsiStatus,
+          threshold: { warning: candidateConfig.psi_warning, critical: candidateConfig.psi_critical },
+        },
+        csi: exclCsi,
+        overallStatus: exclOverallStatus,
+      };
+    }
+
+    let clonedDriftReportExcl = r.driftReportExcludingFlagged;
+    if (r.driftReportExcludingFlagged) {
+      const covExclVal = (r.driftReportExcludingFlagged.covariate?.metrics as any)?.score?.psi ?? r.driftExcludingFlagged?.psi?.value;
+      const covExclStatus = typeof covExclVal === 'number' && Number.isFinite(covExclVal)
+        ? classifyLevel(covExclVal, candidateConfig.psi_warning, candidateConfig.psi_critical)
+        : r.driftReportExcludingFlagged.covariate?.status ?? 'STABLE';
+      clonedDriftReportExcl = {
+        ...r.driftReportExcludingFlagged,
+        covariate: {
+          ...r.driftReportExcludingFlagged.covariate,
+          status: covExclStatus,
+        },
+      };
+    }
+
+    // Clone run to attach ruleSetConfig and recomputed drift metrics for trigger evaluation
     const clonedRun: MonitoringRun = {
       ...r,
       ruleSetConfig: candidateConfig,
@@ -710,6 +868,10 @@ export function simulateRuleSetOnPastRuns(
         gini_min: candidateConfig.gini_min,
         ks_min: candidateConfig.ks_min,
       },
+      ...(clonedDrift ? { drift: clonedDrift } : {}),
+      ...(clonedDriftReport ? { driftReport: clonedDriftReport } : {}),
+      ...(clonedDriftExcl ? { driftExcludingFlagged: clonedDriftExcl } : {}),
+      ...(clonedDriftReportExcl ? { driftReportExcludingFlagged: clonedDriftReportExcl } : {}),
     };
 
     const simDecision: TriggerDecision = evaluateTrigger(clonedRun, modelWithConfig, runs);
@@ -733,3 +895,4 @@ export function simulateRuleSetOnPastRuns(
     };
   });
 }
+

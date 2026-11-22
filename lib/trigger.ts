@@ -649,6 +649,13 @@ export function evaluateTrigger(
           scoreAdj.pValue >= pThr;
 
         if (isExplainable) {
+          // R5b must NOT downgrade if covariate drift = CRITICAL!
+          // If covariate drift is CRITICAL, waive R5 and fall through to downstream rules (e.g. R7 INVESTIGATE_DRIFT).
+          const covStatus = getSectionStatus(run, 'covariate');
+          if (covStatus === 'CRITICAL') {
+            continue;
+          }
+
           const pFmt = formatTriggerPValue(scoreAdj.pValue);
           const pStr = pFmt !== null ? ` (p=${pFmt} ≥ ${pThr})` : '';
           const r5bMessage = `อัตราหนี้เสียเปลี่ยนตามกลุ่มประชากร แต่ยังสอดคล้องกับค่าคาดหมายตามช่วงคะแนนของโมเดล${pStr} — ประชากรเปลี่ยน ไม่ใช่ความสัมพันธ์ของโมเดลเปลี่ยน แนะนำติดตามผลอย่างใกล้ชิด`;

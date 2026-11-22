@@ -476,10 +476,11 @@ export function buildRunReport(
       ? `${(labelMetrics.actualBadRate * 100).toFixed(2)}%`
       : 'N/A';
 
-  const relChgRaw = labelEv?.relativeChange ?? labelMetrics?.relativeChange;
-  const relChg = relChgRaw !== undefined && relChgRaw !== null
-    ? `${relChgRaw >= 0 ? '+' : ''}${(relChgRaw * 100).toFixed(1)}%`
-    : 'N/A';
+  const relChg = labelEv?.relativeChange !== undefined && labelEv.relativeChange !== null
+    ? `${labelEv.relativeChange >= 0 ? '+' : ''}${labelEv.relativeChange.toFixed(1)}%`
+    : labelMetrics?.relativeChange !== undefined && labelMetrics.relativeChange !== null
+      ? `${labelMetrics.relativeChange >= 0 ? '+' : ''}${(labelMetrics.relativeChange * 100).toFixed(1)}%`
+      : 'N/A';
 
   const pValRaw = labelEv?.pValue ?? labelMetrics?.pValue;
   const pVal = pValRaw !== undefined && pValRaw !== null

@@ -11,7 +11,8 @@ import { POST as validateVersionHandler } from '../app/api/registry/models/[mode
 import { POST as activateVersionHandler } from '../app/api/registry/models/[modelId]/versions/[version]/activate/route';
 import { POST as ingestHandler } from '../app/api/ingest/route';
 import { POST as monitorUploadHandler } from '../app/api/monitor-upload/route';
-import { listRuns, listDeletionAuditLogs } from '../lib/storage/repositories';
+import { listRuns, listDeletionAuditLogs, getMonitoringRunDetail } from '../lib/storage/repositories';
+import { buildRunReport } from '../lib/report/buildRunReport';
 import type { FeatureDefinition, MonitoringRun } from '../lib/types';
 import { DEFAULT_MAX_INGEST_PAYLOAD_BYTES } from '../lib/defaults';
 
@@ -505,6 +506,11 @@ describe('Automated Ingestion API (/api/ingest) Tests', () => {
     const m05Run = stored.find(r => r.period === '2025-11');
     expect(m05Run).toBeDefined();
     expect(m05Run?.fileName).toBe(thaiFileName);
+
+    // Verify report labelRelativeChange is +51.3% (not +5130.0%)
+    const detailRes = await getMonitoringRunDetail(modelId, m05Run!.runId);
+    const report = buildRunReport(detailRes.run!, detailRes.detail);
+    expect(report.overallDrift.labelRelativeChange).toBe('+51.3%');
   });
 
   it('(10) multipart/form-data: duplicate submission returns 409 DUPLICATE_PERIOD', async () => {
@@ -623,5 +629,28 @@ describe('Automated Ingestion API (/api/ingest) Tests', () => {
     expect(recorded).toBeDefined();
     expect(recorded?.validation.ok).toBe(false);
     expect(recorded?.drift).toBeNull();
+  });
+
+  it('(14) API ingest for m06: report labelRelativeChange matches real value +24.4%', async () => {
+    process.env.MONITOR_API_TOKEN = TEST_TOKEN;
+    const m06Text = readFileSync(join(root, 'samples/cashloan_v2/m06_v2_2025-12_เศรษฐกิจชะลอตัว.csv'), 'utf8');
+
+    const fd = new FormData();
+    fd.append('file', new File([m06Text], 'm06_api_2025-12.csv', { type: 'text/csv' }));
+    fd.append('modelId', modelId);
+    fd.append('onDuplicate', 'replace');
+
+    const res = await ingestHandler(new Request('http://localhost:3000/api/ingest', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+      body: fd,
+    }));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { runId: string };
+
+    const detailRes = await getMonitoringRunDetail(modelId, data.runId);
+    const report = buildRunReport(detailRes.run!, detailRes.detail);
+    expect(report.overallDrift.hasLabelDrift).toBe(true);
+    expect(report.overallDrift.labelRelativeChange).toBe('+24.4%');
   });
 });

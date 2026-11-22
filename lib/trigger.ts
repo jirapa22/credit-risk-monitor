@@ -315,6 +315,14 @@ function sectionMeetsAtLeast(
   return STATUS_RANK[status] >= STATUS_RANK[atLeast];
 }
 
+function formatTriggerPValue(pVal: number | null | undefined): string | null {
+  if (pVal === undefined || pVal === null) return null;
+  if (pVal < 0.0001 || +pVal.toFixed(4) === 0) {
+    return '< 0.0001';
+  }
+  return `p=${pVal.toFixed(4)}`;
+}
+
 function describeSectionEvidence(run: MonitoringRun, section: TriggerSectionName): string {
   const dr = run.driftReport;
   if (!dr) {
@@ -329,7 +337,7 @@ function describeSectionEvidence(run: MonitoringRun, section: TriggerSectionName
     case 'missing':
       return `Missing Drift = ${dr.missing.status}: ${dr.missing.reason}`;
     case 'label':
-      return `Label Drift = ${dr.label.status}: ${dr.label.reason}`;
+      return `Label Drift = ${dr.label.status}: ${dr.label.reason.replace(/p=0\.0000\b/g, '< 0.0001')}`;
     case 'concept':
       return `Concept Drift = ${dr.concept.status}: ${dr.concept.reason}`;
     case 'overall': {
@@ -338,8 +346,10 @@ function describeSectionEvidence(run: MonitoringRun, section: TriggerSectionName
         const pVal = dr.label.metrics?.pValue;
         const pThr = dr.label.metrics?.threshold?.pValueThreshold;
         const pThrStr = pThr !== undefined && pThr !== null ? ` เทียบเกณฑ์ ${pThr}` : '';
-        const pStr = pVal !== undefined && pVal !== null ? ` (p=${pVal.toFixed(4)}${pThrStr})` : '';
-        extra = ` · สัญญาณ Label Drift: ${dr.label.reason}${pStr}`;
+        const pFmt = formatTriggerPValue(pVal);
+        const pStr = pFmt !== null ? ` (${pFmt}${pThrStr})` : '';
+        const cleanReason = dr.label.reason.replace(/p=0\.0000\b/g, '< 0.0001');
+        extra = ` · สัญญาณ Label Drift: ${cleanReason}${pStr}`;
       }
       return `Overall Drift = ${dr.summary.overallStatus}: ${dr.summary.reason}${extra}`;
     }
@@ -620,7 +630,8 @@ export function evaluateTrigger(
         const relStr = m.relativeChange !== null && m.relativeChange !== undefined ? `${(m.relativeChange * 100).toFixed(1)}%` : 'N/A';
         const pThr = m.threshold?.pValueThreshold;
         const pThrStr = pThr !== undefined && pThr !== null ? ` เทียบเกณฑ์ ${pThr}` : '';
-        const pStr = m.pValue !== undefined && m.pValue !== null ? ` (p=${m.pValue.toFixed(4)}${pThrStr})` : '';
+        const pFmt = formatTriggerPValue(m.pValue);
+        const pStr = pFmt !== null ? ` (${pFmt}${pThrStr})` : '';
         const refStr = m.referenceBadRate !== undefined && m.referenceBadRate !== null ? `${(m.referenceBadRate * 100).toFixed(2)}%` : 'N/A';
         const actStr = m.actualBadRate !== undefined && m.actualBadRate !== null ? `${(m.actualBadRate * 100).toFixed(2)}%` : 'N/A';
         ruleMessage = `อัตราหนี้เสียเปลี่ยนแต่ความสามารถจัดอันดับยังดี (Bad Rate: Reference ${refStr} → ใหม่ ${actStr}, เปลี่ยนแปลง ${relStr}${pStr}) — พิจารณาปรับ cut-off หรือ calibration แทนการ retrain`;
@@ -628,7 +639,8 @@ export function evaluateTrigger(
         const m = run.driftReport.label.metrics;
         const pThr = m?.threshold?.pValueThreshold;
         const pThrStr = pThr !== undefined && pThr !== null ? ` เทียบเกณฑ์ ${pThr}` : '';
-        const pStr = m?.pValue !== undefined && m?.pValue !== null ? ` (p=${m.pValue.toFixed(4)}${pThrStr})` : '';
+        const pFmt = formatTriggerPValue(m?.pValue);
+        const pStr = pFmt !== null ? ` (${pFmt}${pThrStr})` : '';
         const relStr = m?.relativeChange !== null && m?.relativeChange !== undefined ? `เปลี่ยนแปลง ${(m.relativeChange * 100).toFixed(1)}%` : '';
         const refStr = m?.referenceBadRate !== undefined && m?.referenceBadRate !== null ? `${(m.referenceBadRate * 100).toFixed(2)}%` : 'N/A';
         const actStr = m?.actualBadRate !== undefined && m?.actualBadRate !== null ? `${(m.actualBadRate * 100).toFixed(2)}%` : 'N/A';

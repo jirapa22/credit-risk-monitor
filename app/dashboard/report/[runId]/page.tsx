@@ -390,8 +390,8 @@ export default async function ReportPage(props: ReportPageProps) {
                 </span>
               </div>
               <div className="text-[11px] text-slate-400 print-text-muted space-y-0.5 border-t border-slate-800/60 pt-2 print:border-slate-200">
-                <div>เกณฑ์เฝ้าระวัง (Warn): {typeof overallDrift.scoreWarningThreshold === 'number' ? `≥ ${overallDrift.scoreWarningThreshold}` : overallDrift.scoreWarningThreshold}</div>
-                <div>เกณฑ์วิกฤต (Critical): {typeof overallDrift.scoreCriticalThreshold === 'number' ? `≥ ${overallDrift.scoreCriticalThreshold}` : overallDrift.scoreCriticalThreshold}</div>
+                <div>เกณฑ์เฝ้าระวัง (Warn): {typeof overallDrift.scoreWarningThreshold === 'number' ? `≥ ${overallDrift.scoreWarningThreshold.toFixed(2)}` : overallDrift.scoreWarningThreshold}</div>
+                <div>เกณฑ์วิกฤต (Critical): {typeof overallDrift.scoreCriticalThreshold === 'number' ? `≥ ${overallDrift.scoreCriticalThreshold.toFixed(2)}` : overallDrift.scoreCriticalThreshold}</div>
               </div>
             </div>
 

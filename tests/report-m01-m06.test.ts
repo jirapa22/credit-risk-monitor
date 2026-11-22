@@ -247,6 +247,7 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.overallDrift.scorePsi).toBeCloseTo(0.2103, 3);
     expect(report.overallDrift.hasLabelDrift).toBe(true);
     expect(report.overallDrift.labelActBadRate).not.toBe('N/A');
+    expect(report.overallDrift.labelRelativeChange).toBe('+51.3%');
     expect(report.overallDrift.labelPValue).toBe('< 0.0001');
     expect(report.performance.hasLabels).toBe(true);
     expect(report.performance.auc).toBeCloseTo(0.737, 3);
@@ -277,6 +278,7 @@ describe('Per-run Drift Report for m01, m03, m05, m06 (Step 13 Acceptance)', () 
     expect(report.summary.verdictReasonLine).toBe('คะแนนและตัวแปรอยู่ในเกณฑ์ปกติ แต่พบการเปลี่ยนแปลงของ Bad Rate (ดูหัวข้อ Overall Drift)');
     expect(report.overallDrift.scorePsi).toBeCloseTo(0.0077, 3);
     expect(report.overallDrift.hasLabelDrift).toBe(true);
+    expect(report.overallDrift.labelRelativeChange).toBe('+24.4%');
     expect(report.overallDrift.labelPValue).not.toBe('N/A');
     expect(report.performance.hasLabels).toBe(true);
     expect(report.performance.auc).toBeCloseTo(0.7602, 3);

@@ -188,6 +188,8 @@ describe('Step 9 — Trigger Rules & Review Workflow (tests/trigger.test.ts)', (
     expect(run.driftReport?.concept.status).toBe('STABLE');
     expect(decision.action).toBe('RECALIBRATE');
     expect(decision.matchedRuleId).toBe('R5');
+    expect(decision.reasons.some(r => r.includes('< 0.0001'))).toBe(true);
+    expect(decision.reasons.some(r => r.includes('p=0.0000'))).toBe(false);
   });
 
   it('(6) concept drift: สลับ label แบบสุ่มทั้งไฟล์ (permute) ให้ Gini ใกล้ 0 → CONSIDER_RETRAIN', () => {

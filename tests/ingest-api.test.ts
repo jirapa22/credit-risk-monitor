@@ -464,4 +464,164 @@ describe('Automated Ingestion API (/api/ingest) Tests', () => {
     const replaceAuditsAfter = auditsAfter.filter(a => a.action === 'RUN_REPLACED' && a.modelId === modelId).length;
     expect(replaceAuditsAfter).toBe(replaceAuditsBefore);
   });
+
+  it('(9) multipart/form-data: processes m05 correctly with Thai filename: returns 200, CRITICAL, R5, PSI ~0.2103, source api, preserves Thai filename', async () => {
+    process.env.MONITOR_API_TOKEN = TEST_TOKEN;
+    const m05Text = readFileSync(join(root, 'samples/cashloan_v2/m05_v2_2025-11_แคมเปญMobileApp.csv'), 'utf8');
+    const thaiFileName = 'm05_v2_2025-11_แคมเปญMobileApp.csv';
+
+    const fd = new FormData();
+    const file = new File([m05Text], thaiFileName, { type: 'text/csv' });
+    fd.append('file', file);
+    fd.append('modelId', modelId);
+    fd.append('onDuplicate', 'replace');
+
+    const res = await ingestHandler(new Request('http://localhost:3000/api/ingest', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${TEST_TOKEN}`,
+      },
+      body: fd,
+    }));
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      verdict: string;
+      trigger: { action: string; matchedRuleId: string };
+      source: string;
+      psi: number;
+      period: string;
+    };
+
+    expect(data.verdict).toBe('CRITICAL');
+    expect(data.trigger.matchedRuleId).toBe('R5');
+    expect(data.trigger.action).toBe('RECALIBRATE');
+    expect(data.psi).toBeCloseTo(0.2103, 3);
+    expect(data.source).toBe('api');
+    expect(data.period).toBe('2025-11');
+
+    // Confirm Thai filename is preserved in stored run
+    const stored = await listRuns<MonitoringRun>('monitoring', modelId);
+    const m05Run = stored.find(r => r.period === '2025-11');
+    expect(m05Run).toBeDefined();
+    expect(m05Run?.fileName).toBe(thaiFileName);
+  });
+
+  it('(10) multipart/form-data: duplicate submission returns 409 DUPLICATE_PERIOD', async () => {
+    process.env.MONITOR_API_TOKEN = TEST_TOKEN;
+    const m05Text = readFileSync(join(root, 'samples/cashloan_v2/m05_v2_2025-11_แคมเปญMobileApp.csv'), 'utf8');
+
+    const fd = new FormData();
+    const file = new File([m05Text], 'm05_v2_2025-11_แคมเปญMobileApp.csv', { type: 'text/csv' });
+    fd.append('file', file);
+
+    const dupRes = await ingestHandler(new Request(`http://localhost:3000/api/ingest?modelId=${modelId}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${TEST_TOKEN}`,
+      },
+      body: fd,
+    }));
+
+    expect(dupRes.status).toBe(409);
+    const dupData = (await dupRes.json()) as { code: string; period: string };
+    expect(dupData.code).toBe('DUPLICATE_PERIOD');
+    expect(dupData.period).toBe('2025-11');
+  });
+
+  it('(11) multipart/form-data: replace with corrupted file returns 422, keeps original run intact, and does not record RUN_REPLACED audit', async () => {
+    process.env.MONITOR_API_TOKEN = TEST_TOKEN;
+    const auditsBefore = await listDeletionAuditLogs();
+    const replaceAuditsBefore = auditsBefore.filter(a => a.action === 'RUN_REPLACED' && a.modelId === modelId).length;
+
+    const badCsv = 'app_id,app_date,default_12m\nid_001,2025-11-01,0\nid_002,2025-11-02,1';
+    const fd = new FormData();
+    const file = new File([badCsv], 'bad_replacement.csv', { type: 'text/csv' });
+    fd.append('file', file);
+    fd.append('onDuplicate', 'replace');
+
+    const res = await ingestHandler(new Request(`http://localhost:3000/api/ingest?modelId=${modelId}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${TEST_TOKEN}`,
+      },
+      body: fd,
+    }));
+
+    expect(res.status).toBe(422);
+    const data = (await res.json()) as { code: string };
+    expect(data.code).toBe('INVALID_DATA');
+
+    // Confirm existing m05 run is still preserved
+    const stored = await listRuns<MonitoringRun>('monitoring', modelId);
+    const m05Run = stored.find(r => r.period === '2025-11');
+    expect(m05Run).toBeDefined();
+    expect(m05Run?.fileName).toBe('m05_v2_2025-11_แคมเปญMobileApp.csv');
+
+    // Confirm NO RUN_REPLACED audit log added
+    const auditsAfter = await listDeletionAuditLogs();
+    const replaceAuditsAfter = auditsAfter.filter(a => a.action === 'RUN_REPLACED' && a.modelId === modelId).length;
+    expect(replaceAuditsAfter).toBe(replaceAuditsBefore);
+  });
+
+  it('(12) multipart/form-data: missing or empty file returns 400 (MISSING_FILE / EMPTY_FILE) and does NOT persist any INVALID_DATA run in storage', async () => {
+    process.env.MONITOR_API_TOKEN = TEST_TOKEN;
+    const runsBefore = (await listRuns<MonitoringRun>('monitoring', modelId)).length;
+
+    // A) FormData without 'file' field
+    const fdNoFile = new FormData();
+    fdNoFile.append('modelId', modelId);
+    const resNoFile = await ingestHandler(new Request('http://localhost:3000/api/ingest', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+      body: fdNoFile,
+    }));
+    expect(resNoFile.status).toBe(400);
+    const noFileData = (await resNoFile.json()) as { code: string };
+    expect(noFileData.code).toBe('MISSING_FILE');
+
+    // B) FormData with empty file (0 bytes)
+    const fdEmpty = new FormData();
+    fdEmpty.append('file', new File([], 'empty.csv', { type: 'text/csv' }));
+    fdEmpty.append('modelId', modelId);
+    const resEmpty = await ingestHandler(new Request('http://localhost:3000/api/ingest', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+      body: fdEmpty,
+    }));
+    expect(resEmpty.status).toBe(400);
+    const emptyData = (await resEmpty.json()) as { code: string };
+    expect(emptyData.code).toBe('EMPTY_FILE');
+
+    // Confirm no runs were created/persisted in storage
+    const runsAfter = (await listRuns<MonitoringRun>('monitoring', modelId)).length;
+    expect(runsAfter).toBe(runsBefore);
+  });
+
+  it('(13) validation failure on fresh period (no prior run) records INVALID_DATA run for UI inspection identically in both manual upload and ingest API', async () => {
+    process.env.MONITOR_API_TOKEN = TEST_TOKEN;
+    const badCsv = 'app_id,app_date,default_12m\nid_001,2025-12-01,0\nid_002,2025-12-02,1';
+
+    // Ingest API with bad data on new period 2025-12
+    const fd = new FormData();
+    fd.append('file', new File([badCsv], 'bad_data_2025-12.csv', { type: 'text/csv' }));
+    fd.append('modelId', modelId);
+
+    const res = await ingestHandler(new Request('http://localhost:3000/api/ingest', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+      body: fd,
+    }));
+
+    expect(res.status).toBe(422);
+    const data = (await res.json()) as { code: string; runId: string };
+    expect(data.code).toBe('INVALID_DATA');
+
+    // Confirm that the failed run WAS recorded in storage for UI inspection (same as manual upload)
+    const stored = await listRuns<MonitoringRun>('monitoring', modelId);
+    const recorded = stored.find(r => r.runId === data.runId);
+    expect(recorded).toBeDefined();
+    expect(recorded?.validation.ok).toBe(false);
+    expect(recorded?.drift).toBeNull();
+  });
 });

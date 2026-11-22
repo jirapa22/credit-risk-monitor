@@ -206,6 +206,10 @@ export default async function ReportPage(props: ReportPageProps) {
               <span className="text-slate-300 print-text-dark">{header.runId}</span>
             </div>
             <div>
+              <span className="text-slate-400 print-text-muted">ชุดกฎที่ใช้: </span>
+              <span className="text-slate-300 print-text-dark font-sans">{header.ruleSetInfo}</span>
+            </div>
+            <div>
               <span className="text-slate-400 print-text-muted">Config Hash: </span>
               <span className="text-slate-300 print-text-dark">{header.configHash}</span>
             </div>

@@ -734,6 +734,10 @@ export interface MonitoringRun {
   fileName: string;
   period?: string | null;                     // Data period (e.g. '2025-07' or '2025-07 – 2025-08')
   source?: 'manual' | 'api';                  // Submission channel: manual UI upload vs automated API
+  ruleSetId?: string;
+  ruleSetName?: string;
+  ruleSetRevision?: number;
+  ruleSetConfig?: RuleSetConfig;
   thresholdsSnapshot: MonitoringThresholds;
   validation: ValidationResult;
   drift: DriftResult | null;                  // null when validation blocked the run
@@ -765,6 +769,10 @@ export interface MonitoringRunDetail {
   fileName: string;
   period?: string | null;
   source?: 'manual' | 'api';
+  ruleSetId?: string;
+  ruleSetName?: string;
+  ruleSetRevision?: number;
+  ruleSetConfig?: RuleSetConfig;
   sha256: string;
   createdAt: string;
   thresholdMode: 'fixed' | 'calibrated';
@@ -1054,4 +1062,69 @@ export interface DeletionAuditEntry {
   reason?: string;
   errorCount?: number;
 }
+
+// ─── Rule Sets & Auditing ─────────────────────────────────────────────────────
+export interface RuleSetConfig {
+  psi_warning: number;
+  psi_critical: number;
+  csi_warning: number;
+  csi_critical: number;
+  auc_min: number;
+  gini_min: number;
+  ks_min: number;
+  dataIssueThresholdRate: number; // e.g. 1.0 (1%)
+  labelPValueThreshold: number;   // e.g. 0.05
+  decileAlertThresholdPctPoints: number; // e.g. 5.0
+  enabledRules: {
+    R1b: boolean;
+    R5: boolean;
+    R8: boolean;
+    R5b: boolean;
+  };
+}
+
+export interface RuleSetRevision {
+  revision: number;
+  config: RuleSetConfig;
+  createdAt: string;
+  author: string;
+  reason: string;
+}
+
+export interface RuleSet {
+  id: string;
+  name: string;
+  description: string;
+  modelId: string;
+  modelVersion: string;
+  templateId?: 'standard' | 'strict' | 'relaxed' | 'population_adjusted' | 'custom';
+  currentRevision: number;
+  activeRevision?: number;
+  isActive: boolean;
+  revisions: RuleSetRevision[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RuleSetAuditDiff {
+  field: string;
+  label: string;
+  oldValue: unknown;
+  newValue: unknown;
+}
+
+export interface RuleSetAuditEntry {
+  id: string;
+  timestamp: string;
+  modelId: string;
+  modelVersion: string;
+  setId: string;
+  setName: string;
+  revision: number;
+  action: 'CREATE' | 'UPDATE' | 'ACTIVATE' | 'REVERT';
+  author: string;
+  reason: string;
+  diffs: RuleSetAuditDiff[];
+}
+
 

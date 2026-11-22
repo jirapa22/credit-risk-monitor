@@ -12,6 +12,7 @@ import type {
   DriftSectionStatus,
   DriftStatus,
   MonitoringRun,
+  RuleSetConfig,
   TriggerCondition,
   TriggerDecision,
   TriggerEvidence,
@@ -610,10 +611,76 @@ export function evaluateTrigger(
 ): TriggerDecision {
   const { rules, warnings: configWarnings } = resolveTriggerRules(model);
   const evidence = buildEvidence(run);
+  const ruleSetConfig: RuleSetConfig | undefined = (model as any)?.ruleSetConfig ?? (run as any)?.ruleSetConfig;
 
   for (const rule of rules) {
-    const evals = rule.when.map(cond => evaluateCondition(cond, run, history));
+    if (rule.id === 'R1b' && ruleSetConfig?.enabledRules?.R1b === false) {
+      continue;
+    }
+    if (rule.id === 'R5' && ruleSetConfig?.enabledRules?.R5 === false && !ruleSetConfig?.enabledRules?.R5b) {
+      continue;
+    }
+    if (rule.id === 'R8' && ruleSetConfig?.enabledRules?.R8 === false) {
+      continue;
+    }
+
+    const evals = rule.when.map(cond => {
+      if (rule.id === 'R1b' && cond.type === 'validationIssuesAbove' && ruleSetConfig?.dataIssueThresholdRate !== undefined) {
+        return evaluateCondition(
+          {
+            ...cond,
+            rejectedPct: ruleSetConfig.dataIssueThresholdRate,
+            warningRowPct: ruleSetConfig.dataIssueThresholdRate,
+          },
+          run,
+          history,
+        );
+      }
+      return evaluateCondition(cond, run, history);
+    });
+
     if (evals.every(e => e.matched)) {
+      if (rule.id === 'R5' && ruleSetConfig?.enabledRules?.R5b) {
+        const pThr = ruleSetConfig.labelPValueThreshold ?? 0.05;
+        const scoreAdj = run.driftReport?.label?.metrics?.scoreAdjusted;
+        const isExplainable =
+          scoreAdj?.pValue !== undefined &&
+          scoreAdj?.pValue !== null &&
+          scoreAdj.pValue >= pThr;
+
+        if (isExplainable) {
+          const pFmt = formatTriggerPValue(scoreAdj.pValue);
+          const pStr = pFmt !== null ? ` (p=${pFmt} ≥ ${pThr})` : '';
+          const r5bMessage = `อัตราหนี้เสียเปลี่ยนตามกลุ่มประชากร แต่ยังสอดคล้องกับค่าคาดหมายตามช่วงคะแนนของโมเดล${pStr} — ประชากรเปลี่ยน ไม่ใช่ความสัมพันธ์ของโมเดลเปลี่ยน แนะนำติดตามผลอย่างใกล้ชิด`;
+
+          const reasons: string[] = [
+            `[R5b] ${r5bMessage}`,
+            ...evals.map(e => e.reason),
+            ...(scoreAdj.reason ? [scoreAdj.reason] : []),
+          ];
+
+          return {
+            action: 'MONITOR_CLOSELY',
+            severity: 'info',
+            matchedRuleId: 'R5b',
+            reasons,
+            evidence,
+            recommendedSteps: [
+              'ตรวจสอบการกระจายตัวของประชากรลูกค้าในรอบนี้ (Covariate Drift / PSI) ว่ามีการเปลี่ยนแปลงสัดส่วนลูกค้าในกลุ่มคะแนนต่างๆ หรือไม่',
+              'ความสัมพันธ์ระหว่างคะแนนและอัตราหนี้เสียจริงยังสอดคล้องกับค่าคาดหมายของโมเดล จึงยังไม่จำเป็นต้อง Recalibrate หรือ Retrain ในขณะนี้',
+              'ติดตามอัตราหนี้เสียและการกระจายตัวของประชากรในรอบถัดไปอย่างใกล้ชิด',
+            ],
+            requiresHumanReview: true,
+            ...(configWarnings.length > 0 ? { configWarnings } : {}),
+          };
+        }
+
+        // If not explainable by score shift and R5 itself is disabled, do not fire R5
+        if (ruleSetConfig?.enabledRules?.R5 === false) {
+          continue;
+        }
+      }
+
       let ruleMessage = rule.message;
       if (rule.id === 'R1b' && run.validation) {
         const x = run.validation.rejectedRows;

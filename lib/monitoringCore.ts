@@ -18,6 +18,7 @@ import type {
 } from './types';
 import { getReferenceMeta } from './reference';
 import { toLegacyLog } from './legacy';
+import { getActiveRuleSet } from './storage/ruleSetRepository';
 
 export class DuplicatePeriodError extends Error {
   readonly code = 'DUPLICATE_PERIOD';
@@ -139,6 +140,19 @@ export async function executeMonitoringPipeline(
     configVersion: model.configVersion,
   });
 
+  let activeRuleSet: any = undefined;
+  try {
+    const rs = await getActiveRuleSet(model.id, model.version);
+    activeRuleSet = {
+      id: rs.setId,
+      name: rs.name,
+      revision: rs.revision,
+      config: rs.config,
+    };
+  } catch (err) {
+    console.warn('Could not load active rule set, falling back to defaults:', err);
+  }
+
   const { run, scored, riskGradeDist, riskGradeStatus, skipped } = runMonitoring({
     model,
     fileName: input.fileName || 'unknown.csv',
@@ -147,6 +161,7 @@ export async function executeMonitoringPipeline(
     excludeRows: input.excludeRows,
     anomalyScreening: input.anomalyScreening !== false,
     history,
+    ruleSet: activeRuleSet,
   });
 
   const resolution = resolvePeriod(run.uploadSummary, input.period, input.fileName || run.fileName);
@@ -224,6 +239,10 @@ export async function executeMonitoringPipeline(
     source: runSource,
     sha256: fileSha256,
     createdAt: run.createdAt,
+    ruleSetId: run.ruleSetId,
+    ruleSetName: run.ruleSetName,
+    ruleSetRevision: run.ruleSetRevision,
+    ruleSetConfig: run.ruleSetConfig,
     thresholdMode: model.driftConfig?.thresholdMode || 'fixed',
     validation: run.validation,
     drift: d,

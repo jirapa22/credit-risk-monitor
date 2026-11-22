@@ -20,6 +20,9 @@ export interface RunReportHeader {
   rejectedRowCount: number;
   runId: string;
   configHash: string;
+  ruleSetInfo: string;
+  ruleSetName?: string;
+  ruleSetRevision?: number;
 }
 
 export interface RunReportExecutiveSummary {
@@ -302,6 +305,12 @@ export function buildRunReport(
   const rejectedPct = totalRows > 0 ? +((rejectedRows / totalRows) * 100).toFixed(1) : 0;
 
   // 1. Header
+  const ruleSetName = run.ruleSetName;
+  const ruleSetRevision = run.ruleSetRevision;
+  const ruleSetInfo = (ruleSetName && typeof ruleSetRevision === 'number')
+    ? `${ruleSetName} (rev ${ruleSetRevision})`
+    : 'ไม่ระบุ (ค่าเริ่มต้นเดิม)';
+
   const header: RunReportHeader = {
     modelName,
     modelId,
@@ -315,6 +324,9 @@ export function buildRunReport(
     rejectedRowCount: rejectedRows,
     runId: run.runId,
     configHash,
+    ruleSetInfo,
+    ruleSetName,
+    ruleSetRevision,
   };
 
   // 2. Executive Summary

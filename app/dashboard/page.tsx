@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import Link from 'next/link';
 import AnomalyExperimentPanel from './components/AnomalyExperimentPanel';
 import BaselineRegistryPanel from './components/BaselineRegistryPanel';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
@@ -1131,6 +1132,14 @@ export default function Dashboard() {
                 {label}
               </button>
             ))}
+            <Link
+              href="/dashboard/rules"
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition-all flex items-center gap-1.5"
+              title="จัดการชุดกฎและเกณฑ์การตรวจวัด"
+            >
+              <span>⚖️</span>
+              <span>ชุดกฎ (Rule Set)</span>
+            </Link>
           </div>
 
           <div className="flex items-center gap-3 text-[11px] text-slate-400">

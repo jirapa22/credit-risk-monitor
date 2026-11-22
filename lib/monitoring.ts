@@ -41,6 +41,13 @@ export interface MonitoringInput {
   maxValidationIssues?: number;
   /** Prior monitoring runs for evaluating persistence rules (defaults to stored runs for modelId + referenceId + configVersion). */
   history?: MonitoringRun[];
+  /** Active rule set (Step 10 / งาน B) */
+  ruleSet?: {
+    id: string;
+    name: string;
+    revision: number;
+    config: any;
+  };
   /** Whether to persist non-CONTINUE TriggerEvent to storage (default true; false in synthetic sandbox trials). */
   recordTriggerEvent?: boolean;
 }
@@ -208,6 +215,24 @@ export function runMonitoring(input: MonitoringInput) {
   });
   const uploadSummary = buildUploadSummary(rows, registry, dateColumn);
 
+  const ruleSet = input.ruleSet ?? model.activeRuleSet;
+  let thresholdsSnapshot: MonitoringThresholds = thresholds;
+  if (ruleSet?.config) {
+    thresholdsSnapshot = {
+      psi_warning: ruleSet.config.psi_warning,
+      psi_critical: ruleSet.config.psi_critical,
+      auc_min: ruleSet.config.auc_min,
+      gini_min: ruleSet.config.gini_min,
+      ks_min: ruleSet.config.ks_min,
+      csi_features: thresholds?.csi_features ? structuredClone(thresholds.csi_features) : {},
+    };
+    model.thresholds = thresholdsSnapshot;
+    model.ruleSetConfig = ruleSet.config;
+    if (!model.driftConfig) model.driftConfig = {};
+    model.driftConfig.labelPValueThreshold = ruleSet.config.labelPValueThreshold;
+    model.driftConfig.riskDecileAlertThresholdPctPoints = ruleSet.config.decileAlertThresholdPctPoints;
+  }
+
   const run: MonitoringRun = {
     runId: `mon_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     kind: 'monitoring',
@@ -216,7 +241,13 @@ export function runMonitoring(input: MonitoringInput) {
     modelName: model.name,
     referenceId,
     fileName,
-    thresholdsSnapshot: thresholds,
+    thresholdsSnapshot,
+    ...(ruleSet ? {
+      ruleSetId: ruleSet.id,
+      ruleSetName: ruleSet.name,
+      ruleSetRevision: ruleSet.revision,
+      ruleSetConfig: ruleSet.config,
+    } : {}),
     validation,
     drift: null,
     anomaly: null,

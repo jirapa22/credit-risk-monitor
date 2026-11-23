@@ -93,6 +93,7 @@ export default function RulesPage() {
   // Form states
   const [formConfig, setFormConfig] = useState<RuleSetConfig | null>(null);
   const [targetRevisionForRevert, setTargetRevisionForRevert] = useState<number>(1);
+  const [activePreset, setActivePreset] = useState<string | null>(null);
 
   // Action Dialogs
   const [dialogAction, setDialogAction] = useState<'save_revision' | 'activate' | 'revert' | 'create_set' | null>(null);
@@ -129,6 +130,7 @@ export default function RulesPage() {
       // Select active or first set
       const initialId = rsData.activeRuleSet?.setId || rsData.ruleSets?.[0]?.id || '';
       setSelectedSetId(initialId);
+      setActivePreset(null);
       const chosen = rsData.ruleSets?.find((s: RuleSet) => s.id === initialId) || rsData.ruleSets?.[0];
       if (chosen && chosen.revisions?.length > 0) {
         const activeRevNum = chosen.activeRevision || chosen.currentRevision;
@@ -157,6 +159,7 @@ export default function RulesPage() {
   const handleSelectRuleSet = (setId: string) => {
     setSelectedSetId(setId);
     setSimResults(null);
+    setActivePreset(null);
     const chosen = ruleSets.find(s => s.id === setId);
     if (chosen && chosen.revisions?.length > 0) {
       const activeRevNum = chosen.activeRevision || chosen.currentRevision;
@@ -168,6 +171,7 @@ export default function RulesPage() {
 
   const handleApplyTemplatePreset = (template: 'standard' | 'strict' | 'relaxed' | 'population_adjusted') => {
     if (!formConfig) return;
+    setActivePreset(template);
     let nextConfig: RuleSetConfig;
     if (template === 'strict') {
       nextConfig = {
@@ -524,30 +528,28 @@ export default function RulesPage() {
                   {/* Quick Preset Buttons */}
                   <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
                     <span className="text-[11px] text-slate-400 px-2">เทมเพลต:</span>
-                    <button
-                      onClick={() => handleApplyTemplatePreset('standard')}
-                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px]"
-                    >
-                      มาตรฐาน
-                    </button>
-                    <button
-                      onClick={() => handleApplyTemplatePreset('strict')}
-                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px]"
-                    >
-                      เข้มงวด
-                    </button>
-                    <button
-                      onClick={() => handleApplyTemplatePreset('relaxed')}
-                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px]"
-                    >
-                      ผ่อนปรน
-                    </button>
-                    <button
-                      onClick={() => handleApplyTemplatePreset('population_adjusted')}
-                      className="px-2 py-1 rounded bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 text-[11px] border border-indigo-700/50"
-                    >
-                      ปรับตามประชากร
-                    </button>
+                    {([
+                      ['standard', 'มาตรฐาน'],
+                      ['strict', 'เข้มงวด'],
+                      ['relaxed', 'ผ่อนปรน'],
+                      ['population_adjusted', 'ปรับตามประชากร'],
+                    ] as const).map(([pId, pLabel]) => {
+                      const isHighlighted = activePreset === pId;
+                      return (
+                        <button
+                          key={pId}
+                          type="button"
+                          onClick={() => handleApplyTemplatePreset(pId)}
+                          className={`px-2 py-1 rounded text-[11px] font-medium transition ${
+                            isHighlighted
+                              ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                          }`}
+                        >
+                          {pLabel}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

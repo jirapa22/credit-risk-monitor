@@ -98,11 +98,12 @@ export interface MonitoringExecutionInput {
   csvText?: string;
   customers?: Record<string, unknown>[];
   period?: string | null;
-  source?: 'manual' | 'api';
+  source?: 'manual' | 'api' | 'scheduled' | 'run-now';
   onDuplicate?: 'reject' | 'replace';
   actor?: string;
   excludeRows?: number[];
   anomalyScreening?: boolean;
+  persistFailedRun?: boolean;
 }
 
 export interface MonitoringPipelineResult {
@@ -112,7 +113,7 @@ export interface MonitoringPipelineResult {
   drift: DriftResult | null;
   period: string | null;
   periodWarning: string | null;
-  source: 'manual' | 'api';
+  source: 'manual' | 'api' | 'scheduled' | 'run-now';
   duplicateWarning: string | null;
   duplicateInfo: { fileName: string; uploadedAt: string } | null;
   replacedRunId?: string;
@@ -276,7 +277,7 @@ export async function executeMonitoringPipeline(
   // - No RUN_REPLACED audit log is recorded.
   // - The new failed run is NOT persisted over the existing run.
   if (!run.drift) {
-    if (!existingRun) {
+    if (!existingRun && input.persistFailedRun !== false) {
       // If there was no existing run for this period, persist the failed run metadata for UI inspection
       let storageErr: string | undefined;
       try {

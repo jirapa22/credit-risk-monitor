@@ -16,6 +16,16 @@ export const LEGACY_SCORE_KEY = 'aScore';
 export const DEFAULT_MAX_INGEST_PAYLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
 
 /**
+ * จำนวนไฟล์สูงสุดที่ดึงและประมวลผลต่อรอบการทำงาน 1 ครั้ง (งาน C) — ป้องกันเวลาประมวลผลเกิน Serverless Timeout
+ */
+export const DEFAULT_MAX_PULL_FILES_PER_RUN = 3;
+
+/**
+ * จำนวนประวัติการดึงข้อมูลล่าสุดที่บันทึกต่อโมเดลใน KV
+ */
+export const DEFAULT_MAX_PULL_HISTORY_ENTRIES = 50;
+
+/**
  * ค่าเริ่มต้นเชิงปฏิบัติที่ผู้พัฒนาตั้งไว้ (PSI 0.10/0.25 เป็นกฎหัวแม่มือ ไม่ใช่ข้อบังคับ) ผู้ใช้ปรับได้ต่อโมเดล
  */
 export const DEFAULT_PSI_WARNING = 0.10;

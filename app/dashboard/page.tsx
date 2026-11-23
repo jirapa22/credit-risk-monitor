@@ -69,7 +69,7 @@ interface MonitorLog {
   uploadedAt: string;
   fileName: string;
   period?: string | null;
-  source?: 'manual' | 'api' | null;
+  source?: 'manual' | 'api' | 'scheduled' | 'run-now' | null;
   rowCount: number;
   processedRows?: number;
   skippedRows?: number;
@@ -618,6 +618,31 @@ export default function Dashboard() {
   const [isDeletingLog, setIsDeletingLog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Automated Pull Ingestion state
+  const [pullHistory, setPullHistory] = useState<any[]>([]);
+  const [isLoadingPullHistory, setIsLoadingPullHistory] = useState(false);
+  const [isExecutingRunNow, setIsExecutingRunNow] = useState(false);
+  const [runNowOperator, setRunNowOperator] = useState('');
+  const [showRunNowModal, setShowRunNowModal] = useState(false);
+  const [runNowStatusMsg, setRunNowStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const loadPullHistory = useCallback(async (targetModelId?: string) => {
+    try {
+      const mId = targetModelId || selectedModelId || config?.activeModelId;
+      if (!mId) return;
+      setIsLoadingPullHistory(true);
+      const res = await fetch(`/api/pull-ingest/history?modelId=${encodeURIComponent(mId)}&limit=10`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setPullHistory(Array.isArray(data.history) ? data.history : []);
+      }
+    } catch (err) {
+      console.error('loadPullHistory error:', err);
+    } finally {
+      setIsLoadingPullHistory(false);
+    }
+  }, [selectedModelId, config?.activeModelId]);
+
   const loadLogs = useCallback(async (targetModelId?: string) => {
     try {
       const mId = targetModelId || selectedModelId;
@@ -649,6 +674,7 @@ export default function Dashboard() {
       if (psiData.reference) setReference(psiData.reference);
       if (psiData.storage) setStorage(psiData.storage);
       await loadLogs(mId);
+      await loadPullHistory(mId);
 
       if (psiData.config) {
         setConfig(psiData.config);
@@ -2787,6 +2813,263 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* Automated Data Source / Blob Pull Ingestion */}
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                      <span>🔄</span>
+                      <span>แหล่งข้อมูลอัตโนมัติ (Blob Pull Ingestion)</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      ดึงไฟล์ CSV ใหม่จากโฟลเดอร์ใน Vercel Blob อัตโนมัติตามเวลา (Vercel Cron) หรือสั่งทำงานทันทีด้วยปุ่ม Run now
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowRunNowModal(true);
+                        setRunNowStatusMsg(null);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition flex items-center gap-1.5"
+                    >
+                      <span>▶️</span>
+                      <span>Run now (สั่งดึงทันที)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3 Metric Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">โฟลเดอร์ต้นทาง (Blob Prefix)</span>
+                    <p className="font-mono text-xs font-semibold text-indigo-300 mt-1 truncate">
+                      incoming/{currentModelId || 'model_vmc5k'}/
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1">ไฟล์ .csv ที่นำมาวางในโฟลเดอร์นี้จะถูกดึงเข้า pipeline</p>
+                  </div>
+
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">เวลาดึงข้อมูลล่าสุด</span>
+                    <p className="text-xs font-semibold text-slate-200 mt-1">
+                      {pullHistory[0]?.timestamp
+                        ? new Date(pullHistory[0].timestamp).toLocaleString('th-TH')
+                        : 'ยังไม่มีประวัติการดึง'}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {pullHistory[0]?.trigger === 'scheduled'
+                        ? 'ช่องทาง: ตั้งเวลา (Cron)'
+                        : pullHistory[0]?.trigger === 'manual-run-now'
+                        ? `ช่องทาง: Run now (โดย ${pullHistory[0]?.operator || '—'})`
+                        : 'กำหนดเวลาวันละ 1 ครั้ง (08:00 น.)'}
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">ผลลัพธ์รอบล่าสุด</span>
+                    <div className="mt-1 flex items-center gap-2">
+                      {pullHistory[0] ? (
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
+                          pullHistory[0].summary?.failedCount > 0
+                            ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                            : pullHistory[0].summary?.processedSuccess > 0
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}>
+                          สำเร็จ {pullHistory[0].summary?.processedSuccess ?? 0} · ข้าม {(pullHistory[0].summary?.skippedAlreadyProcessed ?? 0) + (pullHistory[0].summary?.skippedDuplicatePeriod ?? 0)} · ล้มเหลว {pullHistory[0].summary?.failedCount ?? 0}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">จำกัดครั้งละไม่เกิน 3 ไฟล์ ป้องกัน Serverless เกินเวลา</p>
+                  </div>
+                </div>
+
+                {/* History Table (10 recent entries) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-300">ตารางประวัติการดึง 10 รายการล่าสุด</span>
+                    <span className="text-[10px] text-slate-500">{pullHistory.length} รายการ</span>
+                  </div>
+
+                  {pullHistory.length === 0 ? (
+                    <div className="text-center py-6 border border-dashed border-slate-800 rounded-xl text-slate-500 text-xs">
+                      ยังไม่มีประวัติการดึงข้อมูลอัตโนมัติสำหรับโมเดลนี้
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto border border-slate-800 rounded-xl">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-950/80 text-[11px] text-slate-400 border-b border-slate-800">
+                          <tr>
+                            <th className="py-2 px-3">วัน-เวลา</th>
+                            <th className="py-2 px-3">ช่องทาง</th>
+                            <th className="py-2 px-3">ผู้สั่ง</th>
+                            <th className="py-2 px-3">พบ/สำเร็จ</th>
+                            <th className="py-2 px-3">ข้าม/ล้มเหลว</th>
+                            <th className="py-2 px-3">รายละเอียดไฟล์</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                          {pullHistory.slice(0, 10).map((h: any) => (
+                            <tr key={h.id} className="hover:bg-slate-800/20">
+                              <td className="py-2 px-3 text-slate-300 whitespace-nowrap">
+                                {new Date(h.timestamp).toLocaleString('th-TH')}
+                              </td>
+                              <td className="py-2 px-3 whitespace-nowrap">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-sans font-medium ${
+                                  h.trigger === 'scheduled'
+                                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                    : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                }`}>
+                                  {h.trigger === 'scheduled' ? 'ตั้งเวลา' : 'Run now'}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 font-sans text-slate-300 whitespace-nowrap">
+                                {h.operator || 'ระบบอัตโนมัติ (Vercel Cron)'}
+                              </td>
+                              <td className="py-2 px-3 whitespace-nowrap text-slate-300">
+                                {h.summary?.totalFound ?? 0} / <span className="text-emerald-400 font-bold">{h.summary?.processedSuccess ?? 0}</span>
+                              </td>
+                              <td className="py-2 px-3 whitespace-nowrap text-slate-300">
+                                <span className="text-slate-400">{(h.summary?.skippedAlreadyProcessed ?? 0) + (h.summary?.skippedDuplicatePeriod ?? 0)}</span> /{' '}
+                                <span className={(h.summary?.failedCount ?? 0) > 0 ? 'text-rose-400 font-bold' : 'text-slate-500'}>
+                                  {h.summary?.failedCount ?? 0}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 font-sans text-slate-400 text-[11px] max-w-md truncate" title={h.files?.map((f: any) => `${f.fileName}: ${f.reason}`).join('\n')}>
+                                {h.error ? (
+                                  <span className="text-rose-400">{h.error}</span>
+                                ) : h.files?.length ? (
+                                  h.files.map((f: any, idx: number) => (
+                                    <span key={idx} className="mr-2">
+                                      <span className="text-slate-300 font-mono">{f.fileName}</span>{' '}
+                                      <span className={
+                                        f.status === 'SUCCESS'
+                                          ? 'text-emerald-400'
+                                          : f.status.startsWith('SKIPPED')
+                                          ? 'text-slate-400'
+                                          : 'text-rose-400'
+                                      }>
+                                        ({f.reason || f.status})
+                                      </span>
+                                    </span>
+                                  ))
+                                ) : (
+                                  'ไม่มีไฟล์ใหม่'
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Run Now Modal */}
+              {showRunNowModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <span>▶️</span>
+                        <span>สั่งดึงข้อมูลทันที (Run now)</span>
+                      </h3>
+                      <button
+                        onClick={() => {
+                          setShowRunNowModal(false);
+                          setRunNowStatusMsg(null);
+                        }}
+                        className="text-slate-400 hover:text-white text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="bg-slate-950/80 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-300 leading-relaxed">
+                      ℹ️ <strong>ข้อกำหนดการบันทึก:</strong> ระบบปัจจุบันยังไม่มีระบบล็อกอิน โปรดระบุชื่อผู้สั่งงานเพื่อบันทึกลงในประวัติการตรวจสอบย้อนกลับ (Audit History)
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-300">
+                        ชื่อผู้สั่งการ (บังคับ) <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={runNowOperator}
+                        onChange={e => setRunNowOperator(e.target.value)}
+                        placeholder="เช่น นายสมชาย หรือ Risk Engineer A"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {runNowStatusMsg && (
+                      <div className={`p-3 rounded-xl text-xs border ${
+                        runNowStatusMsg.type === 'success'
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                      }`}>
+                        {runNowStatusMsg.text}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowRunNowModal(false);
+                          setRunNowStatusMsg(null);
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300"
+                        disabled={isExecutingRunNow}
+                      >
+                        ปิด
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const op = runNowOperator.trim();
+                          if (!op) {
+                            setRunNowStatusMsg({ type: 'error', text: 'กรุณาระบุชื่อผู้สั่ง (ห้ามเว้นว่าง)' });
+                            return;
+                          }
+                          setIsExecutingRunNow(true);
+                          setRunNowStatusMsg(null);
+                          try {
+                            const res = await fetch('/api/pull-ingest/run-now', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ operator: op, modelId: currentModelId }),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) {
+                              throw new Error(data.error || 'การสั่งดึงข้อมูลไม่สำเร็จ');
+                            }
+                            setRunNowStatusMsg({
+                              type: 'success',
+                              text: `ดึงข้อมูลสำเร็จ: พบ ${data.summary.totalFound} ไฟล์, สำเร็จ ${data.summary.processedSuccess} ไฟล์, ข้าม ${data.summary.skippedAlreadyProcessed + data.summary.skippedDuplicatePeriod} ไฟล์, ล้มเหลว ${data.summary.failedCount} ไฟล์`,
+                            });
+                            await loadPullHistory(currentModelId);
+                            await loadLogs(currentModelId);
+                          } catch (err: any) {
+                            setRunNowStatusMsg({ type: 'error', text: err?.message || String(err) });
+                          } finally {
+                            setIsExecutingRunNow(false);
+                          }
+                        }}
+                        disabled={isExecutingRunNow}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isExecutingRunNow ? 'กำลังประมวลผล...' : 'เริ่มดึงข้อมูล (Run now)'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Monitor Log Table */}
               <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden">
                 <div className="px-5 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
@@ -2893,9 +3176,21 @@ export default function Dashboard() {
                                     ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
                                     : log.source === 'manual'
                                     ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
+                                    : log.source === 'scheduled'
+                                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                    : log.source === 'run-now'
+                                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                                     : 'bg-slate-700/30 text-slate-400 border border-slate-700/50'
                                 }`}>
-                                  {log.source === 'api' ? 'API' : log.source === 'manual' ? 'อัปโหลดมือ' : 'ไม่ระบุ'}
+                                  {log.source === 'api'
+                                    ? 'API'
+                                    : log.source === 'manual'
+                                    ? 'อัปโหลดมือ'
+                                    : log.source === 'scheduled'
+                                    ? 'ตั้งเวลา'
+                                    : log.source === 'run-now'
+                                    ? 'Run now'
+                                    : 'ไม่ระบุ'}
                                 </span>
                               </td>
                               <td className="py-2.5 px-3 font-mono text-[10px] text-slate-500">{log.configVersion ? `v${log.configVersion}` : '—'}</td>

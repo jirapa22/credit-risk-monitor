@@ -733,7 +733,7 @@ export interface MonitoringRun {
   referenceId: string;
   fileName: string;
   period?: string | null;                     // Data period (e.g. '2025-07' or '2025-07 – 2025-08')
-  source?: 'manual' | 'api';                  // Submission channel: manual UI upload vs automated API
+  source?: 'manual' | 'api' | 'scheduled' | 'run-now';                  // Submission channel: manual UI upload vs automated API vs scheduled pull vs manual run-now
   ruleSetId?: string;
   ruleSetName?: string;
   ruleSetRevision?: number;
@@ -768,7 +768,7 @@ export interface MonitoringRunDetail {
   referenceId: string;
   fileName: string;
   period?: string | null;
-  source?: 'manual' | 'api';
+  source?: 'manual' | 'api' | 'scheduled' | 'run-now';
   ruleSetId?: string;
   ruleSetName?: string;
   ruleSetRevision?: number;

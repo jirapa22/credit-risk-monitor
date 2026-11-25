@@ -558,6 +558,23 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [registeredModels, setRegisteredModels] = useState<any[]>([]);
+  const [isAccessConfigured, setIsAccessConfigured] = useState<boolean>(true);
+
+  // Check shared access code status
+  useEffect(() => {
+    async function checkAuthStatus() {
+      try {
+        const res = await fetch('/api/access');
+        if (res.ok) {
+          const data = await res.json();
+          setIsAccessConfigured(Boolean(data.configured));
+        }
+      } catch {
+        // ignore network error
+      }
+    }
+    checkAuthStatus();
+  }, []);
 
   // Sandbox state
   const [thresholds, setThresholds] = useState({
@@ -1203,9 +1220,34 @@ export default function Dashboard() {
                 <span>ยังไม่เปิดใช้งาน</span>
               </span>
             )}
+            <button
+              onClick={async () => {
+                try {
+                  await fetch('/api/access', { method: 'DELETE' });
+                } finally {
+                  window.location.href = '/access';
+                }
+              }}
+              className="ml-2 px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-rose-950/40 hover:text-rose-300 border border-slate-700 text-slate-300 transition flex items-center gap-1.5"
+              title="ออกจากระบบและล้างเซสชันการเข้าใช้งาน"
+            >
+              <span>🚪</span>
+              <span>ออกจากระบบ</span>
+            </button>
           </div>
         </div>
       </div>
+
+      {!isAccessConfigured && (
+        <div className="bg-amber-500/15 border-b border-amber-500/40 px-6 py-2.5 text-xs text-amber-200">
+          <div className="max-w-screen-2xl mx-auto flex items-center gap-2">
+            <span className="text-sm">⚠️</span>
+            <span>
+              <strong>แจ้งเตือนความปลอดภัย:</strong> ยังไม่ได้ตั้งรหัสเข้าใช้งาน (ACCESS_CODE) ใน Environment Variables — ขณะนี้ระบบเปิดให้เข้าถึงได้โดยไม่ต้องยืนยันรหัส
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-screen-2xl mx-auto px-6 py-6">
         {isLoading ? (
@@ -2990,7 +3032,7 @@ export default function Dashboard() {
                     </div>
 
                     <div className="bg-slate-950/80 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-300 leading-relaxed">
-                      ℹ️ <strong>ข้อกำหนดการบันทึก:</strong> ระบบปัจจุบันยังไม่มีระบบล็อกอิน โปรดระบุชื่อผู้สั่งงานเพื่อบันทึกลงในประวัติการตรวจสอบย้อนกลับ (Audit History)
+                      ℹ️ <strong>ข้อกำหนดการบันทึก:</strong> ระบบใช้งานผ่านรหัสผ่านร่วม (Shared Access Code) ไม่ใช่การยืนยันตัวตนรายบุคคล ชื่อผู้สั่งการเป็นการระบุตัวเอง (Self-declared) เพื่อบันทึกลงในประวัติการตรวจสอบย้อนกลับ (Audit History) โดยไม่สามารถพิสูจน์ตัวตนจริงได้อย่างเด็ดขาด
                     </div>
 
                     <div className="space-y-1.5">

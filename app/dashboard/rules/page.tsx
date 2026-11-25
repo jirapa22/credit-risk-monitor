@@ -101,6 +101,23 @@ export default function RulesPage() {
   const [dialogReason, setDialogReason] = useState<string>('');
   const [newSetName, setNewSetName] = useState<string>('');
   const [newSetDesc, setNewSetDesc] = useState<string>('');
+  const [isAccessConfigured, setIsAccessConfigured] = useState<boolean>(true);
+
+  // Check auth status
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/access');
+        if (res.ok) {
+          const data = await res.json();
+          setIsAccessConfigured(Boolean(data.configured));
+        }
+      } catch {
+        // ignore
+      }
+    }
+    checkAuth();
+  }, []);
 
   // Simulation states
   const [simResults, setSimResults] = useState<SimulationItem[] | null>(null);
@@ -409,8 +426,31 @@ export default function RulesPage() {
                 v{modelVersion}
               </span>
             </div>
+            <button
+              onClick={async () => {
+                try {
+                  await fetch('/api/access', { method: 'DELETE' });
+                } finally {
+                  window.location.href = '/access';
+                }
+              }}
+              className="ml-2 px-2.5 py-1 text-xs rounded bg-slate-900 hover:bg-rose-950/40 hover:text-rose-300 border border-slate-800 text-slate-300 transition flex items-center gap-1.5"
+              title="ออกจากระบบและล้างเซสชันการเข้าใช้งาน"
+            >
+              <span>🚪</span>
+              <span>ออกจากระบบ</span>
+            </button>
           </div>
         </div>
+
+        {!isAccessConfigured && (
+          <div className="bg-amber-500/15 border border-amber-500/40 rounded-xl px-4 py-2.5 text-xs text-amber-200 flex items-center gap-2">
+            <span className="text-sm">⚠️</span>
+            <span>
+              <strong>แจ้งเตือนความปลอดภัย:</strong> ยังไม่ได้ตั้งรหัสเข้าใช้งาน (ACCESS_CODE) ใน Environment Variables — ขณะนี้ระบบเปิดให้เข้าถึงได้โดยไม่ต้องยืนยันรหัส
+            </span>
+          </div>
+        )}
 
         {/* Regulatory Disclaimer Banner (Strictly no Basel mention) */}
         <div className="bg-slate-900/80 border border-indigo-500/20 rounded-xl p-3.5 flex items-start gap-3 text-xs text-indigo-300">
@@ -1075,7 +1115,7 @@ export default function RulesPage() {
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none focus:border-indigo-500"
                 />
                 <span className="text-[10px] text-slate-500 mt-0.5 block">
-                  เนื่องจากระบบยังไม่มีระบบ Login แยก ระบบจึงบันทึกชื่อตามที่กรอกลง Audit Trail
+                  ระบบป้องกันด้วยรหัสผ่านร่วม (Shared Access Code) ไม่ใช่บัญชีรายบุคคล ชื่อผู้ดำเนินการเป็นการระบุตัวเอง (Self-declared) บันทึกลง Audit Trail โดยไม่สามารถพิสูจน์ตัวตนจริงได้อย่างเด็ดขาด
                 </span>
               </div>
 

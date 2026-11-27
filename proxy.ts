@@ -4,6 +4,7 @@ import {
   isAccessCodeConfigured,
   verifyAccessToken,
   ACCESS_COOKIE_NAME,
+  sanitizeRedirectPath,
 } from './lib/auth/access';
 
 export const config = {
@@ -71,9 +72,10 @@ export function proxy(request: NextRequest) {
 
   // Web pages: redirect to /access with return destination
   const accessUrl = new URL('/access', request.url);
-  const target = pathname === '/' ? '/dashboard' : pathname;
+  const target = pathname === '/' ? '/dashboard' : sanitizeRedirectPath(pathname);
   accessUrl.searchParams.set('from', target);
   return NextResponse.redirect(accessUrl);
 }
 
 export default proxy;
+

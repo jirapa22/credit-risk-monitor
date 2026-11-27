@@ -7,6 +7,7 @@ import { GET as cronGet } from '../app/api/cron/pull-ingest/route';
 import {
   generateAccessToken,
   clearRateLimit,
+  sanitizeRedirectPath,
   ACCESS_COOKIE_NAME,
 } from '../lib/auth/access';
 
@@ -374,4 +375,39 @@ describe('Task D: Shared Access Code Authentication & Interception', () => {
       expect(getText).not.toContain(TEST_SECRET);
     });
   });
+
+  // 1: Validation of redirect path ('from' parameter)
+  describe('Open Redirect Prevention for from parameter', () => {
+    it('rejects //evil.com and falls back to /dashboard', () => {
+      expect(sanitizeRedirectPath('//evil.com')).toBe('/dashboard');
+    });
+
+    it('rejects /\\evil.com and falls back to /dashboard', () => {
+      expect(sanitizeRedirectPath('/\\evil.com')).toBe('/dashboard');
+    });
+
+    it('rejects https://evil.com and falls back to /dashboard', () => {
+      expect(sanitizeRedirectPath('https://evil.com')).toBe('/dashboard');
+    });
+
+    it('allows valid internal path /dashboard/rules', () => {
+      expect(sanitizeRedirectPath('/dashboard/rules')).toBe('/dashboard/rules');
+    });
+
+    it('rejects other malicious schemes, backslashes, and control characters', () => {
+      expect(sanitizeRedirectPath('http://evil.com')).toBe('/dashboard');
+      expect(sanitizeRedirectPath('javascript:alert(1)')).toBe('/dashboard');
+      expect(sanitizeRedirectPath('/test\\escape')).toBe('/dashboard');
+      expect(sanitizeRedirectPath('/path\nnewline')).toBe('/dashboard');
+      expect(sanitizeRedirectPath('/path\rreturn')).toBe('/dashboard');
+      expect(sanitizeRedirectPath('/path\x00null')).toBe('/dashboard');
+      expect(sanitizeRedirectPath('')).toBe('/dashboard');
+      expect(sanitizeRedirectPath('   ')).toBe('/dashboard');
+      expect(sanitizeRedirectPath(null)).toBe('/dashboard');
+      expect(sanitizeRedirectPath(undefined)).toBe('/dashboard');
+      expect(sanitizeRedirectPath('/dashboard')).toBe('/dashboard');
+      expect(sanitizeRedirectPath('/dashboard/report/run_abc')).toBe('/dashboard/report/run_abc');
+    });
+  });
 });
+

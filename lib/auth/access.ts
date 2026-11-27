@@ -228,3 +228,7 @@ export async function clearRateLimit(ip: string): Promise<void> {
   const store = getStore();
   await store.del(rateLimitKey(ip));
 }
+
+export { sanitizeRedirectPath } from './redirect';
+
+

@@ -2,11 +2,12 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { sanitizeRedirectPath } from '../../lib/auth/redirect';
 
 function AccessContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get('from') || '/dashboard';
+  const from = sanitizeRedirectPath(searchParams.get('from'));
 
   const [code, setCode] = useState('');
   const [showCode, setShowCode] = useState(false);
@@ -70,9 +71,8 @@ function AccessContent() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        // Successful login
-        const target = from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard';
-        window.location.href = target;
+        // Successful login: redirect to sanitized internal destination
+        window.location.href = from;
         return;
       }
 
@@ -210,3 +210,4 @@ export default function AccessPage() {
     </Suspense>
   );
 }
+
